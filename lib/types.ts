@@ -1,3 +1,6 @@
+import type { z } from "zod"
+import type { orderFormSchema } from "./schemas"
+
 export type Brand = {
   id: string
   name: string
@@ -5,7 +8,17 @@ export type Brand = {
   logo_url: string | null
   created_at: string
   active: boolean
-  order_sequence: number | null
+  order_sequence: number
+  order_prefix: string | null
+  initials: string | null
+  header_image_url: string | null
+  form_title: string | null
+  form_subtitle: string | null
+  to_emails: string | null
+  cc_emails: string | null
+  bcc_emails: string | null
+  subject_line: string | null
+  clinic_locations: ClinicLocation[]
 }
 
 export type ProductItem = {
@@ -55,26 +68,52 @@ export type Submission = {
   created_at: string
   ordered_by: string
   email: string
-  status: "pending" | "complete" | "cancelled"
+  status: string | null
   pdf_url: string | null
-  ip_address: string
-  order_data: Order
-  order_number: string
-  brands: { name: string }
-  dispatch_date: string | null
-  tracking_link: string | null
-  dispatch_notes: string | null
+  ip_address: string | null
+  order_data: z.infer<typeof orderFormSchema> | null
+  brands: { name: string } | null
+  order_number?: string
+  dispatch_date?: string | null
+  tracking_link?: string | null
+  dispatch_notes?: string | null
 }
 
 export type UploadedFile = {
   id: string
-  file_name: string
-  file_type: string
-  file_size: number
-  file_url: string
+  pathname: string
+  original_name: string
+  url: string
   uploaded_at: string
-  brand_id: string | null
+  size: number
+  content_type: string | null
+  brand_id?: string | null
 }
+
+export interface ClinicLocation {
+  name: string
+  address: string
+  phone: string
+  email: string
+}
+
+export interface OrderInfo {
+  orderNumber: string
+  orderedBy: string
+  email: string
+  billTo?: ClinicLocation
+  deliverTo?: ClinicLocation
+  notes?: string
+  date?: Date | string
+}
+
+export interface OrderPayload {
+  brandId: string
+  orderInfo: OrderInfo
+  items: Record<string, any>
+}
+
+export type BrandType = Brand
 
 export type AllowedIp = {
   id: string
