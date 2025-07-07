@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { z } from "zod"
-import type { AllowedIp } from "@/lib/types"
+import type { AllowedIp, Submission, Brand } from "@/lib/types"
+import { sendCompletionEmail } from "@/lib/email"
 import { promises as fs } from "fs"
 import path from "path"
 
@@ -15,7 +16,7 @@ const BrandSchema = z.object({
   active: z.boolean(),
 })
 
-export async function addBrand(formData: FormData) {
+export async function addBrand(prevState: any, formData: FormData) {
   const validatedFields = BrandSchema.safeParse(Object.fromEntries(formData.entries()))
 
   if (!validatedFields.success) {
@@ -34,7 +35,7 @@ export async function addBrand(formData: FormData) {
   return { success: true, message: "Brand added successfully." }
 }
 
-export async function updateBrand(formData: FormData) {
+export async function updateBrand(prevState: any, formData: FormData) {
   const validatedFields = BrandSchema.safeParse(Object.fromEntries(formData.entries()))
 
   if (!validatedFields.success) {
@@ -55,7 +56,7 @@ export async function updateBrand(formData: FormData) {
   }
 
   revalidatePath("/admin/dashboard")
-  revalidatePath(`/admin/editor/${brandData.slug}`)
+  revalidatePath(`/forms/${brandData.slug}`)
   return { success: true, message: "Brand updated successfully." }
 }
 
@@ -74,21 +75,23 @@ export async function deleteBrand(id: string) {
 
 const MarkCompleteSchema = z.object({
   submissionId: z.string().uuid(),
-  dispatchDate: z.string().optional(),
-  trackingLink: z.string().url().optional().or(z.literal("")),
-  notes: z.string().optional(),
+  dispatchDate: z.string().optional().nullable(),
+  trackingLink: z.string().url("Please enter a valid URL.").optional().or(z.literal("")).nullable(),
+  notes: z.string().optional().nullable(),
 })
 
 export async function markSubmissionAsComplete(
   prevState: any,
   formData: FormData,
-): Promise<{ success: boolean; message: string; errors?: any; data?: any }> {
-  const validatedFields = MarkCompleteSchema.safeParse({
+): Promise<{ success: boolean; message: string; errors?: any }> {
+  const rawData = {
     submissionId: formData.get("submissionId"),
-    dispatchDate: formData.get("dispatchDate"),
-    trackingLink: formData.get("trackingLink"),
-    notes: formData.get("notes"),
-  })
+    dispatchDate: formData.get("dispatchDate") || null,
+    trackingLink: formData.get("trackingLink") || null,
+    notes: formData.get("notes") || null,
+  }
+
+  const validatedFields = MarkCompleteSchema.safeParse(rawData)
 
   if (!validatedFields.success) {
     return {
@@ -101,25 +104,41 @@ export async function markSubmissionAsComplete(
   const { submissionId, dispatchDate, trackingLink, notes } = validatedFields.data
   const supabase = createAdminClient()
 
-  const { data, error } = await supabase
+  const { data: updatedSubmission, error } = await supabase
     .from("submissions")
     .update({
       status: "Complete",
-      dispatch_date: dispatchDate || null,
-      tracking_link: trackingLink || null,
-      dispatch_notes: notes || null,
+      dispatch_date: dispatchDate,
+      tracking_link: trackingLink,
+      dispatch_notes: notes,
     })
     .eq("id", submissionId)
-    .select()
+    .select(
+      `
+      *,
+      brands (
+        id, name, slug, logo_url, to_emails, cc_emails, bcc_emails, subject_line
+      )
+    `,
+    )
     .single()
 
   if (error) {
     console.error("Error marking submission as complete:", error)
-    return { success: false, message: "Database error: Could not update submission." }
+    return { success: false, message: `Database error: ${error.message}` }
+  }
+
+  if (!updatedSubmission) {
+    return { success: false, message: "Could not find submission after update." }
+  }
+
+  if (updatedSubmission.brands) {
+    const brand = updatedSubmission.brands as unknown as Brand
+    await sendCompletionEmail(updatedSubmission as Submission, brand, brand.logo_url)
   }
 
   revalidatePath("/admin/dashboard")
-  return { success: true, message: `Order #${data.order_number} marked as complete.`, data }
+  return { success: true, message: `Order #${updatedSubmission.order_number} marked as complete and email sent.` }
 }
 
 const IpSchema = z.string().ip({ version: "v4", message: "Invalid IP address." })

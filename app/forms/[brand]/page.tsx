@@ -1,80 +1,61 @@
 import { createAdminClient } from "@/lib/supabase/admin"
-import { notFound } from "next/navigation"
 import { OrderForm } from "@/components/order-form"
-import type { BrandData } from "@/lib/types"
-import { Toaster } from "sonner"
+import { notFound } from "next/navigation"
+import type { Brand, Section, ClinicLocation } from "@/lib/types"
 
-export const revalidate = 0 // Revalidate data on every request
-
-async function getBrandData(slug: string): Promise<BrandData | null> {
+async function getBrandData(slug: string) {
   const supabase = createAdminClient()
-
-  // Step 1: Fetch the brand by slug, ensuring it's active
   const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select("id, name, slug, logo_url, clinic_locations, active, order_prefix")
+    .select("*")
     .eq("slug", slug)
     .eq("active", true)
     .single()
 
-  // If no active brand is found, or there's an error, return null
   if (brandError || !brand) {
-    if (brandError) {
-      console.error(`Error fetching brand:`, JSON.stringify(brandError, null, 2))
-    }
+    console.error(`Error fetching brand with slug '${slug}':`, brandError?.message)
     return null
   }
 
-  // Step 2: Fetch all product sections for this brand
   const { data: sections, error: sectionsError } = await supabase
-    .from("product_sections")
-    .select("*")
+    .from("sections")
+    .select("*, items(*)")
     .eq("brand_id", brand.id)
-    .order("sort_order")
+    .order("order", { ascending: true })
+    .order("order", { foreignTable: "items", ascending: true })
 
   if (sectionsError) {
     console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
-    // Return the brand but with empty sections, preventing a 404
-    return { ...brand, product_sections: [] } as BrandData
+    return { brand, sections: [], clinic_locations: [] }
   }
 
-  // Step 3: For each section, fetch its product items
-  const sectionsWithItems = await Promise.all(
-    (sections || []).map(async (section) => {
-      const { data: items, error: itemsError } = await supabase
-        .from("product_items")
-        .select("*")
-        .eq("section_id", section.id)
-        .order("sort_order")
+  const { data: clinic_locations, error: clinicsError } = await supabase
+    .from("clinic_locations")
+    .select("*")
+    .eq("brand_id", brand.id)
+    .order("name", { ascending: true })
 
-      if (itemsError) {
-        console.error(`Error fetching items for section '${section.title}':`, itemsError.message)
-        // If items fail to load, return the section with an empty item list
-        return { ...section, product_items: [] }
-      }
-      return { ...section, product_items: items || [] }
-    }),
-  )
+  if (clinicsError) {
+    console.error(`Error fetching clinics for brand '${slug}':`, clinicsError.message)
+  }
 
-  // Step 4: Assemble and return the final BrandData object
   return {
-    ...brand,
-    product_sections: sectionsWithItems,
-  } as BrandData
+    brand: brand as Brand,
+    sections: (sections as Section[]) || [],
+    clinic_locations: (clinic_locations as ClinicLocation[]) || [],
+  }
 }
 
-// This is a dynamic route handler
 export default async function BrandFormPage({ params }: { params: { brand: string } }) {
-  const brandData = await getBrandData(params.brand)
+  const data = await getBrandData(params.brand)
 
-  if (!brandData) {
+  if (!data || !data.brand) {
     notFound()
   }
 
   return (
-    <>
-      <OrderForm brandData={brandData} />
-      <Toaster richColors />
-    </>
+    <div className="container mx-auto p-4 md:p-8">
+      <OrderForm brand={data.brand} sections={data.sections} clinicLocations={data.clinic_locations} />
+    </div>
   )
 }
