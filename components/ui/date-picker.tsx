@@ -8,7 +8,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface DatePickerProps {
-  value: Date | undefined
+  value: Date | null | undefined
   onChange: (date: Date | undefined) => void
   className?: string
   placeholder?: string
@@ -27,7 +27,7 @@ export function DatePicker({ value, onChange, className, placeholder }: DatePick
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0">
-        <Calendar mode="single" selected={value} onSelect={onChange} initialFocus />
+        <Calendar mode="single" selected={value || undefined} onSelect={onChange} initialFocus />
       </PopoverContent>
     </Popover>
   )
