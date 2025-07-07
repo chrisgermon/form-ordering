@@ -1,117 +1,75 @@
 "use client"
 
-import { useEffect } from "react"
 import { useFormState } from "react-dom"
+import { useEffect } from "react"
 import { toast } from "sonner"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-
-import type { Brand } from "@/lib/types"
-import { addBrand, updateBrand } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-
-const BrandSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().min(1, "Brand name is required."),
-  slug: z.string().min(1, "Brand slug is required."),
-  logo_url: z.string().url("Must be a valid URL.").optional().or(z.literal("")),
-  active: z.boolean(),
-})
+import type { Brand } from "@/lib/types"
+import { createOrUpdateBrand } from "./actions"
 
 interface BrandFormProps {
   brand: Brand | null
   onSave: () => void
+  onCancel: () => void
 }
 
-export function BrandForm({ brand, onSave }: BrandFormProps) {
-  const form = useForm<z.infer<typeof BrandSchema>>({
-    resolver: zodResolver(BrandSchema),
-    defaultValues: {
-      id: brand?.id || undefined,
-      name: brand?.name || "",
-      slug: brand?.slug || "",
-      logo_url: brand?.logo_url || "",
-      active: brand?.active ?? true,
-    },
-  })
-
-  const action = brand ? updateBrand : addBrand
-  const [state, formAction] = useFormState(action, { success: false, message: "" })
+export function BrandForm({ brand, onSave, onCancel }: BrandFormProps) {
+  const [state, formAction] = useFormState(createOrUpdateBrand, { success: false, message: "" })
 
   useEffect(() => {
-    if (state.success) {
-      toast.success(state.message)
-      onSave()
-    } else if (state.message && !state.success) {
-      toast.error(state.message)
+    if (state.message) {
+      if (state.success) {
+        toast.success(state.message)
+        onSave()
+      } else {
+        toast.error(state.message)
+      }
     }
   }, [state, onSave])
 
   return (
-    <Form {...form}>
-      <form action={formAction} className="space-y-4">
-        {brand && <input type="hidden" name="id" value={brand.id} />}
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Brand Name</FormLabel>
-              <FormControl>
-                <Input {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="slug"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Brand Slug</FormLabel>
-              <FormControl>
-                <Input {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="logo_url"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Logo URL</FormLabel>
-              <FormControl>
-                <Input {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="active"
-          render={({ field }) => (
-            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-              <div className="space-y-0.5">
-                <FormLabel>Active</FormLabel>
-              </div>
-              <FormControl>
-                <Switch checked={field.value} onCheckedChange={field.onChange} />
-              </FormControl>
-            </FormItem>
-          )}
-        />
-        <Button type="submit" className="w-full">
-          {brand ? "Update Brand" : "Add Brand"}
+    <form action={formAction} className="space-y-6">
+      <input type="hidden" name="id" value={brand?.id || ""} />
+
+      <div>
+        <Label htmlFor="name">Brand Name</Label>
+        <Input id="name" name="name" defaultValue={brand?.name || ""} required />
+      </div>
+
+      <div>
+        <Label htmlFor="slug">Brand Slug</Label>
+        <Input id="slug" name="slug" defaultValue={brand?.slug || ""} required />
+      </div>
+
+      <div>
+        <Label htmlFor="logo">Logo File</Label>
+        <Input id="logo" name="logo" type="file" accept="image/*" />
+        {brand?.logo_url && (
+          <div className="mt-2">
+            <p className="text-sm text-muted-foreground">Current logo:</p>
+            <img
+              src={brand.logo_url || "/placeholder.svg"}
+              alt="Current Logo"
+              className="h-16 w-auto rounded-md border p-1"
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <Switch id="active" name="active" defaultChecked={brand?.active ?? true} />
+        <Label htmlFor="active">Active</Label>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-4 border-t">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
         </Button>
-      </form>
-    </Form>
+        <Button type="submit">Save Brand</Button>
+      </div>
+    </form>
   )
 }

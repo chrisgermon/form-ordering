@@ -1,154 +1,288 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { format } from "date-fns"
-import { CheckCircle, FileText, MoreHorizontal, Search } from "lucide-react"
-
-import type { Submission, Brand } from "@/lib/types"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import type React from "react"
+import { useState, useMemo, useTransition } from "react"
+import { useRouter } from "next/navigation"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  ExternalLink,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle,
+  ArrowUpDown,
+  RefreshCw,
+  Search,
+} from "lucide-react"
+import type { Submission } from "@/lib/types"
 import { SubmissionDetailsDialog } from "./SubmissionDetailsDialog"
 import { MarkCompleteDialog } from "./MarkCompleteDialog"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
+import type { DateRange } from "react-day-picker"
+import { subDays } from "date-fns"
 
 interface SubmissionsTableProps {
-  submissions: Submission[]
-  brands: Brand[]
+  initialSubmissions: Submission[]
 }
 
-export function SubmissionsTable({ submissions, brands }: SubmissionsTableProps) {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [brandFilter, setBrandFilter] = useState("all")
+type SortableKey = "order_number" | "created_at" | "status" | "brands.name"
+
+const ITEMS_PER_PAGE = 15
+
+export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+
+  const [submissions, setSubmissions] = useState(initialSubmissions)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
-  const [isDetailsOpen, setDetailsOpen] = useState(false)
-  const [isCompleteOpen, setCompleteOpen] = useState(false)
+  const [submissionToComplete, setSubmissionToComplete] = useState<Submission | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 29),
+    to: new Date(),
+  })
+  const [searchQuery, setSearchQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [sortConfig, setSortConfig] = useState<{ key: SortableKey; direction: "ascending" | "descending" }>({
+    key: "created_at",
+    direction: "descending",
+  })
 
-  const filteredSubmissions = useMemo(() => {
-    return submissions.filter((submission) => {
-      const brand = submission.brands as Brand | null
-      const matchesSearch =
-        submission.order_number.toString().includes(searchTerm) ||
-        submission.ordered_by?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        submission.email?.toLowerCase().includes(searchTerm.toLowerCase())
-      const matchesStatus = statusFilter === "all" || submission.status.toLowerCase() === statusFilter
-      const matchesBrand = brandFilter === "all" || (brand && brand.id === brandFilter)
-      return matchesSearch && matchesStatus && matchesBrand
+  const sortedAndFilteredSubmissions = useMemo(() => {
+    let filtered = [...submissions]
+
+    // Date filtering
+    if (dateRange?.from) {
+      filtered = filtered.filter((submission) => {
+        const submissionDate = new Date(submission.created_at)
+        const from = new Date(dateRange.from!)
+        from.setHours(0, 0, 0, 0)
+        if (submissionDate < from) return false
+        if (dateRange.to) {
+          const to = new Date(dateRange.to)
+          to.setHours(23, 59, 59, 999)
+          if (submissionDate > to) return false
+        }
+        return true
+      })
+    }
+
+    // Status filtering
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((submission) => (submission.status || "pending").toLowerCase() === statusFilter)
+    }
+
+    // Search filtering
+    if (searchQuery) {
+      const lowercasedQuery = searchQuery.toLowerCase()
+      filtered = filtered.filter(
+        (s) =>
+          s.order_number?.toLowerCase().includes(lowercasedQuery) ||
+          s.ordered_by.toLowerCase().includes(lowercasedQuery) ||
+          s.email.toLowerCase().includes(lowercasedQuery) ||
+          s.brands?.name?.toLowerCase().includes(lowercasedQuery),
+      )
+    }
+
+    // Sorting
+    if (sortConfig.key) {
+      filtered.sort((a, b) => {
+        let aValue: any
+        let bValue: any
+
+        if (sortConfig.key === "brands.name") {
+          aValue = a.brands?.name || ""
+          bValue = b.brands?.name || ""
+        } else {
+          aValue = a[sortConfig.key as keyof Submission]
+          bValue = b[sortConfig.key as keyof Submission]
+        }
+
+        if (aValue < bValue) return sortConfig.direction === "ascending" ? -1 : 1
+        if (aValue > bValue) return sortConfig.direction === "ascending" ? 1 : -1
+        return 0
+      })
+    }
+
+    return filtered
+  }, [submissions, dateRange, statusFilter, searchQuery, sortConfig])
+
+  const totalPages = Math.ceil(sortedAndFilteredSubmissions.length / ITEMS_PER_PAGE)
+  const paginatedSubmissions = sortedAndFilteredSubmissions.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE,
+  )
+
+  const handleSort = (key: SortableKey) => {
+    let direction: "ascending" | "descending" = "ascending"
+    if (sortConfig.key === key && sortConfig.direction === "ascending") {
+      direction = "descending"
+    }
+    setSortConfig({ key, direction })
+    setCurrentPage(1)
+  }
+
+  const handleRefresh = () => {
+    startTransition(() => {
+      router.refresh()
     })
-  }, [submissions, searchTerm, statusFilter, brandFilter])
-
-  const handleViewDetails = (submission: Submission) => {
-    setSelectedSubmission(submission)
-    setDetailsOpen(true)
   }
 
-  const handleMarkComplete = (submission: Submission) => {
-    setSelectedSubmission(submission)
-    setCompleteOpen(true)
+  const getStatusVariant = (status: string | null) => {
+    switch ((status || "pending").toLowerCase()) {
+      case "complete":
+        return "success"
+      case "sent":
+        return "default"
+      default:
+        return "secondary"
+    }
   }
+
+  const SortableHeader = ({ sortKey, children }: { sortKey: SortableKey; children: React.ReactNode }) => (
+    <TableHead>
+      <Button variant="ghost" onClick={() => handleSort(sortKey)} className="px-2">
+        {children}
+        <ArrowUpDown
+          className={`ml-2 h-4 w-4 ${sortConfig.key === sortKey ? "text-foreground" : "text-muted-foreground"}`}
+        />
+      </Button>
+    </TableHead>
+  )
 
   return (
-    <div>
-      <div className="mb-4 flex items-center gap-4">
-        <div className="relative w-full max-w-sm">
+    <div className="space-y-4">
+      <div className="flex flex-col md:flex-row gap-2 justify-between">
+        <div className="relative w-full md:max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search orders..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-8"
+            type="search"
+            placeholder="Search by Order#, Name, Email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 w-full"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="Pending">Pending</SelectItem>
-            <SelectItem value="Complete">Complete</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={brandFilter} onValueChange={setBrandFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by brand" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Brands</SelectItem>
-            {brands.map((brand) => (
-              <SelectItem key={brand.id} value={brand.id}>
-                {brand.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex gap-2">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="sent">Sent</SelectItem>
+              <SelectItem value="complete">Complete</SelectItem>
+            </SelectContent>
+          </Select>
+          <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+          <Button variant="outline" onClick={handleRefresh} disabled={isPending}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
-      <div className="rounded-md border">
+      <div className="border rounded-lg bg-white">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Order #</TableHead>
-              <TableHead>Brand</TableHead>
+              <SortableHeader sortKey="order_number">Order #</SortableHeader>
+              <SortableHeader sortKey="created_at">Date</SortableHeader>
+              <SortableHeader sortKey="brands.name">Brand</SortableHeader>
               <TableHead>Ordered By</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
+              <TableHead>Email</TableHead>
+              <SortableHeader sortKey="status">Status</SortableHeader>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredSubmissions.map((submission) => {
-              const brand = submission.brands as Brand | null
-              return (
-                <TableRow key={submission.id}>
-                  <TableCell className="font-medium">{submission.order_number}</TableCell>
-                  <TableCell>{brand?.name || "N/A"}</TableCell>
-                  <TableCell>{submission.ordered_by}</TableCell>
-                  <TableCell>{format(new Date(submission.created_at), "dd MMM yyyy, HH:mm")}</TableCell>
-                  <TableCell>
-                    <Badge variant={submission.status === "Complete" ? "default" : "secondary"}>
-                      {submission.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">Open menu</span>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleViewDetails(submission)}>
-                          <FileText className="mr-2 h-4 w-4" />
-                          View Details
-                        </DropdownMenuItem>
-                        {submission.status !== "Complete" && (
-                          <DropdownMenuItem onClick={() => handleMarkComplete(submission)}>
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            Mark as Complete
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
+            {paginatedSubmissions.map((submission) => (
+              <TableRow key={submission.id}>
+                <TableCell className="font-medium">{submission.order_number || "N/A"}</TableCell>
+                <TableCell>{new Date(submission.created_at).toLocaleString()}</TableCell>
+                <TableCell>{submission.brands?.name || "N/A"}</TableCell>
+                <TableCell>{submission.ordered_by}</TableCell>
+                <TableCell>{submission.email}</TableCell>
+                <TableCell>
+                  <Badge variant={getStatusVariant(submission.status) as any}>{submission.status || "pending"}</Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setSelectedSubmission(submission)}>
+                      <FileText className="mr-2 h-3 w-3" />
+                      Details
+                    </Button>
+                    {submission.pdf_url && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={submission.pdf_url} target="_blank" rel="noopener noreferrer">
+                          View PDF <ExternalLink className="ml-2 h-3 w-3" />
+                        </a>
+                      </Button>
+                    )}
+                    {(submission.status || "pending").toLowerCase() !== "complete" && (
+                      <Button variant="outline" size="sm" onClick={() => setSubmissionToComplete(submission)}>
+                        <CheckCircle className="mr-2 h-3 w-3" />
+                        Mark Complete
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
           </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TableCell colSpan={7}>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {paginatedSubmissions.length} of {sortedAndFilteredSubmissions.length} submissions.
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-muted-foreground">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span className="sr-only">Previous</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                    >
+                      <span className="sr-only">Next</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </TableCell>
+            </TableRow>
+          </TableFooter>
         </Table>
       </div>
       {selectedSubmission && (
-        <>
-          <SubmissionDetailsDialog
-            submission={selectedSubmission}
-            isOpen={isDetailsOpen}
-            onOpenChange={setDetailsOpen}
-          />
-          <MarkCompleteDialog submission={selectedSubmission} isOpen={isCompleteOpen} onOpenChange={setCompleteOpen} />
-        </>
+        <SubmissionDetailsDialog
+          submission={selectedSubmission}
+          isOpen={!!selectedSubmission}
+          onClose={() => setSelectedSubmission(null)}
+        />
+      )}
+      {submissionToComplete && (
+        <MarkCompleteDialog
+          submission={submissionToComplete}
+          isOpen={!!submissionToComplete}
+          onClose={() => setSubmissionToComplete(null)}
+        />
       )}
     </div>
   )
