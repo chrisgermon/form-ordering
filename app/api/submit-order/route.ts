@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Generate PDF
-    const logoUrl = brand.logo ? resolveAssetUrl(brand.logo) : null
+    const logoUrl = brand.logo_url ? resolveAssetUrl(brand.logo_url) : null
     const pdfBuffer = await generatePdf(payload, brand as Brand, logoUrl)
 
     // 4. Upload PDF to Vercel Blob
