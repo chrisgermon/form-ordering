@@ -73,8 +73,8 @@ export async function deleteBrand(id: string) {
 const MarkCompleteSchema = z.object({
   submissionId: z.string().uuid(),
   dispatchDate: z.string().optional().nullable(),
-  trackingLink: z.string().optional(),
-  notes: z.string().optional(),
+  trackingLink: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
 })
 
 export async function markSubmissionAsComplete(
@@ -113,7 +113,7 @@ export async function markSubmissionAsComplete(
 
   if (error) {
     console.error("Error marking submission as complete:", error)
-    return { success: false, message: "Database error: Could not update submission." }
+    return { success: false, message: `Database error: ${error.message}` }
   }
 
   revalidatePath("/admin/dashboard")
