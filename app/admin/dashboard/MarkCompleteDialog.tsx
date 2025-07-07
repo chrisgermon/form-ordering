@@ -48,29 +48,33 @@ export function MarkCompleteDialog({ submission, isOpen, onOpenChange }: MarkCom
       toast.success(state.message)
       onOpenChange(false)
     } else if (state.message && !state.success) {
-      toast.error(state.message)
+      // Display Zod validation errors
+      if (state.errors) {
+        const errorMessages = Object.values(state.errors).flat().join("\n")
+        toast.error(errorMessages)
+      } else {
+        toast.error(state.message)
+      }
     }
   }, [state, onOpenChange])
 
   if (!submission) return null
 
-  const handleSubmit = (formData: FormData) => {
-    if (dispatchDate) {
-      formData.set("dispatchDate", dispatchDate.toISOString().split("T")[0]) // YYYY-MM-DD
-    }
-    formAction(formData)
-  }
-
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
-        <form action={handleSubmit}>
+        <form action={formAction}>
           <DialogHeader>
             <DialogTitle>Mark Order #{submission.order_number} as Complete</DialogTitle>
             <DialogDescription>Add dispatch details for this order. This is optional.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <input type="hidden" name="submissionId" value={submission.id} />
+            <input
+              type="hidden"
+              name="dispatchDate"
+              value={dispatchDate ? dispatchDate.toISOString().split("T")[0] : ""}
+            />
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="dispatchDate" className="text-right">
                 Dispatch Date
