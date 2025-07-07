@@ -3,68 +3,100 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { generatePdf } from "@/lib/pdf"
 import { sendOrderEmail } from "@/lib/email"
-import { revalidatePath } from "next/cache"
-import type { Brand, Submission } from "@/lib/types"
+import { z } from "zod"
+import type { Section } from "@/lib/types"
 
-export async function submitOrder(brand: Brand, prevState: any, formData: FormData) {
+const OrderSchema = z.object({
+  brandId: z.string().uuid(),
+  ordered_by: z.string().min(1, "Your name is required."),
+  email: z.string().email("A valid email is required."),
+  order_number: z.string().optional(),
+  notes: z.string().optional(),
+  items: z.record(z.string(), z.string()),
+})
+
+export async function submitOrder(prevState: any, formData: FormData) {
   const supabase = createAdminClient()
-
-  const rawData: { [key: string]: any } = {
-    items: [],
+  const rawData = {
+    brandId: formData.get("brandId"),
+    ordered_by: formData.get("ordered_by"),
+    email: formData.get("email"),
+    order_number: formData.get("order_number"),
+    notes: formData.get("notes"),
+    items: Object.fromEntries(Array.from(formData.entries()).filter(([key]) => key.startsWith("item-"))),
   }
-  const itemMap: { [key: string]: any } = {}
 
-  for (const [key, value] of formData.entries()) {
-    const itemMatch = key.match(/items\[(\d+)\]\.(.+)/)
-    if (itemMatch) {
-      const index = itemMatch[1]
-      const property = itemMatch[2]
-      if (!itemMap[index]) {
-        itemMap[index] = {}
-      }
-      itemMap[index][property] = value
-    } else {
-      rawData[key] = value
+  const validatedFields = OrderSchema.safeParse(rawData)
+
+  if (!validatedFields.success) {
+    return {
+      success: false,
+      message: "Invalid data provided. Please check the form.",
+      errors: validatedFields.error.flatten().fieldErrors,
     }
   }
-  rawData.items = Object.values(itemMap)
-  rawData.urgent = rawData.urgent === "on"
 
-  const submissionData = {
-    brand_id: brand.id,
-    patient_name: rawData.patient_name,
-    patient_dob: rawData.patient_dob,
-    patient_phone: rawData.patient_phone,
-    patient_email: rawData.patient_email,
-    patient_medicare: rawData.patient_medicare,
-    referrer_name: rawData.referrer_name,
-    referrer_provider_number: rawData.referrer_provider_number,
-    referrer_email: rawData.referrer_email,
-    clinic_name: rawData.clinic_name,
-    urgent: rawData.urgent,
-    status: "Pending",
-    form_data: rawData,
+  const { brandId, ...orderData } = validatedFields.data
+
+  const { data: brand, error: brandError } = await supabase.from("brands").select("*").eq("id", brandId).single()
+
+  if (brandError || !brand) {
+    return { success: false, message: "Could not find brand information." }
   }
 
-  const { data: newSubmission, error: submissionError } = await supabase
+  const { data: submission, error: submissionError } = await supabase
     .from("submissions")
-    .insert(submissionData)
+    .insert({
+      brand_id: brandId,
+      ordered_by: orderData.ordered_by,
+      email: orderData.email,
+      order_number: orderData.order_number,
+      notes: orderData.notes,
+      form_data: orderData.items,
+      status: "Pending",
+    })
     .select()
     .single()
 
-  if (submissionError) {
-    console.error("Error creating submission:", submissionError)
-    return { success: false, message: `Database Error: ${submissionError.message}` }
+  if (submissionError || !submission) {
+    console.error("Submission Error:", submissionError)
+    return { success: false, message: "Failed to save your order. Please try again." }
   }
 
   try {
-    const pdfBuffer = await generatePdf(newSubmission as Submission, brand)
-    await sendOrderEmail(newSubmission as Submission, brand, pdfBuffer)
+    const { data: sections, error: sectionsError } = await supabase
+      .from("sections")
+      .select("*, items(*)")
+      .eq("brand_id", brandId)
+      .order("position", { ascending: true })
+      .order("position", { foreignTable: "items", ascending: true })
+
+    if (sectionsError) throw sectionsError
+
+    const pdfBuffer = await generatePdf(submission, brand, sections as Section[])
+    const pdfPath = `${submission.id}.pdf`
+
+    const { error: uploadError } = await supabase.storage.from("order-pdfs").upload(pdfPath, pdfBuffer, {
+      contentType: "application/pdf",
+      upsert: true,
+    })
+
+    if (uploadError) throw uploadError
+
+    const { data: publicUrlData } = supabase.storage.from("order-pdfs").getPublicUrl(pdfPath)
+
+    const { error: updateError } = await supabase
+      .from("submissions")
+      .update({ pdf_url: publicUrlData.publicUrl })
+      .eq("id", submission.id)
+
+    if (updateError) throw updateError
+
+    await sendOrderEmail(submission, brand, publicUrlData.publicUrl, pdfBuffer)
   } catch (error) {
-    console.error("Error generating PDF or sending email:", error)
-    // Do not fail the entire submission if this part fails, but log it.
+    console.error("PDF/Email generation failed:", error)
+    // The submission is saved, so we don't return a failure to the user, but we log it.
   }
 
-  revalidatePath("/admin/dashboard")
-  return { success: true, message: `Order #${newSubmission.order_number} submitted successfully!` }
+  return { success: true, message: "Your order has been submitted successfully!" }
 }

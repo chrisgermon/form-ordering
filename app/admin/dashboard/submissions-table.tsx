@@ -1,202 +1,193 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
-import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import {
-  type ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type SortingState,
-  type ColumnFiltersState,
-} from "@tanstack/react-table"
+import { useState, useMemo, useTransition } from "react"
+import { useRouter } from "next/navigation"
+import type { Submission } from "@/lib/types"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { Eye, CheckCircle, FileText, Search, X, RefreshCw } from "lucide-react"
+import { format } from "date-fns"
+import type { DateRange } from "react-day-picker"
 import { SubmissionDetailsDialog } from "./SubmissionDetailsDialog"
 import { MarkCompleteDialog } from "./MarkCompleteDialog"
-import type { SubmissionWithBrand } from "@/lib/types"
-import { RefreshCw } from "lucide-react"
 
-export function SubmissionsTable({ submissions }: { submissions: SubmissionWithBrand[] }) {
+export function SubmissionsTable({ submissions }: { submissions: Submission[] }) {
   const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-
-  const [sorting, setSorting] = useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [globalFilter, setGlobalFilter] = useState(searchParams.get("search") || "")
-  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all")
-  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
-    from: searchParams.get("from") ? new Date(searchParams.get("from")!) : undefined,
-    to: searchParams.get("to") ? new Date(searchParams.get("to")!) : undefined,
-  })
-
-  useEffect(() => {
-    const params = new URLSearchParams(searchParams.toString())
-    if (globalFilter) {
-      params.set("search", globalFilter)
-    } else {
-      params.delete("search")
-    }
-    if (statusFilter !== "all") {
-      params.set("status", statusFilter)
-    } else {
-      params.delete("status")
-    }
-    if (dateRange.from) {
-      params.set("from", dateRange.from.toISOString().split("T")[0])
-    } else {
-      params.delete("from")
-    }
-    if (dateRange.to) {
-      params.set("to", dateRange.to.toISOString().split("T")[0])
-    } else {
-      params.delete("to")
-    }
-    router.replace(`${pathname}?${params.toString()}`)
-  }, [globalFilter, statusFilter, dateRange, router, pathname, searchParams])
+  const [isPending, startTransition] = useTransition()
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [dateRange, setDateRange] = useState<DateRange | undefined>()
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  const [isCompleteOpen, setIsCompleteOpen] = useState(false)
 
   const filteredSubmissions = useMemo(() => {
     return submissions.filter((submission) => {
+      const searchLower = searchTerm.toLowerCase()
+      const matchesSearch =
+        submission.ordered_by.toLowerCase().includes(searchLower) ||
+        submission.email.toLowerCase().includes(searchLower) ||
+        (submission.order_number || "").toLowerCase().includes(searchLower) ||
+        (submission.brands?.name || "").toLowerCase().includes(searchLower)
+
+      const matchesStatus = statusFilter === "all" || (submission.status || "Pending").toLowerCase() === statusFilter
+
       const submissionDate = new Date(submission.created_at)
-      const fromDate = dateRange.from
-      const toDate = dateRange.to
+      const matchesDate =
+        !dateRange ||
+        !dateRange.from ||
+        (submissionDate >= dateRange.from && (!dateRange.to || submissionDate <= dateRange.to))
 
-      const dateMatch =
-        (!fromDate || submissionDate >= fromDate) &&
-        (!toDate || submissionDate <= new Date(toDate.getTime() + 86400000)) // Include the whole 'to' day
-
-      const statusMatch = statusFilter === "all" || submission.status === statusFilter
-
-      return dateMatch && statusMatch
+      return matchesSearch && matchesStatus && matchesDate
     })
-  }, [submissions, dateRange, statusFilter])
+  }, [submissions, searchTerm, statusFilter, dateRange])
 
-  const columns: ColumnDef<SubmissionWithBrand>[] = [
-    {
-      accessorKey: "order_number",
-      header: "Order #",
-    },
-    {
-      accessorKey: "created_at",
-      header: "Date",
-      cell: ({ row }) => new Date(row.getValue("created_at")).toLocaleDateString(),
-    },
-    {
-      accessorKey: "brands.name",
-      header: "Brand",
-    },
-    {
-      accessorKey: "patient_name",
-      header: "Patient Name",
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-    },
-    {
-      id: "actions",
-      cell: ({ row }) => {
-        const submission = row.original
-        return (
-          <div className="flex gap-2">
-            <SubmissionDetailsDialog submission={submission} />
-            {submission.status === "Pending" && <MarkCompleteDialog submission={submission} />}
-          </div>
-        )
-      },
-    },
-  ]
+  const handleViewDetails = (submission: Submission) => {
+    setSelectedSubmission(submission)
+    setIsDetailsOpen(true)
+  }
 
-  const table = useReactTable({
-    data: filteredSubmissions,
-    columns,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    state: {
-      sorting,
-      columnFilters,
-      globalFilter,
-    },
-    onGlobalFilterChange: setGlobalFilter,
-  })
+  const handleMarkComplete = (submission: Submission) => {
+    setSelectedSubmission(submission)
+    setIsCompleteOpen(true)
+  }
+
+  const clearFilters = () => {
+    setSearchTerm("")
+    setStatusFilter("all")
+    setDateRange(undefined)
+  }
+
+  const handleRefresh = () => {
+    startTransition(() => {
+      router.refresh()
+    })
+  }
 
   return (
-    <div>
-      <div className="flex items-center justify-between py-4">
-        <Input
-          placeholder="Search all fields..."
-          value={globalFilter}
-          onChange={(event) => setGlobalFilter(event.target.value)}
-          className="max-w-sm"
-        />
-        <div className="flex items-center gap-2">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="Pending">Pending</SelectItem>
-              <SelectItem value="Complete">Complete</SelectItem>
-            </SelectContent>
-          </Select>
-          <DateRangePicker date={dateRange} onDateChange={setDateRange} />
-          <Button variant="outline" size="icon" onClick={() => router.refresh()}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-grow">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+          <Input
+            placeholder="Search by name, email, order #, brand..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
         </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="complete">Complete</SelectItem>
+          </SelectContent>
+        </Select>
+        <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+        <Button variant="ghost" onClick={clearFilters} className="flex items-center gap-2">
+          <X className="h-4 w-4" />
+          Clear
+        </Button>
+        <Button variant="outline" onClick={handleRefresh} disabled={isPending}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
       </div>
-      <div className="rounded-md border">
+      <div className="border rounded-lg overflow-hidden">
         <Table>
           <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
+            <TableRow>
+              <TableHead>Order #</TableHead>
+              <TableHead>Brand</TableHead>
+              <TableHead>Ordered By</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>PDF</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-                  ))}
+            {filteredSubmissions.length > 0 ? (
+              filteredSubmissions.map((submission) => (
+                <TableRow key={submission.id}>
+                  <TableCell className="font-medium">{submission.order_number || "N/A"}</TableCell>
+                  <TableCell>{submission.brands?.name || "N/A"}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span>{submission.ordered_by}</span>
+                      <span className="text-xs text-gray-500">{submission.email}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>{format(new Date(submission.created_at), "dd MMM yyyy, HH:mm")}</TableCell>
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                        submission.status === "Complete"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-yellow-100 text-yellow-800"
+                      }`}
+                    >
+                      {submission.status || "Pending"}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    {submission.pdf_url ? (
+                      <Button asChild variant="outline" size="sm">
+                        <a href={submission.pdf_url} target="_blank" rel="noopener noreferrer">
+                          <FileText className="h-4 w-4 mr-2" />
+                          View PDF
+                        </a>
+                      </Button>
+                    ) : (
+                      "Generating..."
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex gap-2 justify-end">
+                      <Button variant="outline" size="sm" onClick={() => handleViewDetails(submission)}>
+                        <Eye className="h-4 w-4 mr-2" />
+                        Details
+                      </Button>
+                      {submission.status !== "Complete" && (
+                        <Button variant="default" size="sm" onClick={() => handleMarkComplete(submission)}>
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Mark Complete
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No results.
+                <TableCell colSpan={7} className="text-center h-24">
+                  No submissions found.
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
-      <div className="flex items-center justify-end space-x-2 py-4">
-        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-          Previous
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-          Next
-        </Button>
-      </div>
+      {selectedSubmission && (
+        <>
+          <SubmissionDetailsDialog
+            submission={selectedSubmission}
+            isOpen={isDetailsOpen}
+            onClose={() => setIsDetailsOpen(false)}
+          />
+          <MarkCompleteDialog
+            submission={selectedSubmission}
+            isOpen={isCompleteOpen}
+            onClose={() => setIsCompleteOpen(false)}
+          />
+        </>
+      )}
     </div>
   )
 }

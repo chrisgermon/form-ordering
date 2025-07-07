@@ -243,12 +243,62 @@ export interface Database {
 export type Tables<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Row"]
 export type Enums<T extends keyof Database["public"]["Enums"]> = Database["public"]["Enums"][T]
 
-export type Brand = Tables<"brands">
-export type Section = Tables<"sections">
-export type FormItem = Tables<"items">
-export type Submission = Tables<"submissions">
-export type AllowedIp = Tables<"allowed_ips">
+export type Brand = {
+  id: string
+  name: string
+  slug: string
+  logo_url: string | null
+  active: boolean
+  to_emails: string[] | null
+  cc_emails: string[] | null
+  bcc_emails: string[] | null
+  subject_line: string | null
+}
+
+export type Item = {
+  id: string
+  brand_id: string
+  section_id: string
+  label: string
+  type: "text" | "textarea" | "checkbox" | "radio" | "date"
+  options: string[] | null
+  placeholder: string | null
+  position: number
+}
+
+export type Section = {
+  id: string
+  brand_id: string
+  title: string
+  position: number
+  items: Item[]
+}
+
+export type Submission = {
+  id: string
+  created_at: string
+  brand_id: string
+  ordered_by: string
+  email: string
+  order_number: string | null
+  notes: string | null
+  form_data: Record<string, any>
+  status: "Pending" | "Complete" | null
+  pdf_url: string | null
+  dispatch_date: string | null
+  tracking_link: string | null
+  dispatch_notes: string | null
+  brands: Brand | null
+}
 
 export type SubmissionWithBrand = Submission & {
-  brands: Brand | null
+  brands: {
+    name: string
+  }
+}
+
+export type AllowedIp = {
+  id: string
+  ip_address: string
+  created_at: string
 }
