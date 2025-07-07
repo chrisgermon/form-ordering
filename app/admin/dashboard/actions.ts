@@ -3,9 +3,8 @@
 import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { z } from "zod"
-import type { AllowedIp } from "@/lib/types"
-import { promises as fs } from "fs"
-import path from "path"
+import type { AllowedIp, Submission, Brand } from "@/lib/types"
+import { sendCompletionEmail } from "@/lib/email"
 
 const BrandSchema = z.object({
   id: z.string().optional(),
@@ -74,21 +73,23 @@ export async function deleteBrand(id: string) {
 
 const MarkCompleteSchema = z.object({
   submissionId: z.string().uuid(),
-  dispatchDate: z.string().optional(),
-  trackingLink: z.string().url().optional().or(z.literal("")),
-  notes: z.string().optional(),
+  dispatchDate: z.string().optional().nullable(),
+  trackingLink: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
 })
 
 export async function markSubmissionAsComplete(
   prevState: any,
   formData: FormData,
-): Promise<{ success: boolean; message: string; errors?: any; data?: any }> {
-  const validatedFields = MarkCompleteSchema.safeParse({
+): Promise<{ success: boolean; message: string; errors?: any }> {
+  const rawData = {
     submissionId: formData.get("submissionId"),
     dispatchDate: formData.get("dispatchDate"),
     trackingLink: formData.get("trackingLink"),
     notes: formData.get("notes"),
-  })
+  }
+
+  const validatedFields = MarkCompleteSchema.safeParse(rawData)
 
   if (!validatedFields.success) {
     return {
@@ -101,7 +102,7 @@ export async function markSubmissionAsComplete(
   const { submissionId, dispatchDate, trackingLink, notes } = validatedFields.data
   const supabase = createAdminClient()
 
-  const { data, error } = await supabase
+  const { data: updatedSubmission, error } = await supabase
     .from("submissions")
     .update({
       status: "Complete",
@@ -110,16 +111,33 @@ export async function markSubmissionAsComplete(
       dispatch_notes: notes || null,
     })
     .eq("id", submissionId)
-    .select()
+    .select(
+      `
+      *,
+      brands (
+        id, name, slug, logo_url, created_at, active, order_sequence, order_prefix, initials, header_image_url, form_title, form_subtitle, to_emails, cc_emails, bcc_emails, subject_line
+      )
+    `,
+    )
     .single()
 
   if (error) {
     console.error("Error marking submission as complete:", error)
-    return { success: false, message: "Database error: Could not update submission." }
+    return { success: false, message: `Database error: ${error.message}` }
+  }
+
+  if (!updatedSubmission) {
+    return { success: false, message: "Could not find submission after update." }
+  }
+
+  // Send completion email
+  if (updatedSubmission.brands) {
+    const brand = updatedSubmission.brands as unknown as Brand // Cast because Supabase types can be tricky
+    await sendCompletionEmail(updatedSubmission as Submission, brand, brand.logo_url)
   }
 
   revalidatePath("/admin/dashboard")
-  return { success: true, message: `Order #${data.order_number} marked as complete.`, data }
+  return { success: true, message: `Order #${updatedSubmission.order_number} marked as complete and email sent.` }
 }
 
 const IpSchema = z.string().ip({ version: "v4", message: "Invalid IP address." })
@@ -156,6 +174,9 @@ export async function deleteAllowedIp(id: string) {
 }
 
 export async function runSchemaMigration(scriptName: string) {
+  const fs = require("fs").promises
+  const path = require("path")
+
   if (scriptName.includes("..") || !scriptName.endsWith(".sql")) {
     return { success: false, message: "Invalid script name." }
   }

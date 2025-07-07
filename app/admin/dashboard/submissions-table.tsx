@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import type { ReactNode } from "react"
 
 import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
@@ -24,7 +24,8 @@ import { SubmissionDetailsDialog } from "./SubmissionDetailsDialog"
 import { MarkCompleteDialog } from "./MarkCompleteDialog"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import type { DateRange } from "react-day-picker"
-import { subDays } from "date-fns"
+import { subDays, format, isValid } from "date-fns"
+import { ClientOnly } from "@/components/client-only"
 
 interface SubmissionsTableProps {
   initialSubmissions: Submission[]
@@ -38,7 +39,7 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
-  const [submissions, setSubmissions] = useState(initialSubmissions)
+  const [submissions, setSubmissions] = useState(initialSubmissions || [])
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
   const [submissionToComplete, setSubmissionToComplete] = useState<Submission | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
@@ -54,7 +55,7 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
   })
 
   const sortedAndFilteredSubmissions = useMemo(() => {
-    let filtered = [...submissions]
+    let filtered = [...(submissions || [])]
 
     // Date filtering
     if (dateRange?.from) {
@@ -144,7 +145,7 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
     }
   }
 
-  const SortableHeader = ({ sortKey, children }: { sortKey: SortableKey; children: React.ReactNode }) => (
+  const SortableHeader = ({ sortKey, children }: { sortKey: SortableKey; children: ReactNode }) => (
     <TableHead>
       <Button variant="ghost" onClick={() => handleSort(sortKey)} className="px-2">
         {children}
@@ -168,9 +169,9 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
             className="pl-8 w-full"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
             <SelectContent>
@@ -180,14 +181,16 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
               <SelectItem value="complete">Complete</SelectItem>
             </SelectContent>
           </Select>
-          <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+          <ClientOnly>
+            <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+          </ClientOnly>
           <Button variant="outline" onClick={handleRefresh} disabled={isPending}>
             <RefreshCw className={`mr-2 h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
             Refresh
           </Button>
         </div>
       </div>
-      <div className="border rounded-lg bg-white">
+      <div className="border rounded-lg bg-card text-card-foreground shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>
@@ -201,39 +204,53 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedSubmissions.map((submission) => (
-              <TableRow key={submission.id}>
-                <TableCell className="font-medium">{submission.order_number || "N/A"}</TableCell>
-                <TableCell>{new Date(submission.created_at).toLocaleString()}</TableCell>
-                <TableCell>{submission.brands?.name || "N/A"}</TableCell>
-                <TableCell>{submission.ordered_by}</TableCell>
-                <TableCell>{submission.email}</TableCell>
-                <TableCell>
-                  <Badge variant={getStatusVariant(submission.status) as any}>{submission.status || "pending"}</Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setSelectedSubmission(submission)}>
-                      <FileText className="mr-2 h-3 w-3" />
-                      Details
-                    </Button>
-                    {submission.pdf_url && (
-                      <Button variant="outline" size="sm" asChild>
-                        <a href={submission.pdf_url} target="_blank" rel="noopener noreferrer">
-                          View PDF <ExternalLink className="ml-2 h-3 w-3" />
-                        </a>
+            {paginatedSubmissions.length > 0 ? (
+              paginatedSubmissions.map((submission) => (
+                <TableRow key={submission.id}>
+                  <TableCell className="font-medium">{submission.order_number || "N/A"}</TableCell>
+                  <TableCell>
+                    <ClientOnly>
+                      {isValid(new Date(submission.created_at))
+                        ? format(new Date(submission.created_at), "dd MMM yyyy, h:mm a")
+                        : "Invalid Date"}
+                    </ClientOnly>
+                  </TableCell>
+                  <TableCell>{submission.brands?.name || "N/A"}</TableCell>
+                  <TableCell>{submission.ordered_by}</TableCell>
+                  <TableCell>{submission.email}</TableCell>
+                  <TableCell>
+                    <Badge variant={getStatusVariant(submission.status) as any}>{submission.status || "pending"}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setSelectedSubmission(submission)}>
+                        <FileText className="mr-2 h-3 w-3" />
+                        Details
                       </Button>
-                    )}
-                    {(submission.status || "pending").toLowerCase() !== "complete" && (
-                      <Button variant="outline" size="sm" onClick={() => setSubmissionToComplete(submission)}>
-                        <CheckCircle className="mr-2 h-3 w-3" />
-                        Mark Complete
-                      </Button>
-                    )}
-                  </div>
+                      {submission.pdf_url && (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={submission.pdf_url} target="_blank" rel="noopener noreferrer">
+                            View PDF <ExternalLink className="ml-2 h-3 w-3" />
+                          </a>
+                        </Button>
+                      )}
+                      {(submission.status || "pending").toLowerCase() !== "complete" && (
+                        <Button variant="outline" size="sm" onClick={() => setSubmissionToComplete(submission)}>
+                          <CheckCircle className="mr-2 h-3 w-3" />
+                          Mark Complete
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={7} className="h-24 text-center">
+                  No submissions found.
                 </TableCell>
               </TableRow>
-            ))}
+            )}
           </TableBody>
           <TableFooter>
             <TableRow>
@@ -259,7 +276,7 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
                       variant="outline"
                       size="sm"
                       onClick={() => setCurrentPage(currentPage + 1)}
-                      disabled={currentPage === totalPages}
+                      disabled={currentPage === totalPages || totalPages === 0}
                     >
                       <span className="sr-only">Next</span>
                       <ChevronRight className="h-4 w-4" />
@@ -282,7 +299,11 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
         <MarkCompleteDialog
           submission={submissionToComplete}
           isOpen={!!submissionToComplete}
-          onClose={() => setSubmissionToComplete(null)}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              setSubmissionToComplete(null)
+            }
+          }}
         />
       )}
     </div>
