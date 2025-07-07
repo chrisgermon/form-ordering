@@ -1,118 +1,114 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useFormState, useFormStatus } from "react-dom"
+import { useFormState } from "react-dom"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import type { z } from "zod"
+import { useEffect } from "react"
 import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
+
+import type { Submission } from "@/lib/types"
+import { markCompleteSchema } from "@/lib/schemas"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
+  DialogClose,
+  DialogDescription,
 } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { DatePicker } from "@/components/ui/date-picker"
+import { Label } from "@/components/ui/label"
 import { markSubmissionAsComplete } from "./actions"
-import type { Submission } from "@/lib/types"
+import { DatePicker } from "@/components/ui/date-picker"
 
-interface MarkCompleteDialogProps {
-  submission: Submission | null
+type MarkCompleteDialogProps = {
+  submission: Submission
   isOpen: boolean
   onOpenChange: (isOpen: boolean) => void
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus()
-  return (
-    <Button type="submit" disabled={pending}>
-      {pending ? "Saving..." : "Mark as Complete & Email"}
-    </Button>
-  )
-}
-
-const initialState = {
-  success: false,
-  message: "",
-  errors: undefined,
-}
-
 export function MarkCompleteDialog({ submission, isOpen, onOpenChange }: MarkCompleteDialogProps) {
-  const [state, formAction] = useFormState(markSubmissionAsComplete, initialState)
-  const [dispatchDate, setDispatchDate] = useState<Date | undefined>(undefined)
+  const [state, formAction] = useFormState(markSubmissionAsComplete, {
+    success: false,
+    message: "",
+    errors: null,
+  })
+
+  const form = useForm<z.infer<typeof markCompleteSchema>>({
+    resolver: zodResolver(markCompleteSchema),
+    defaultValues: {
+      submissionId: submission.id,
+      dispatchDate: submission.dispatch_date ? new Date(submission.dispatch_date) : new Date(),
+      trackingLink: submission.tracking_link || "",
+      dispatchNotes: submission.dispatch_notes || "",
+    },
+  })
 
   useEffect(() => {
-    if (!isOpen) {
-      // Reset form state when dialog is closed
-      setDispatchDate(undefined)
-    }
-  }, [isOpen])
-
-  useEffect(() => {
-    if (state.success) {
-      toast.success(state.message)
-      onOpenChange(false)
-    } else if (state.message && !state.success) {
-      const errorDescription = state.errors ? Object.values(state.errors).flat().join("\n") : state.message
-      toast.error("Error", {
-        description: errorDescription,
-      })
+    if (state.message) {
+      if (state.success) {
+        toast.success(state.message)
+        onOpenChange(false)
+      } else {
+        toast.error(state.message)
+      }
     }
   }, [state, onOpenChange])
 
-  if (!submission) return null
+  const {
+    formState: { isSubmitting },
+  } = form
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
-        <form action={formAction}>
-          <DialogHeader>
-            <DialogTitle>Mark Order #{submission.order_number} as Complete</DialogTitle>
-            <DialogDescription>
-              Add dispatch details and send a completion email. Fields are optional.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <input type="hidden" name="submissionId" value={submission.id} />
-            <input
-              type="hidden"
-              name="dispatchDate"
-              value={dispatchDate ? dispatchDate.toISOString().split("T")[0] : ""}
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Mark Order as Complete</DialogTitle>
+          <DialogDescription>
+            Please provide the dispatch details for order #{submission.order_number}. This will mark the order as
+            complete.
+          </DialogDescription>
+        </DialogHeader>
+        <form action={formAction} className="space-y-4">
+          <input type="hidden" name="submissionId" value={submission.id} />
+          <div>
+            <Label htmlFor="dispatchDate">Dispatch Date</Label>
+            <DatePicker name="dispatchDate" defaultValue={form.getValues("dispatchDate")} />
+            {state.errors?.dispatchDate && <p className="text-sm text-red-500 mt-1">{state.errors.dispatchDate}</p>}
+          </div>
+          <div>
+            <Label htmlFor="trackingLink">Tracking Link</Label>
+            <Input
+              id="trackingLink"
+              name="trackingLink"
+              defaultValue={form.getValues("trackingLink")}
+              placeholder="https://example.com/track/12345"
             />
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="dispatch-date-picker" className="text-right">
-                Dispatch Date
-              </Label>
-              <div className="col-span-3">
-                <DatePicker
-                  id="dispatch-date-picker"
-                  date={dispatchDate}
-                  onDateChange={setDispatchDate}
-                  className="w-full"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="trackingLink" className="text-right">
-                Tracking Link
-              </Label>
-              <Input id="trackingLink" name="trackingLink" className="col-span-3" placeholder="https://..." />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="notes" className="text-right">
-                Notes
-              </Label>
-              <Textarea id="notes" name="notes" className="col-span-3" placeholder="Optional notes..." />
-            </div>
+            {state.errors?.trackingLink && <p className="text-sm text-red-500 mt-1">{state.errors.trackingLink}</p>}
+          </div>
+          <div>
+            <Label htmlFor="dispatchNotes">Dispatch Notes</Label>
+            <Textarea
+              id="dispatchNotes"
+              name="dispatchNotes"
+              defaultValue={form.getValues("dispatchNotes")}
+              placeholder="Optional notes about the dispatch."
+            />
+            {state.errors?.dispatchNotes && <p className="text-sm text-red-500 mt-1">{state.errors.dispatchNotes}</p>}
           </div>
           <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-              Cancel
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Save and Mark as Complete"}
             </Button>
-            <SubmitButton />
           </DialogFooter>
         </form>
       </DialogContent>

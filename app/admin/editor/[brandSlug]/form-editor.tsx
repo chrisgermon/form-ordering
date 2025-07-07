@@ -44,17 +44,22 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
   const { toast } = useToast()
   const [state, formAction] = useFormState(saveForm, { success: false, message: "" })
 
-  // Transform initial data for the form: convert email arrays to comma-separated strings
+  // Transform initial data for the form. This handles both arrays and strings for email fields to prevent crashes.
   const transformedInitialData = {
     ...initialBrandData,
-    to_emails: initialBrandData.to_emails?.join(", ") || "",
-    cc_emails: initialBrandData.cc_emails?.join(", ") || "",
-    bcc_emails: initialBrandData.bcc_emails?.join(", ") || "",
+    to_emails: Array.isArray(initialBrandData.to_emails)
+      ? initialBrandData.to_emails.join(", ")
+      : initialBrandData.to_emails || "",
+    cc_emails: Array.isArray(initialBrandData.cc_emails)
+      ? initialBrandData.cc_emails.join(", ")
+      : initialBrandData.cc_emails || "",
+    bcc_emails: Array.isArray(initialBrandData.bcc_emails)
+      ? initialBrandData.bcc_emails.join(", ")
+      : initialBrandData.bcc_emails || "",
   }
 
   const methods = useForm({
     resolver: zodResolver(brandFormSchema),
-    // Use the transformed data with string emails for the form
     defaultValues: transformedInitialData,
   })
 
