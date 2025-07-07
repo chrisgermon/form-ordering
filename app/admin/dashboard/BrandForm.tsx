@@ -22,14 +22,21 @@ interface BrandFormProps {
 const newLocation = (): ClinicLocation => ({ name: "", address: "", phone: "", email: "" })
 
 const getInitialState = (brand: Brand | null) => {
+  const safeArray = (value: string[] | null | undefined): string[] => {
+    if (Array.isArray(value) && value.length > 0) {
+      return value
+    }
+    return [""]
+  }
+
   if (brand) {
     return {
       name: brand.name || "",
       logo_url: brand.logo_url || "",
       active: brand.active,
-      to_emails: brand.to_emails || [""],
-      cc_emails: brand.cc_emails || [""],
-      bcc_emails: brand.bcc_emails || [""],
+      to_emails: safeArray(brand.to_emails),
+      cc_emails: safeArray(brand.cc_emails),
+      bcc_emails: safeArray(brand.bcc_emails),
       clinicLocations: brand.clinic_locations?.length ? brand.clinic_locations : [newLocation()],
     }
   }
