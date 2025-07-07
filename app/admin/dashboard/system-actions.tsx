@@ -1,50 +1,39 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { addAllowedIp, deleteAllowedIp, runSchemaMigration } from "./actions"
 import { toast } from "sonner"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { addAllowedIp, deleteAllowedIp, runSchemaMigration } from "./actions"
 import type { AllowedIp } from "@/lib/types"
-import { Trash2 } from "lucide-react"
 
-type SystemActionsProps = {
-  allowedIps: AllowedIp[]
-  scriptFiles: string[]
-}
-
-export function SystemActions({ allowedIps: initialIps, scriptFiles }: SystemActionsProps) {
-  const [allowedIps, setAllowedIps] = useState(initialIps)
-  const [ipAddress, setIpAddress] = useState("")
-  const [selectedScript, setSelectedScript] = useState("")
-  const [isAdding, setIsAdding] = useState(false)
-  const [isMigrating, setIsMigrating] = useState(false)
+export function SystemActions({
+  allowedIps: initialAllowedIps,
+  scriptFiles,
+}: { allowedIps: AllowedIp[]; scriptFiles: string[] }) {
+  const [allowedIps, setAllowedIps] = useState(initialAllowedIps)
+  const [newIp, setNewIp] = useState("")
+  const [selectedScript, setSelectedScript] = useState<string | undefined>()
 
   const handleAddIp = async () => {
-    if (!ipAddress.trim()) {
-      toast.error("IP address cannot be empty.")
-      return
-    }
-    setIsAdding(true)
-    const result = await addAllowedIp(ipAddress)
+    const result = await addAllowedIp(newIp)
     if (result.success && result.data) {
-      setAllowedIps((prev) => [...prev, result.data!])
       toast.success(result.message)
-      setIpAddress("")
+      setAllowedIps([...allowedIps, result.data])
+      setNewIp("")
     } else {
       toast.error(result.message)
     }
-    setIsAdding(false)
   }
 
   const handleDeleteIp = async (id: string) => {
     const result = await deleteAllowedIp(id)
     if (result.success) {
-      setAllowedIps((prev) => prev.filter((ip) => ip.id !== id))
       toast.success(result.message)
+      setAllowedIps(allowedIps.filter((ip) => ip.id !== id))
     } else {
       toast.error(result.message)
     }
@@ -52,59 +41,44 @@ export function SystemActions({ allowedIps: initialIps, scriptFiles }: SystemAct
 
   const handleRunMigration = async () => {
     if (!selectedScript) {
-      toast.error("Please select a migration script to run.")
+      toast.warning("Please select a migration script to run.")
       return
     }
-    if (
-      window.confirm(`Are you sure you want to run the script: ${selectedScript}? This can cause irreversible changes.`)
-    ) {
-      setIsMigrating(true)
-      const result = await runSchemaMigration(selectedScript)
-      if (result.success) {
-        toast.success(result.message)
-      } else {
-        toast.error(result.message)
-      }
-      setIsMigrating(false)
+    const result = await runSchemaMigration(selectedScript)
+    if (result.success) {
+      toast.success(result.message)
+    } else {
+      toast.error(result.message)
     }
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid gap-6 md:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle>Allowed IP Addresses</CardTitle>
           <CardDescription>Manage IP addresses that can access the admin area.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex gap-2 mb-4">
-            <Input
-              placeholder="Enter new IP address"
-              value={ipAddress}
-              onChange={(e) => setIpAddress(e.target.value)}
-              disabled={isAdding}
-            />
-            <Button onClick={handleAddIp} disabled={isAdding}>
-              {isAdding ? "Adding..." : "Add IP"}
-            </Button>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input placeholder="Enter new IP address" value={newIp} onChange={(e) => setNewIp(e.target.value)} />
+            <Button onClick={handleAddIp}>Add IP</Button>
           </div>
-          <div className="border rounded-md">
+          <div className="rounded-md border max-h-60 overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>IP Address</TableHead>
-                  <TableHead>Added On</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {allowedIps.map((ip) => (
                   <TableRow key={ip.id}>
                     <TableCell>{ip.ip_address}</TableCell>
-                    <TableCell>{new Date(ip.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteIp(ip.id)}>
-                        <Trash2 className="h-4 w-4" />
+                    <TableCell>
+                      <Button variant="destructive" size="sm" onClick={() => handleDeleteIp(ip.id)}>
+                        Delete
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -117,9 +91,9 @@ export function SystemActions({ allowedIps: initialIps, scriptFiles }: SystemAct
       <Card>
         <CardHeader>
           <CardTitle>Database Migrations</CardTitle>
-          <CardDescription>Run SQL migration scripts. Use with caution.</CardDescription>
+          <CardDescription>Run SQL migration scripts to update the database schema.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="flex gap-2">
             <Select onValueChange={setSelectedScript} value={selectedScript}>
               <SelectTrigger>
@@ -133,10 +107,11 @@ export function SystemActions({ allowedIps: initialIps, scriptFiles }: SystemAct
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={handleRunMigration} variant="destructive" disabled={isMigrating || !selectedScript}>
-              {isMigrating ? "Running..." : "Run Script"}
-            </Button>
+            <Button onClick={handleRunMigration}>Run Migration</Button>
           </div>
+          <p className="text-sm text-destructive">
+            Warning: Running migrations can cause irreversible changes to your database. Proceed with caution.
+          </p>
         </CardContent>
       </Card>
     </div>

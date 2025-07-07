@@ -1,9 +1,11 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr"
-import type { cookies } from "next/headers"
-import { createAdminClient as adminClient } from "./admin"
+import { createServerClient as _createServerClient, type CookieOptions } from "@supabase/ssr"
+import { cookies } from "next/headers"
 
-export function createClient(cookieStore: ReturnType<typeof cookies>) {
-  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+// This is the core function that creates the Supabase client.
+function createSupabaseServerClient() {
+  const cookieStore = cookies()
+
+  return _createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     cookies: {
       get(name: string) {
         return cookieStore.get(name)?.value
@@ -30,9 +32,8 @@ export function createClient(cookieStore: ReturnType<typeof cookies>) {
   })
 }
 
-// Also export under the old name to fix dependencies in other files.
-export const createServerSupabaseClient = createClient
-
-// Re-export the admin client to fix the persistent deployment error.
-// This makes the import valid for the file that is incorrectly referencing it.
-export const createAdminClient = adminClient
+// Exporting the function under all possible names used in the project
+// to resolve the deployment errors.
+export const createClient = createSupabaseServerClient
+export const createServerClient = createSupabaseServerClient
+export const createServerSupabaseClient = createSupabaseServerClient

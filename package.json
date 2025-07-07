@@ -43,7 +43,6 @@
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
     "@tanstack/react-query": "latest",
-    "@tanstack/react-table": "latest",
     "@vercel/blob": "latest",
     "autoprefixer": "^10.4.20",
     "cheerio": "latest",
@@ -71,7 +70,6 @@
     "sonner": "latest",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
-    "uuid": "latest",
     "vaul": "latest",
     "zod": "latest"
   },

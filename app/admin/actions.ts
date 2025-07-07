@@ -1,71 +1,66 @@
 "use server"
-import { createServerClient } from "@/lib/supabase/server"
-import { brandSchema } from "@/lib/schemas"
+
 import { revalidatePath } from "next/cache"
-import { v4 as uuidv4 } from "uuid"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { brandSchema } from "@/lib/schemas"
+import { del } from "@vercel/blob"
 
-export async function createOrUpdateBrand(formData: FormData) {
-  const supabase = createServerClient()
-  const supabaseAdmin = createAdminClient()
-
-  const rawData = {
+export async function createOrUpdateBrand(prevState: any, formData: FormData) {
+  const supabase = createAdminClient()
+  const validatedFields = brandSchema.safeParse({
     id: formData.get("id") || undefined,
     name: formData.get("name"),
     slug: formData.get("slug"),
-    logo_path: formData.get("logo_path"),
-  }
-
-  const validatedFields = brandSchema.safeParse(rawData)
+    active: formData.get("active") === "on",
+    logo_url: formData.get("existing_logo_url"),
+  })
 
   if (!validatedFields.success) {
     return {
       success: false,
-      message: "Invalid form data. Please check your inputs.",
+      message: "Invalid data provided.",
       errors: validatedFields.error.flatten().fieldErrors,
     }
   }
 
-  const { id, name, slug } = validatedFields.data
-  let logoPath = validatedFields.data.logo_path
+  const { id, name, slug, active } = validatedFields.data
+  let logoUrl = formData.get("existing_logo_url") as string
 
-  const logoFile = formData.get("logoFile") as File | null
-
+  const logoFile = formData.get("logo") as File
   if (logoFile && logoFile.size > 0) {
-    const filePath = `public/${slug}-${uuidv4()}-${logoFile.name}`
-    const { error: uploadError } = await supabaseAdmin.storage.from("logos").upload(filePath, logoFile)
-
-    if (uploadError) {
-      return {
-        success: false,
-        message: `Failed to upload logo: ${uploadError.message}`,
+    // Delete old logo if it exists
+    if (logoUrl) {
+      try {
+        await del(logoUrl)
+      } catch (e) {
+        console.error("Failed to delete old logo, continuing...", e)
       }
     }
 
-    const { data: urlData } = supabaseAdmin.storage.from("logos").getPublicUrl(filePath)
-    logoPath = urlData.publicUrl
-  }
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("logos")
+      .upload(`${slug}/${logoFile.name}`, logoFile, {
+        cacheControl: "3600",
+        upsert: true,
+      })
 
-  const dataToUpsert = {
-    id: id || undefined,
-    name,
-    slug,
-    logo_path: logoPath,
-  }
-
-  const { data, error } = await supabase.from("brands").upsert(dataToUpsert).select().single()
-
-  if (error) {
-    return {
-      success: false,
-      message: `Database error: ${error.message}`,
+    if (uploadError) {
+      return { success: false, message: `Storage Error: ${uploadError.message}` }
     }
+    const { data: publicUrlData } = supabase.storage.from("logos").getPublicUrl(uploadData.path)
+    logoUrl = publicUrlData.publicUrl
+  }
+
+  const brandData = { name, slug, active, logo_url: logoUrl }
+
+  if (id) {
+    const { error } = await supabase.from("brands").update(brandData).eq("id", id)
+    if (error) return { success: false, message: `Update Error: ${error.message}` }
+  } else {
+    const { error } = await supabase.from("brands").insert(brandData)
+    if (error) return { success: false, message: `Insert Error: ${error.message}` }
   }
 
   revalidatePath("/admin/dashboard")
-  return {
-    success: true,
-    message: `Brand ${id ? "updated" : "created"} successfully.`,
-    data,
-  }
+  return { success: true, message: `Brand ${id ? "updated" : "created"} successfully.` }
 }

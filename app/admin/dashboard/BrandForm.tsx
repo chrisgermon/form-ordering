@@ -1,117 +1,94 @@
 "use client"
 
+import { useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import type { z } from "zod"
+import { toast } from "sonner"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { toast } from "sonner"
-import { createOrUpdateBrand } from "../actions"
-import type { Brand } from "@/lib/types"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import { upsertBrand } from "./actions"
 import { brandSchema } from "@/lib/schemas"
+import type { Brand } from "@/lib/types"
 
-type BrandFormProps = {
-  brand: Brand | null
-  onSuccess: (brand: Brand) => void
-  onCancel: () => void
-}
+type BrandFormData = z.infer<typeof brandSchema>
 
-export function BrandForm({ brand, onSuccess, onCancel }: BrandFormProps) {
-  const form = useForm<z.infer<typeof brandSchema>>({
+export function BrandForm({ brand, onSuccess }: { brand: Brand | null; onSuccess: () => void }) {
+  const form = useForm<BrandFormData>({
     resolver: zodResolver(brandSchema),
     defaultValues: {
-      id: brand?.id,
+      id: brand?.id || undefined,
       name: brand?.name || "",
       slug: brand?.slug || "",
-      logo_path: brand?.logo_path || "",
+      active: brand?.active ?? true,
     },
   })
 
-  const { isSubmitting } = form.formState
+  useEffect(() => {
+    form.reset({
+      id: brand?.id || undefined,
+      name: brand?.name || "",
+      slug: brand?.slug || "",
+      active: brand?.active ?? true,
+    })
+  }, [brand, form])
 
-  const onSubmit = async (values: z.infer<typeof brandSchema>) => {
+  const onSubmit = async (data: BrandFormData) => {
     const formData = new FormData()
-    formData.append("id", values.id || "")
-    formData.append("name", values.name)
-    formData.append("slug", values.slug)
+    if (data.id) formData.append("id", data.id)
+    formData.append("name", data.name)
+    formData.append("slug", data.slug)
+    if (data.active) formData.append("active", "on")
 
-    const logoFile = (document.getElementById("logo_path") as HTMLInputElement)?.files?.[0]
-    if (logoFile) {
-      formData.append("logoFile", logoFile)
-    } else if (values.logo_path) {
-      formData.append("logo_path", values.logo_path)
-    }
-
-    const result = await createOrUpdateBrand(formData)
-
-    if (result.success && result.data) {
+    const result = await upsertBrand(formData)
+    if (result.success) {
       toast.success(result.message)
-      onSuccess(result.data)
+      onSuccess()
     } else {
       toast.error(result.message)
     }
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{brand ? "Edit Brand" : "Add New Brand"}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Brand Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g. Focus Radiology" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button>{brand ? "Edit Brand" : "Add New Brand"}</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{brand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <input type="hidden" {...form.register("id")} />
+          <div>
+            <Label htmlFor="name">Brand Name</Label>
+            <Input id="name" {...form.register("name")} />
+            {form.formState.errors.name && <p className="text-red-500 text-sm">{form.formState.errors.name.message}</p>}
+          </div>
+          <div>
+            <Label htmlFor="slug">Brand Slug</Label>
+            <Input id="slug" {...form.register("slug")} />
+            {form.formState.errors.slug && <p className="text-red-500 text-sm">{form.formState.errors.slug.message}</p>}
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="active"
+              {...form.register("active")}
+              checked={form.watch("active")}
+              onCheckedChange={(checked) => form.setValue("active", !!checked)}
             />
-            <FormField
-              control={form.control}
-              name="slug"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Slug</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g. focus-radiology" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormItem>
-              <FormLabel>Logo</FormLabel>
-              <FormControl>
-                <Input id="logo_path" type="file" accept="image/*" />
-              </FormControl>
-              {brand?.logo_path && !form.watch("logo_path") && (
-                <div className="mt-2">
-                  <p className="text-sm text-muted-foreground">Current logo:</p>
-                  <img src={brand.logo_path || "/placeholder.svg"} alt="Current logo" className="h-16 mt-1" />
-                </div>
-              )}
-              <FormMessage />
-            </FormItem>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </CardContent>
-    </Card>
+            <Label htmlFor="active">Active</Label>
+          </div>
+          <DialogFooter>
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? "Saving..." : "Save Brand"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

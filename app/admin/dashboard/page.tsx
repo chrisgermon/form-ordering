@@ -4,8 +4,9 @@ import { SubmissionsTable } from "./submissions-table"
 import { BrandManagement } from "./brand-management"
 import { SystemActions } from "./system-actions"
 
+export const dynamic = "force-dynamic"
+
 export default async function AdminDashboard() {
-  // Fetch all data in parallel
   const [submissions, brands, allowedIps, scriptFiles] = await Promise.all([
     getSubmissions(),
     getBrands(),
@@ -23,10 +24,10 @@ export default async function AdminDashboard() {
           <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
         <TabsContent value="submissions" className="mt-4">
-          <SubmissionsTable submissions={submissions} />
+          <SubmissionsTable initialSubmissions={submissions} />
         </TabsContent>
         <TabsContent value="brands" className="mt-4">
-          <BrandManagement brands={brands} />
+          <BrandManagement initialBrands={brands} />
         </TabsContent>
         <TabsContent value="system" className="mt-4">
           <SystemActions allowedIps={allowedIps} scriptFiles={scriptFiles} />

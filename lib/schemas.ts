@@ -1,6 +1,26 @@
 import { z } from "zod"
 import type { BrandData } from "./types"
 
+// Schema for creating/updating a brand in the admin dashboard
+export const brandSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1, "Brand name is required."),
+  slug: z
+    .string()
+    .min(1, "Brand slug is required.")
+    .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase letters, numbers, and hyphens."),
+  active: z.boolean().default(true),
+  logo_url: z.string().url().optional().nullable(),
+})
+
+// Schema for marking a submission as complete
+export const markCompleteSchema = z.object({
+  submissionId: z.string().uuid("Invalid submission ID."),
+  dispatch_date: z.string().optional().nullable(),
+  tracking_link: z.string().url("Invalid URL for tracking link.").optional().nullable(),
+  dispatch_notes: z.string().optional().nullable(),
+})
+
 // This is the schema for the form data on the client side
 export const getClientSideOrderSchema = (brandData: BrandData) =>
   z

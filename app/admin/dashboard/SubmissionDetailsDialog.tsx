@@ -1,69 +1,50 @@
 "use client"
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import type { Submission } from "@/lib/types"
-import { resolveAssetUrl } from "@/lib/utils"
+import { format } from "date-fns"
 
-type SubmissionDetailsDialogProps = {
-  isOpen: boolean
-  onClose: () => void
+interface SubmissionDetailsDialogProps {
   submission: Submission | null
+  isOpen: boolean
+  onOpenChange: (isOpen: boolean) => void
 }
 
-export function SubmissionDetailsDialog({ isOpen, onClose, submission }: SubmissionDetailsDialogProps) {
+export function SubmissionDetailsDialog({ submission, isOpen, onOpenChange }: SubmissionDetailsDialogProps) {
   if (!submission) return null
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-2xl">
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Submission Details</DialogTitle>
+          <DialogTitle>Order Details #{submission.order_number}</DialogTitle>
+          <DialogDescription>Submitted on {format(new Date(submission.created_at), "PPP p")}</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <p className="text-right font-semibold">Brand:</p>
-            <p className="col-span-3">{submission.brands?.name}</p>
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <p className="text-right font-semibold">Status:</p>
-            <p className="col-span-3">{submission.status}</p>
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <p className="text-right font-semibold">Customer:</p>
-            <p className="col-span-3">
-              {submission.customer_name} ({submission.customer_email})
-            </p>
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <p className="text-right font-semibold">Submitted:</p>
-            <p className="col-span-3">{new Date(submission.created_at).toLocaleString()}</p>
-          </div>
-          <hr className="my-2" />
-          <h3 className="font-semibold text-lg">Order Details</h3>
-          {Object.entries(submission.form_data as Record<string, any>).map(([key, value]) => (
-            <div key={key} className="grid grid-cols-4 items-start gap-4">
-              <p className="text-right font-semibold capitalize">{key.replace(/_/g, " ")}:</p>
-              <div className="col-span-3">
-                {typeof value === "string" && (value.startsWith("uploads/") || value.startsWith("signatures/")) ? (
-                  <a
-                    href={resolveAssetUrl(value)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:underline"
-                  >
-                    View File
-                  </a>
-                ) : (
-                  <p>{JSON.stringify(value)}</p>
-                )}
-              </div>
+        <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h3 className="font-semibold">Ordered By</h3>
+              <p>{submission.ordered_by}</p>
+              <p>{submission.email}</p>
             </div>
-          ))}
+            <div>
+              <h3 className="font-semibold">Status</h3>
+              <p>{submission.status}</p>
+            </div>
+          </div>
+          <div className="mt-4">
+            <h3 className="font-semibold">Order Data</h3>
+            <pre className="mt-2 w-full bg-muted p-4 rounded-md text-sm overflow-x-auto">
+              {JSON.stringify(submission.order_data, null, 2)}
+            </pre>
+          </div>
+          {submission.notes && (
+            <div className="mt-4">
+              <h3 className="font-semibold">Notes</h3>
+              <p>{submission.notes}</p>
+            </div>
+          )}
         </div>
-        <DialogFooter>
-          <Button onClick={onClose}>Close</Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
