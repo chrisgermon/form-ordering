@@ -1,18 +1,18 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useRouter, useParams } from "next/navigation"
 import { useForm, FormProvider } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { useMutation, useQuery } from "@tanstack/react-query"
+
+import { createProductSchema, type CreateProductType } from "@/lib/validations/product"
+import { createProduct, getProduct, updateProduct } from "@/lib/api/product"
+import { useToast } from "@/components/ui/use-toast"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { createProductSchema, type CreateProductType } from "@/lib/validations/product"
-import { useToast } from "@/components/ui/use-toast"
-import { useMutation, useQuery } from "@tanstack/react-query"
-import { createProduct, getProduct, updateProduct } from "@/lib/api/product"
-import { useParams } from "next/navigation"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
@@ -22,11 +22,12 @@ interface Props {
   brandSlug: string
 }
 
-const FormEditor = ({ brandSlug }: Props) => {
+export function FormEditor({ brandSlug }: Props) {
   const router = useRouter()
   const { toast } = useToast()
-  const { productId } = useParams()
-  const [isNewProduct, setIsNewProduct] = useState(true)
+  const params = useParams()
+  const productId = params.productId as string | undefined
+  const [isNewProduct, setIsNewProduct] = useState(!productId)
 
   const form = useForm<CreateProductType>({
     resolver: zodResolver(createProductSchema),
@@ -62,7 +63,7 @@ const FormEditor = ({ brandSlug }: Props) => {
       toast({
         title: "Product created successfully",
       })
-      router.push(`/admin/editor/${brandSlug}`)
+      router.push(`/admin/dashboard`) // Redirect to dashboard after creation
     },
     onError: (error) => {
       toast({
@@ -79,7 +80,7 @@ const FormEditor = ({ brandSlug }: Props) => {
       toast({
         title: "Product updated successfully",
       })
-      router.push(`/admin/editor/${brandSlug}`)
+      router.push(`/admin/dashboard`) // Redirect to dashboard after update
     },
     onError: (error) => {
       toast({
@@ -102,7 +103,7 @@ const FormEditor = ({ brandSlug }: Props) => {
     <div className="container py-10">
       <h1 className="text-3xl font-bold tracking-tight">{isNewProduct ? "Create Product" : "Edit Product"}</h1>
       <Separator className="my-4" />
-      {isLoading ? (
+      {isLoading && !isNewProduct ? (
         <div className="flex flex-col gap-4">
           <Skeleton className="h-10 w-[300px]" />
           <Skeleton className="h-40 w-full" />
@@ -184,7 +185,19 @@ const FormEditor = ({ brandSlug }: Props) => {
                 )}
               />
 
-              <FileUploader />
+              <FormField
+                control={form.control}
+                name="images"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Images</FormLabel>
+                    <FormControl>
+                      <FileUploader onValueChange={field.onChange} value={field.value} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <Button type="submit" disabled={isCreatePending || isUpdatePending}>
                 {isCreatePending || isUpdatePending ? "Loading..." : isNewProduct ? "Create" : "Update"}
@@ -196,5 +209,3 @@ const FormEditor = ({ brandSlug }: Props) => {
     </div>
   )
 }
-
-export default FormEditor
