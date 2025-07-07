@@ -75,7 +75,7 @@ export async function deleteBrand(id: string) {
 const MarkCompleteSchema = z.object({
   submissionId: z.string().uuid(),
   dispatchDate: z.string().optional().nullable(),
-  trackingLink: z.string().url().optional().or(z.literal("")),
+  trackingLink: z.string().optional(),
   notes: z.string().optional(),
 })
 
