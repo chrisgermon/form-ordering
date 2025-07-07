@@ -98,7 +98,7 @@ export function BrandManagement({ initialBrands, uploadedFiles }: BrandManagemen
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {initialBrands.map((brand) => (
+          {(initialBrands || []).map((brand) => (
             <Card key={brand.id} className="flex flex-col">
               <CardContent className="p-4 flex-grow">
                 <div className="relative w-full h-20 mb-4">
@@ -145,7 +145,9 @@ export function BrandManagement({ initialBrands, uploadedFiles }: BrandManagemen
             </Card>
           ))}
         </div>
-        {initialBrands.length === 0 && <p className="text-center text-muted-foreground py-8">No brands found.</p>}
+        {(!initialBrands || initialBrands.length === 0) && (
+          <p className="text-center text-muted-foreground py-8">No brands found.</p>
+        )}
       </CardContent>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
@@ -155,7 +157,7 @@ export function BrandManagement({ initialBrands, uploadedFiles }: BrandManagemen
           </DialogHeader>
           <BrandForm
             brand={selectedBrand}
-            uploadedFiles={uploadedFiles}
+            uploadedFiles={uploadedFiles || []}
             onSave={handleFormSave}
             onCancel={handleFormCancel}
             onLogoUpload={async () => router.refresh()}

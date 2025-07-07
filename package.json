@@ -43,6 +43,7 @@
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
     "@tanstack/react-query": "latest",
+    "@tanstack/react-table": "latest",
     "@vercel/blob": "latest",
     "autoprefixer": "^10.4.20",
     "cheerio": "latest",

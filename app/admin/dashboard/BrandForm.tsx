@@ -1,304 +1,407 @@
 "use client"
 
-import type React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { toast } from "sonner"
+import { Upload } from "lucide-react"
+
+import type { Brand, UploadedFile } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { X, Upload } from "lucide-react"
-import { resolveAssetUrl } from "@/lib/utils"
-import type { Brand, UploadedFile, ClinicLocation } from "@/lib/types"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { FileUploader } from "@/app/admin/editor/[brandSlug]/file-manager"
+
+const formSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(2, "Name must be at least 2 characters."),
+  slug: z
+    .string()
+    .min(2, "Slug must be at least 2 characters.")
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug can only contain lowercase letters, numbers, and hyphens."),
+  logo_url: z.string().optional().nullable(),
+  active: z.boolean(),
+  brand_colors: z.object({
+    primary: z.string(),
+    secondary: z.string(),
+    accent: z.string(),
+    text: z.string(),
+  }),
+  form_title: z.string().min(1, "Form title is required."),
+  confirmation_message: z.string().min(1, "Confirmation message is required."),
+  confirmation_email_subject: z.string().min(1, "Email subject is required."),
+  send_confirmation_email: z.boolean(),
+  recipient_emails: z.string().refine(
+    (value) => {
+      if (!value) return true // Allow empty string
+      const emails = value.split(",").map((e) => e.trim())
+      return emails.every((email) => z.string().email().safeParse(email).success)
+    },
+    { message: "Please provide a valid, comma-separated list of email addresses." },
+  ),
+  cc_emails: z.string().refine(
+    (value) => {
+      if (!value) return true
+      const emails = value.split(",").map((e) => e.trim())
+      return emails.every((email) => z.string().email().safeParse(email).success)
+    },
+    { message: "Please provide a valid, comma-separated list of CC email addresses." },
+  ),
+  bcc_emails: z.string().refine(
+    (value) => {
+      if (!value) return true
+      const emails = value.split(",").map((e) => e.trim())
+      return emails.every((email) => z.string().email().safeParse(email).success)
+    },
+    { message: "Please provide a valid, comma-separated list of BCC email addresses." },
+  ),
+})
 
 interface BrandFormProps {
   brand: Brand | null
   uploadedFiles: UploadedFile[]
   onSave: (data: any) => void
   onCancel: () => void
-  onLogoUpload: () => Promise<void>
-}
-
-const newLocation = (): ClinicLocation => ({ name: "", address: "", phone: "", email: "" })
-
-// Helper to check if clinic data is in the old string[] format
-const isLegacyClinicData = (locations: any): locations is string[] => {
-  return (
-    Array.isArray(locations) &&
-    locations.length > 0 &&
-    (typeof locations[0] === "string" || !locations[0].hasOwnProperty("email"))
-  )
+  onLogoUpload: () => void
 }
 
 export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload }: BrandFormProps) {
-  const getInitialState = () => {
-    if (brand) {
-      const locations = isLegacyClinicData(brand.clinic_locations)
-        ? brand.clinic_locations.map((name) => ({ name, address: "", phone: "", email: "" }))
-        : brand.clinic_locations || []
+  const [isUploaderOpen, setIsUploaderOpen] = useState(false)
 
-      return {
-        name: brand.name || "",
-        logo: brand.logo || "",
-        active: brand.active,
-        emails: brand.emails?.length > 0 ? brand.emails : [""],
-        clinicLocations: locations?.length > 0 ? locations : [newLocation()],
-      }
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      id: brand?.id || undefined,
+      name: brand?.name || "",
+      slug: brand?.slug || "",
+      logo_url: brand?.logo_url || "",
+      active: brand?.active ?? true,
+      brand_colors: brand?.brand_colors || {
+        primary: "#ffffff",
+        secondary: "#f8fafc",
+        accent: "#020617",
+        text: "#020617",
+      },
+      form_title: brand?.form_title || "New Order Form",
+      confirmation_message: brand?.confirmation_message || "Thank you for your order!",
+      confirmation_email_subject: brand?.confirmation_email_subject || "Your Order Confirmation",
+      send_confirmation_email: brand?.send_confirmation_email ?? true,
+      recipient_emails: brand?.recipient_emails?.join(", ") || "",
+      cc_emails: brand?.cc_emails?.join(", ") || "",
+      bcc_emails: brand?.bcc_emails?.join(", ") || "",
+    },
+  })
+
+  useEffect(() => {
+    form.reset({
+      id: brand?.id || undefined,
+      name: brand?.name || "",
+      slug: brand?.slug || "",
+      logo_url: brand?.logo_url || "",
+      active: brand?.active ?? true,
+      brand_colors: brand?.brand_colors || {
+        primary: "#ffffff",
+        secondary: "#f8fafc",
+        accent: "#020617",
+        text: "#020617",
+      },
+      form_title: brand?.form_title || "New Order Form",
+      confirmation_message: brand?.confirmation_message || "Thank you for your order!",
+      confirmation_email_subject: brand?.confirmation_email_subject || "Your Order Confirmation",
+      send_confirmation_email: brand?.send_confirmation_email ?? true,
+      recipient_emails: brand?.recipient_emails?.join(", ") || "",
+      cc_emails: brand?.cc_emails?.join(", ") || "",
+      bcc_emails: brand?.bcc_emails?.join(", ") || "",
+    })
+  }, [brand, form])
+
+  const onSubmit = (values: z.infer<typeof formSchema>) => {
+    const submissionData = {
+      ...values,
+      recipient_emails: values.recipient_emails
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean),
+      cc_emails: values.cc_emails
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean),
+      bcc_emails: values.bcc_emails
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean),
     }
-    // For a new brand
-    return {
-      name: "",
-      logo: "",
-      active: true,
-      emails: [""],
-      clinicLocations: [newLocation()],
-    }
-  }
-
-  const [formData, setFormData] = useState(getInitialState)
-  const [isUploading, setIsUploading] = useState(false)
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { id, value, type } = e.target
-    const checked = (e.target as HTMLInputElement).checked
-    setFormData((prev) => ({
-      ...prev,
-      [id]: type === "checkbox" ? checked : value,
-    }))
-  }
-
-  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const newList = [...formData.emails]
-    newList[index] = e.target.value
-    setFormData((prev) => ({ ...prev, emails: newList }))
-  }
-
-  const handleLocationChange = (e: React.ChangeEvent<HTMLInputElement>, index: number, field: keyof ClinicLocation) => {
-    const newList = [...formData.clinicLocations]
-    newList[index] = { ...newList[index], [field]: e.target.value }
-    setFormData((prev) => ({ ...prev, clinicLocations: newList }))
-  }
-
-  const addEmail = () => {
-    setFormData((prev) => ({ ...prev, emails: [...prev.emails, ""] }))
-  }
-
-  const removeEmail = (index: number) => {
-    const newList = formData.emails.filter((_, i) => i !== index)
-    setFormData((prev) => ({ ...prev, emails: newList.length > 0 ? newList : [""] }))
-  }
-
-  const addLocation = () => {
-    setFormData((prev) => ({ ...prev, clinicLocations: [...prev.clinicLocations, newLocation()] }))
-  }
-
-  const removeLocation = (index: number) => {
-    const newList = formData.clinicLocations.filter((_, i) => i !== index)
-    setFormData((prev) => ({ ...prev, clinicLocations: newList.length > 0 ? newList : [newLocation()] }))
-  }
-
-  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    setIsUploading(true)
-    const uploadFormData = new FormData()
-    uploadFormData.append("file", file)
-
-    try {
-      const response = await fetch("/api/admin/upload", {
-        method: "POST",
-        body: uploadFormData,
-      })
-      if (response.ok) {
-        const newFile = await response.json()
-        await onLogoUpload()
-        setFormData((prev) => ({ ...prev, logo: newFile.pathname }))
-      } else {
-        console.error("Failed to upload logo")
-      }
-    } catch (error) {
-      console.error("Error uploading logo:", error)
-    } finally {
-      setIsUploading(false)
-    }
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const dataToSave = {
-      ...formData,
-      id: brand?.id,
-      emails: formData.emails.filter((email) => email.trim() !== ""),
-      clinicLocations: formData.clinicLocations.filter((loc) => loc.name.trim() !== ""),
-    }
-    onSave(dataToSave)
+    onSave(submissionData)
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <Label htmlFor="name">Brand Name</Label>
-          <Input id="name" value={formData.name} onChange={handleChange} required />
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-h-[80vh] overflow-y-auto p-2 -m-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Brand Name</FormLabel>
+                <FormControl>
+                  <Input placeholder="Acme Inc." {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="slug"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>URL Slug</FormLabel>
+                <FormControl>
+                  <Input placeholder="acme-inc" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
-      </div>
 
-      <div>
-        <Label>Logo</Label>
-        <div className="flex items-center gap-4">
-          <Select
-            value={formData.logo || ""}
-            onValueChange={(value) => setFormData((p) => ({ ...p, logo: value === "none" ? "" : value }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select an uploaded logo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No Logo</SelectItem>
-              {uploadedFiles
-                .filter((file) => file.content_type?.startsWith("image/"))
-                .map((file) => (
-                  <SelectItem key={file.id} value={file.pathname}>
-                    {file.original_name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-          <div className="relative">
-            <Button type="button" variant="outline" asChild>
-              <label htmlFor="logo-upload" className="cursor-pointer">
-                <Upload className="mr-2 h-4 w-4" /> {isUploading ? "Uploading..." : "Upload"}
-              </label>
-            </Button>
-            <Input
-              id="logo-upload"
-              type="file"
-              accept="image/*"
-              onChange={handleLogoUpload}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              disabled={isUploading}
-            />
-          </div>
-        </div>
-        {formData.logo && (
-          <div className="mt-4 p-2 border rounded-md inline-block">
-            <img
-              src={resolveAssetUrl(formData.logo) || "/placeholder.svg"}
-              alt="Brand logo preview"
-              className="h-16 w-auto object-contain"
-              crossOrigin="anonymous"
-            />
-          </div>
-        )}
-      </div>
-
-      <div>
-        <Label>Recipient Emails</Label>
-        <div className="space-y-2">
-          {formData.emails.map((email, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <Input
-                type="email"
-                placeholder="e.g., orders@example.com"
-                value={email}
-                onChange={(e) => handleEmailChange(e, index)}
-              />
-              <Button type="button" variant="ghost" size="icon" onClick={() => removeEmail(index)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-        </div>
-        <Button type="button" variant="outline" size="sm" className="mt-2 bg-transparent" onClick={addEmail}>
-          Add Email
-        </Button>
-      </div>
-
-      <div>
-        <Label>Clinic Locations</Label>
-        <div className="space-y-4">
-          {formData.clinicLocations.map((location, index) => (
-            <div key={index} className="p-4 border rounded-md space-y-3 relative">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor={`loc-name-${index}`} className="text-xs">
-                    Location Name
-                  </Label>
-                  <Input
-                    id={`loc-name-${index}`}
-                    placeholder="e.g., Main Street Clinic"
-                    value={location.name}
-                    onChange={(e) => handleLocationChange(e, index, "name")}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor={`loc-phone-${index}`} className="text-xs">
-                    Phone Number
-                  </Label>
-                  <Input
-                    id={`loc-phone-${index}`}
-                    placeholder="e.g., (02) 1234 5678"
-                    value={location.phone}
-                    onChange={(e) => handleLocationChange(e, index, "phone")}
-                  />
-                </div>
+        <FormField
+          control={form.control}
+          name="logo_url"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Logo</FormLabel>
+              <div className="flex items-center gap-2">
+                <Select onValueChange={field.onChange} defaultValue={field.value || "none"}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a logo" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {(uploadedFiles || []).map((file) => (
+                      <SelectItem key={file.id} value={file.file_path}>
+                        {file.file_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Dialog open={isUploaderOpen} onOpenChange={setIsUploaderOpen}>
+                  <DialogTrigger asChild>
+                    <Button type="button" variant="outline">
+                      <Upload className="mr-2 h-4 w-4" /> Upload New
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Upload Logo</DialogTitle>
+                    </DialogHeader>
+                    <FileUploader
+                      onUploadSuccess={() => {
+                        toast.success("Logo uploaded successfully!")
+                        onLogoUpload()
+                        setIsUploaderOpen(false)
+                      }}
+                      brandId={null} // Global upload
+                    />
+                  </DialogContent>
+                </Dialog>
               </div>
-              <div>
-                <Label htmlFor={`loc-address-${index}`} className="text-xs">
-                  Address
-                </Label>
-                <Input
-                  id={`loc-address-${index}`}
-                  placeholder="e.g., 123 Main St, Sydney NSW 2000"
-                  value={location.address}
-                  onChange={(e) => handleLocationChange(e, index, "address")}
-                />
-              </div>
-              <div>
-                <Label htmlFor={`loc-email-${index}`} className="text-xs">
-                  Email
-                </Label>
-                <Input
-                  id={`loc-email-${index}`}
-                  type="email"
-                  placeholder="e.g., clinic@example.com"
-                  value={location.email || ""}
-                  onChange={(e) => handleLocationChange(e, index, "email")}
-                />
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute top-1 right-1"
-                onClick={() => removeLocation(index)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-        </div>
-        <Button type="button" variant="outline" size="sm" className="mt-2 bg-transparent" onClick={addLocation}>
-          Add Location
-        </Button>
-      </div>
-
-      <div className="flex items-center space-x-2">
-        <Checkbox
-          id="active"
-          checked={formData.active}
-          onCheckedChange={(c) => setFormData({ ...formData, active: !!c })}
+              <FormMessage />
+            </FormItem>
+          )}
         />
-        <Label htmlFor="active">Active Brand</Label>
-      </div>
 
-      <div className="flex justify-end gap-2 pt-4 border-t">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit">Save Brand</Button>
-      </div>
-    </form>
+        <FormField
+          control={form.control}
+          name="active"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <FormLabel>Brand Active</FormLabel>
+                <FormDescription>Make this brand visible and accessible to users.</FormDescription>
+              </div>
+              <FormControl>
+                <Switch checked={field.value} onCheckedChange={field.onChange} />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
+        <div className="space-y-4 rounded-lg border p-4">
+          <h3 className="text-lg font-medium">Brand Colors</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <FormField
+              control={form.control}
+              name="brand_colors.primary"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Primary</FormLabel>
+                  <FormControl>
+                    <Input type="color" {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="brand_colors.secondary"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Secondary</FormLabel>
+                  <FormControl>
+                    <Input type="color" {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="brand_colors.accent"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Accent</FormLabel>
+                  <FormControl>
+                    <Input type="color" {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="brand_colors.text"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Text</FormLabel>
+                  <FormControl>
+                    <Input type="color" {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-4 rounded-lg border p-4">
+          <h3 className="text-lg font-medium">Form & Confirmation</h3>
+          <FormField
+            control={form.control}
+            name="form_title"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Form Title</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="confirmation_message"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Confirmation Message</FormLabel>
+                <FormControl>
+                  <Textarea {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="space-y-4 rounded-lg border p-4">
+          <h3 className="text-lg font-medium">Email Settings</h3>
+          <FormField
+            control={form.control}
+            name="send_confirmation_email"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <FormLabel>Send Confirmation Email</FormLabel>
+                  <FormDescription>Send an email to the user upon successful order.</FormDescription>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="confirmation_email_subject"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Confirmation Email Subject</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="recipient_emails"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Recipient Emails (To)</FormLabel>
+                <FormControl>
+                  <Input placeholder="email1@example.com, email2@example.com" {...field} />
+                </FormControl>
+                <FormDescription>Comma-separated list of emails to receive order notifications.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="cc_emails"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>CC Emails</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormDescription>Comma-separated list of emails to CC.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="bcc_emails"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>BCC Emails</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormDescription>Comma-separated list of emails to BCC.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={form.formState.isSubmitting}>
+            {form.formState.isSubmitting ? "Saving..." : "Save Changes"}
+          </Button>
+        </div>
+      </form>
+    </Form>
   )
 }
