@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,71 +21,68 @@ interface BrandFormProps {
 
 const newLocation = (): ClinicLocation => ({ name: "", address: "", phone: "", email: "" })
 
-// Helper to check if clinic data is in the old string[] format
-const isLegacyClinicData = (locations: any): locations is string[] => {
-  return (
-    Array.isArray(locations) &&
-    locations.length > 0 &&
-    (typeof locations[0] === "string" || !locations[0].hasOwnProperty("email"))
-  )
+const getInitialState = (brand: Brand | null) => {
+  if (brand) {
+    return {
+      name: brand.name || "",
+      logo_url: brand.logo_url || "",
+      active: brand.active,
+      to_emails: brand.to_emails || [""],
+      cc_emails: brand.cc_emails || [""],
+      bcc_emails: brand.bcc_emails || [""],
+      clinicLocations: brand.clinic_locations?.length ? brand.clinic_locations : [newLocation()],
+    }
+  }
+  return {
+    name: "",
+    logo_url: "",
+    active: true,
+    to_emails: [""],
+    cc_emails: [""],
+    bcc_emails: [""],
+    clinicLocations: [newLocation()],
+  }
 }
 
 export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload }: BrandFormProps) {
-  const getInitialState = () => {
-    if (brand) {
-      const locations = isLegacyClinicData(brand.clinic_locations)
-        ? brand.clinic_locations.map((name) => ({ name, address: "", phone: "", email: "" }))
-        : brand.clinic_locations || []
-
-      return {
-        name: brand.name || "",
-        logo: brand.logo || "",
-        active: brand.active,
-        emails: brand.emails?.length > 0 ? brand.emails : [""],
-        clinicLocations: locations?.length > 0 ? locations : [newLocation()],
-      }
-    }
-    // For a new brand
-    return {
-      name: "",
-      logo: "",
-      active: true,
-      emails: [""],
-      clinicLocations: [newLocation()],
-    }
-  }
-
-  const [formData, setFormData] = useState(getInitialState)
+  const [formData, setFormData] = useState(() => getInitialState(brand))
   const [isUploading, setIsUploading] = useState(false)
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { id, value, type } = e.target
-    const checked = (e.target as HTMLInputElement).checked
+  useEffect(() => {
+    setFormData(getInitialState(brand))
+  }, [brand])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value, type, checked } = e.target
     setFormData((prev) => ({
       ...prev,
       [id]: type === "checkbox" ? checked : value,
     }))
   }
 
-  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const newList = [...formData.emails]
+  const handleEmailListChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    index: number,
+    listName: "to_emails" | "cc_emails" | "bcc_emails",
+  ) => {
+    const newList = [...formData[listName]]
     newList[index] = e.target.value
-    setFormData((prev) => ({ ...prev, emails: newList }))
+    setFormData((prev) => ({ ...prev, [listName]: newList }))
+  }
+
+  const addEmailToList = (listName: "to_emails" | "cc_emails" | "bcc_emails") => {
+    setFormData((prev) => ({ ...prev, [listName]: [...prev[listName], ""] }))
+  }
+
+  const removeEmailFromList = (index: number, listName: "to_emails" | "cc_emails" | "bcc_emails") => {
+    const newList = formData[listName].filter((_, i) => i !== index)
+    setFormData((prev) => ({ ...prev, [listName]: newList.length > 0 ? newList : [""] }))
   }
 
   const handleLocationChange = (e: React.ChangeEvent<HTMLInputElement>, index: number, field: keyof ClinicLocation) => {
     const newList = [...formData.clinicLocations]
     newList[index] = { ...newList[index], [field]: e.target.value }
     setFormData((prev) => ({ ...prev, clinicLocations: newList }))
-  }
-
-  const addEmail = () => {
-    setFormData((prev) => ({ ...prev, emails: [...prev.emails, ""] }))
-  }
-
-  const removeEmail = (index: number) => {
-    const newList = formData.emails.filter((_, i) => i !== index)
-    setFormData((prev) => ({ ...prev, emails: newList.length > 0 ? newList : [""] }))
   }
 
   const addLocation = () => {
@@ -100,20 +97,15 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-
     setIsUploading(true)
     const uploadFormData = new FormData()
     uploadFormData.append("file", file)
-
     try {
-      const response = await fetch("/api/admin/upload", {
-        method: "POST",
-        body: uploadFormData,
-      })
+      const response = await fetch("/api/admin/upload", { method: "POST", body: uploadFormData })
       if (response.ok) {
         const newFile = await response.json()
         await onLogoUpload()
-        setFormData((prev) => ({ ...prev, logo: newFile.pathname }))
+        setFormData((prev) => ({ ...prev, logo_url: newFile.pathname }))
       } else {
         console.error("Failed to upload logo")
       }
@@ -129,33 +121,69 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     const dataToSave = {
       ...formData,
       id: brand?.id,
-      emails: formData.emails.filter((email) => email.trim() !== ""),
+      to_emails: formData.to_emails.filter((email) => email.trim() !== ""),
+      cc_emails: formData.cc_emails.filter((email) => email.trim() !== ""),
+      bcc_emails: formData.bcc_emails.filter((email) => email.trim() !== ""),
       clinicLocations: formData.clinicLocations.filter((loc) => loc.name.trim() !== ""),
     }
     onSave(dataToSave)
   }
 
+  const EmailListEditor = ({
+    title,
+    listName,
+  }: {
+    title: string
+    listName: "to_emails" | "cc_emails" | "bcc_emails"
+  }) => (
+    <div>
+      <Label>{title}</Label>
+      <div className="space-y-2">
+        {formData[listName].map((email, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <Input
+              type="email"
+              placeholder="e.g., orders@example.com"
+              value={email}
+              onChange={(e) => handleEmailListChange(e, index, listName)}
+            />
+            <Button type="button" variant="ghost" size="icon" onClick={() => removeEmailFromList(index, listName)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-2 bg-transparent"
+        onClick={() => addEmailToList(listName)}
+      >
+        Add Email
+      </Button>
+    </div>
+  )
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <Label htmlFor="name">Brand Name</Label>
-          <Input id="name" value={formData.name} onChange={handleChange} required />
-        </div>
+      <div>
+        <Label htmlFor="name">Brand Name</Label>
+        <Input id="name" value={formData.name} onChange={handleChange} required />
       </div>
 
       <div>
         <Label>Logo</Label>
         <div className="flex items-center gap-4">
           <Select
-            value={formData.logo || ""}
-            onValueChange={(value) => setFormData((p) => ({ ...p, logo: value === "none" ? "" : value }))}
+            value={formData.logo_url || "default-logo"}
+            onValueChange={(value) => setFormData((p) => ({ ...p, logo_url: value }))}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select an uploaded logo" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">No Logo</SelectItem>
+              <SelectItem value="default-logo">No Logo</SelectItem>
               {uploadedFiles
                 .filter((file) => file.content_type?.startsWith("image/"))
                 .map((file) => (
@@ -181,10 +209,10 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
             />
           </div>
         </div>
-        {formData.logo && (
+        {formData.logo_url && (
           <div className="mt-4 p-2 border rounded-md inline-block">
             <img
-              src={resolveAssetUrl(formData.logo) || "/placeholder.svg"}
+              src={resolveAssetUrl(formData.logo_url) || "/placeholder.svg"}
               alt="Brand logo preview"
               className="h-16 w-auto object-contain"
               crossOrigin="anonymous"
@@ -193,26 +221,10 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
         )}
       </div>
 
-      <div>
-        <Label>Recipient Emails</Label>
-        <div className="space-y-2">
-          {formData.emails.map((email, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <Input
-                type="email"
-                placeholder="e.g., orders@example.com"
-                value={email}
-                onChange={(e) => handleEmailChange(e, index)}
-              />
-              <Button type="button" variant="ghost" size="icon" onClick={() => removeEmail(index)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-        </div>
-        <Button type="button" variant="outline" size="sm" className="mt-2 bg-transparent" onClick={addEmail}>
-          Add Email
-        </Button>
+      <div className="space-y-4">
+        <EmailListEditor title="To Emails" listName="to_emails" />
+        <EmailListEditor title="CC Emails" listName="cc_emails" />
+        <EmailListEditor title="BCC Emails" listName="bcc_emails" />
       </div>
 
       <div>
@@ -227,7 +239,6 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
                   </Label>
                   <Input
                     id={`loc-name-${index}`}
-                    placeholder="e.g., Main Street Clinic"
                     value={location.name}
                     onChange={(e) => handleLocationChange(e, index, "name")}
                   />
@@ -238,7 +249,6 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
                   </Label>
                   <Input
                     id={`loc-phone-${index}`}
-                    placeholder="e.g., (02) 1234 5678"
                     value={location.phone}
                     onChange={(e) => handleLocationChange(e, index, "phone")}
                   />
@@ -250,7 +260,6 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
                 </Label>
                 <Input
                   id={`loc-address-${index}`}
-                  placeholder="e.g., 123 Main St, Sydney NSW 2000"
                   value={location.address}
                   onChange={(e) => handleLocationChange(e, index, "address")}
                 />
@@ -262,7 +271,6 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
                 <Input
                   id={`loc-email-${index}`}
                   type="email"
-                  placeholder="e.g., clinic@example.com"
                   value={location.email || ""}
                   onChange={(e) => handleLocationChange(e, index, "email")}
                 />

@@ -1,6 +1,7 @@
 import type { z } from "zod"
 import type { orderFormSchema } from "./schemas"
 
+// This is based on the database schema and should be the source of truth
 export type Brand = {
   id: string
   name: string
@@ -14,11 +15,11 @@ export type Brand = {
   header_image_url: string | null
   form_title: string | null
   form_subtitle: string | null
-  to_emails: string | null
-  cc_emails: string | null
-  bcc_emails: string | null
+  to_emails: string[] | null
+  cc_emails: string[] | null
+  bcc_emails: string[] | null
   subject_line: string | null
-  clinic_locations: ClinicLocation[]
+  clinic_locations: ClinicLocation[] | null
 }
 
 export type ProductItem = {
