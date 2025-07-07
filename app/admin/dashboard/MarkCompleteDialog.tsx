@@ -37,24 +37,29 @@ function SubmitButton() {
 const initialState = {
   success: false,
   message: "",
+  errors: null,
 }
 
 export function MarkCompleteDialog({ submission, isOpen, onOpenChange }: MarkCompleteDialogProps) {
   const [state, formAction] = useFormState(markSubmissionAsComplete, initialState)
-  const [dispatchDate, setDispatchDate] = useState<Date | undefined>(undefined)
+  const [dispatchDate, setDispatchDate] = useState<Date | null>(null)
+
+  useEffect(() => {
+    if (!isOpen) {
+      // Reset state when dialog closes
+      setDispatchDate(null)
+    }
+  }, [isOpen])
 
   useEffect(() => {
     if (state.success) {
       toast.success(state.message)
       onOpenChange(false)
     } else if (state.message && !state.success) {
-      // Display Zod validation errors
-      if (state.errors) {
-        const errorMessages = Object.values(state.errors).flat().join("\n")
-        toast.error(errorMessages)
-      } else {
-        toast.error(state.message)
-      }
+      const errorMessages = state.errors ? Object.values(state.errors).flat().join("\n") : state.message
+      toast.error("Failed to mark as complete", {
+        description: errorMessages,
+      })
     }
   }, [state, onOpenChange])
 
@@ -79,7 +84,9 @@ export function MarkCompleteDialog({ submission, isOpen, onOpenChange }: MarkCom
               <Label htmlFor="dispatchDate" className="text-right">
                 Dispatch Date
               </Label>
-              <DatePicker value={dispatchDate} onChange={setDispatchDate} className="col-span-3" />
+              <div className="col-span-3">
+                <DatePicker value={dispatchDate} onChange={setDispatchDate} placeholder="Select dispatch date" />
+              </div>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="trackingLink" className="text-right">

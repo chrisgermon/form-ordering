@@ -1,34 +1,34 @@
 "use client"
-import { format } from "date-fns"
-import { CalendarIcon } from "lucide-react"
 
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import React from "react"
+import DatePickerComponent from "react-datepicker"
+import { CalendarIcon } from "lucide-react"
 
 interface DatePickerProps {
   value: Date | null | undefined
-  onChange: (date: Date | undefined) => void
+  onChange: (date: Date | null) => void
   className?: string
   placeholder?: string
 }
 
-export function DatePicker({ value, onChange, className, placeholder }: DatePickerProps) {
+const CustomInput = React.forwardRef<HTMLInputElement, { value?: string; onClick?: () => void; placeholder?: string }>(
+  ({ value, onClick, placeholder }, ref) => (
+    <div className="relative w-full">
+      <input onClick={onClick} ref={ref} value={value} placeholder={placeholder} readOnly className="cursor-pointer" />
+      <CalendarIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    </div>
+  ),
+)
+CustomInput.displayName = "CustomInput"
+
+export function DatePicker({ value, onChange, placeholder }: DatePickerProps) {
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant={"outline"}
-          className={cn("w-full justify-start text-left font-normal", !value && "text-muted-foreground", className)}
-        >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {value ? format(value, "PPP") : <span>{placeholder || "Pick a date"}</span>}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0">
-        <Calendar mode="single" selected={value || undefined} onSelect={onChange} initialFocus />
-      </PopoverContent>
-    </Popover>
+    <DatePickerComponent
+      selected={value}
+      onChange={onChange}
+      placeholderText={placeholder}
+      dateFormat="PPP"
+      customInput={<CustomInput />}
+    />
   )
 }

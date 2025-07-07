@@ -62,6 +62,7 @@
     "nodemailer": "latest",
     "path": "latest",
     "react": "^18",
+    "react-datepicker": "latest",
     "react-day-picker": "latest",
     "react-dom": "^18",
     "react-hook-form": "latest",

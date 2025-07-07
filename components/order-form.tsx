@@ -25,6 +25,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useState, useMemo } from "react"
 import { getClientSideOrderSchema } from "@/lib/schemas"
 import { toast } from "sonner"
+import { format } from "date-fns" // Import format from date-fns
 
 const FormItemComponent = ({
   item,
@@ -111,7 +112,6 @@ const FormItemComponent = ({
           <DatePicker
             value={field.value?.quantity}
             onChange={(date) => field.onChange({ ...basePayload, quantity: date })}
-            className="bg-gray-100 border-gray-300"
             placeholder="DD-MM-YYYY"
           />
         )
@@ -175,7 +175,12 @@ function SelectionSidebar({
                     <p className="font-semibold text-gray-800 leading-tight">{item.name}</p>
                     <p className="text-xs text-gray-500">CODE: {item.code}</p>
                     <p className="text-sm font-bold text-[#1aa7df] mt-1">
-                      Qty: {item.quantity === "other" ? item.customQuantity : item.quantity}
+                      Qty:{" "}
+                      {item.quantity === "other"
+                        ? item.customQuantity
+                        : item.quantity instanceof Date
+                          ? format(item.quantity, "PPP")
+                          : item.quantity}
                     </p>
                   </div>
                   <Button
@@ -252,7 +257,11 @@ function ConfirmationDialog({
                     <li key={item.code} className="flex justify-between text-sm">
                       <span>{item.name}</span>
                       <span className="font-bold">
-                        {item.quantity === "other" ? item.customQuantity : item.quantity}
+                        {item.quantity === "other"
+                          ? item.customQuantity
+                          : item.quantity instanceof Date
+                            ? format(item.quantity, "PPP")
+                            : item.quantity}
                       </span>
                     </li>
                   ))}
@@ -346,7 +355,8 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
     // Filter out empty items before submitting
     const cleanItems = Object.fromEntries(
       Object.entries(data.items || {}).filter(
-        ([_, value]: [string, any]) => value && value.quantity !== "" && value.quantity !== null,
+        ([_, value]: [string, any]) =>
+          value && value.quantity !== "" && value.quantity !== null && value.quantity !== undefined,
       ),
     )
 
@@ -528,12 +538,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                       name="date"
                       control={control}
                       render={({ field }) => (
-                        <DatePicker
-                          value={field.value}
-                          onChange={field.onChange}
-                          className="bg-gray-100 border-gray-300"
-                          placeholder="DD-MM-YYYY"
-                        />
+                        <DatePicker value={field.value} onChange={field.onChange} placeholder="DD-MM-YYYY" />
                       )}
                     />
                     {errors.date && <p className="text-xs text-red-600">{errors.date.message as string}</p>}
