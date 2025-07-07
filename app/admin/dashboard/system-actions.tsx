@@ -1,28 +1,29 @@
 "use client"
 
 import { useState } from "react"
-import { toast } from "sonner"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { addAllowedIp, deleteAllowedIp, runSchemaMigration } from "./actions"
 import type { AllowedIp } from "@/lib/types"
+import { toast } from "sonner"
 
 export function SystemActions({
   allowedIps: initialAllowedIps,
   scriptFiles,
-}: { allowedIps: AllowedIp[]; scriptFiles: string[] }) {
+}: {
+  allowedIps: AllowedIp[]
+  scriptFiles: string[]
+}) {
   const [allowedIps, setAllowedIps] = useState(initialAllowedIps)
   const [newIp, setNewIp] = useState("")
-  const [selectedScript, setSelectedScript] = useState<string | undefined>()
 
   const handleAddIp = async () => {
     const result = await addAllowedIp(newIp)
-    if (result.success && result.data) {
+    if (result.success) {
       toast.success(result.message)
-      setAllowedIps([...allowedIps, result.data])
+      setAllowedIps([...allowedIps, result.data!])
       setNewIp("")
     } else {
       toast.error(result.message)
@@ -39,16 +40,14 @@ export function SystemActions({
     }
   }
 
-  const handleRunMigration = async () => {
-    if (!selectedScript) {
-      toast.warning("Please select a migration script to run.")
-      return
-    }
-    const result = await runSchemaMigration(selectedScript)
-    if (result.success) {
-      toast.success(result.message)
-    } else {
-      toast.error(result.message)
+  const handleRunMigration = async (scriptName: string) => {
+    if (window.confirm(`Are you sure you want to run the migration script: ${scriptName}?`)) {
+      const result = await runSchemaMigration(scriptName)
+      if (result.success) {
+        toast.success(result.message)
+      } else {
+        toast.error(result.message)
+      }
     }
   }
 
@@ -60,58 +59,50 @@ export function SystemActions({
           <CardDescription>Manage IP addresses that can access the admin area.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-2">
-            <Input placeholder="Enter new IP address" value={newIp} onChange={(e) => setNewIp(e.target.value)} />
+          <div className="flex space-x-2">
+            <Input value={newIp} onChange={(e) => setNewIp(e.target.value)} placeholder="Enter new IP address" />
             <Button onClick={handleAddIp}>Add IP</Button>
           </div>
-          <div className="rounded-md border max-h-60 overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>IP Address</TableHead>
-                  <TableHead>Actions</TableHead>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>IP Address</TableHead>
+                <TableHead>Added On</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allowedIps.map((ip) => (
+                <TableRow key={ip.id}>
+                  <TableCell>{ip.ip_address}</TableCell>
+                  <TableCell>{new Date(ip.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="destructive" size="sm" onClick={() => handleDeleteIp(ip.id)}>
+                      Delete
+                    </Button>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {allowedIps.map((ip) => (
-                  <TableRow key={ip.id}>
-                    <TableCell>{ip.ip_address}</TableCell>
-                    <TableCell>
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteIp(ip.id)}>
-                        Delete
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
           <CardTitle>Database Migrations</CardTitle>
-          <CardDescription>Run SQL migration scripts to update the database schema.</CardDescription>
+          <CardDescription>Run SQL migration scripts.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex gap-2">
-            <Select onValueChange={setSelectedScript} value={selectedScript}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a script" />
-              </SelectTrigger>
-              <SelectContent>
-                {scriptFiles.map((script) => (
-                  <SelectItem key={script} value={script}>
-                    {script}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button onClick={handleRunMigration}>Run Migration</Button>
-          </div>
-          <p className="text-sm text-destructive">
-            Warning: Running migrations can cause irreversible changes to your database. Proceed with caution.
-          </p>
+        <CardContent>
+          <ul className="space-y-2">
+            {scriptFiles.map((script) => (
+              <li key={script} className="flex justify-between items-center">
+                <span>{script}</span>
+                <Button size="sm" onClick={() => handleRunMigration(script)}>
+                  Run
+                </Button>
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
     </div>

@@ -1,47 +1,63 @@
 "use client"
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import type { Submission } from "@/lib/types"
-import { format } from "date-fns"
 
-interface SubmissionDetailsDialogProps {
-  submission: Submission | null
-  isOpen: boolean
-  onOpenChange: (isOpen: boolean) => void
-}
-
-export function SubmissionDetailsDialog({ submission, isOpen, onOpenChange }: SubmissionDetailsDialogProps) {
-  if (!submission) return null
-
+export function SubmissionDetailsDialog({ submission }: { submission: Submission }) {
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          View Details
+        </Button>
+      </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Order Details #{submission.order_number}</DialogTitle>
-          <DialogDescription>Submitted on {format(new Date(submission.created_at), "PPP p")}</DialogDescription>
+          <DialogTitle>Order Details - #{submission.order_number}</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <h3 className="font-semibold">Ordered By</h3>
-              <p>{submission.ordered_by}</p>
-              <p>{submission.email}</p>
-            </div>
-            <div>
-              <h3 className="font-semibold">Status</h3>
-              <p>{submission.status}</p>
+        <div className="grid gap-4 py-4">
+          <div className="grid grid-cols-4 items-center gap-4">
+            <p className="font-semibold col-span-1">Status</p>
+            <div className="col-span-3">
+              <Badge variant={submission.status === "Complete" ? "default" : "secondary"}>{submission.status}</Badge>
             </div>
           </div>
-          <div className="mt-4">
-            <h3 className="font-semibold">Order Data</h3>
-            <pre className="mt-2 w-full bg-muted p-4 rounded-md text-sm overflow-x-auto">
-              {JSON.stringify(submission.order_data, null, 2)}
-            </pre>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <p className="font-semibold col-span-1">Brand</p>
+            <p className="col-span-3">{submission.brands?.name}</p>
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <p className="font-semibold col-span-1">Ordered By</p>
+            <p className="col-span-3">{submission.ordered_by}</p>
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <p className="font-semibold col-span-1">Email</p>
+            <p className="col-span-3">{submission.email}</p>
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <p className="font-semibold col-span-1">Date Ordered</p>
+            <p className="col-span-3">{new Date(submission.created_at).toLocaleString()}</p>
+          </div>
+          <div className="grid grid-cols-4 items-start gap-4">
+            <p className="font-semibold col-span-1">Items</p>
+            <div className="col-span-3">
+              <ul className="list-disc pl-5 space-y-1">
+                {Object.entries(submission.items as Record<string, { name: string; quantity: string }>).map(
+                  ([key, item]) => (
+                    <li key={key}>
+                      {item.name}: {item.quantity}
+                    </li>
+                  ),
+                )}
+              </ul>
+            </div>
           </div>
           {submission.notes && (
-            <div className="mt-4">
-              <h3 className="font-semibold">Notes</h3>
-              <p>{submission.notes}</p>
+            <div className="grid grid-cols-4 items-start gap-4">
+              <p className="font-semibold col-span-1">Notes</p>
+              <p className="col-span-3 whitespace-pre-wrap">{submission.notes}</p>
             </div>
           )}
         </div>

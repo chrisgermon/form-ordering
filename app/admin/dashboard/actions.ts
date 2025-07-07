@@ -155,12 +155,13 @@ export async function runSchemaMigration(scriptName: string) {
   }
 }
 
-export async function upsertBrand(formData: FormData) {
+export async function upsertBrand(prevState: any, formData: FormData) {
   const validatedFields = brandSchema.safeParse({
     id: formData.get("id") || undefined,
     name: formData.get("name"),
     slug: formData.get("slug"),
     active: formData.get("active") === "on",
+    logo_url: formData.get("logo_url") || null,
   })
 
   if (!validatedFields.success) {

@@ -1,94 +1,87 @@
 "use client"
 
-import { useEffect } from "react"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import type { z } from "zod"
-import { toast } from "sonner"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
+import { useEffect, useRef } from "react"
+import { useFormState, useFormStatus } from "react-dom"
+import { upsertBrand } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
-import { upsertBrand } from "./actions"
-import { brandSchema } from "@/lib/schemas"
+import { Switch } from "@/components/ui/switch"
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import type { Brand } from "@/lib/types"
+import { toast } from "sonner"
 
-type BrandFormData = z.infer<typeof brandSchema>
+interface BrandFormProps {
+  brand: Brand | null
+  onSuccess: () => void
+}
 
-export function BrandForm({ brand, onSuccess }: { brand: Brand | null; onSuccess: () => void }) {
-  const form = useForm<BrandFormData>({
-    resolver: zodResolver(brandSchema),
-    defaultValues: {
-      id: brand?.id || undefined,
-      name: brand?.name || "",
-      slug: brand?.slug || "",
-      active: brand?.active ?? true,
-    },
-  })
+const initialState = { success: false, message: "", errors: null }
+
+function SubmitButton({ isEditing }: { isEditing: boolean }) {
+  const { pending } = useFormStatus()
+  return (
+    <Button type="submit" disabled={pending}>
+      {pending ? (isEditing ? "Saving..." : "Creating...") : isEditing ? "Save Changes" : "Create Brand"}
+    </Button>
+  )
+}
+
+export function BrandForm({ brand, onSuccess }: BrandFormProps) {
+  const [state, formAction] = useFormState(upsertBrand, initialState)
+  const formRef = useRef<HTMLFormElement>(null)
 
   useEffect(() => {
-    form.reset({
-      id: brand?.id || undefined,
-      name: brand?.name || "",
-      slug: brand?.slug || "",
-      active: brand?.active ?? true,
-    })
-  }, [brand, form])
-
-  const onSubmit = async (data: BrandFormData) => {
-    const formData = new FormData()
-    if (data.id) formData.append("id", data.id)
-    formData.append("name", data.name)
-    formData.append("slug", data.slug)
-    if (data.active) formData.append("active", "on")
-
-    const result = await upsertBrand(formData)
-    if (result.success) {
-      toast.success(result.message)
+    if (state.success) {
+      toast.success(state.message)
+      formRef.current?.reset()
       onSuccess()
-    } else {
-      toast.error(result.message)
+    } else if (state.message) {
+      toast.error(state.message)
     }
-  }
+  }, [state, onSuccess])
+
+  useEffect(() => {
+    if (brand) {
+      formRef.current?.elements.namedItem("name")?.setAttribute("value", brand.name)
+      formRef.current?.elements.namedItem("slug")?.setAttribute("value", brand.slug)
+      formRef.current?.elements.namedItem("logo_url")?.setAttribute("value", brand.logo_url || "")
+      const activeSwitch = formRef.current?.elements.namedItem("active") as HTMLInputElement
+      if (activeSwitch) activeSwitch.checked = brand.active
+    } else {
+      formRef.current?.reset()
+    }
+  }, [brand])
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button>{brand ? "Edit Brand" : "Add New Brand"}</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{brand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <input type="hidden" {...form.register("id")} />
-          <div>
+    <Card>
+      <CardHeader>
+        <CardTitle>{brand ? "Edit Brand" : "Create New Brand"}</CardTitle>
+      </CardHeader>
+      <form action={formAction} ref={formRef}>
+        <CardContent className="space-y-4">
+          {brand && <input type="hidden" name="id" value={brand.id} />}
+          <div className="space-y-2">
             <Label htmlFor="name">Brand Name</Label>
-            <Input id="name" {...form.register("name")} />
-            {form.formState.errors.name && <p className="text-red-500 text-sm">{form.formState.errors.name.message}</p>}
+            <Input id="name" name="name" defaultValue={brand?.name} required />
           </div>
-          <div>
-            <Label htmlFor="slug">Brand Slug</Label>
-            <Input id="slug" {...form.register("slug")} />
-            {form.formState.errors.slug && <p className="text-red-500 text-sm">{form.formState.errors.slug.message}</p>}
+          <div className="space-y-2">
+            <Label htmlFor="slug">Slug</Label>
+            <Input id="slug" name="slug" defaultValue={brand?.slug} required />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="logo_url">Logo URL</Label>
+            <Input id="logo_url" name="logo_url" defaultValue={brand?.logo_url || ""} />
           </div>
           <div className="flex items-center space-x-2">
-            <Checkbox
-              id="active"
-              {...form.register("active")}
-              checked={form.watch("active")}
-              onCheckedChange={(checked) => form.setValue("active", !!checked)}
-            />
+            <Switch id="active" name="active" defaultChecked={brand?.active ?? true} />
             <Label htmlFor="active">Active</Label>
           </div>
-          <DialogFooter>
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? "Saving..." : "Save Brand"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </CardContent>
+        <CardFooter>
+          <SubmitButton isEditing={!!brand} />
+        </CardFooter>
+      </form>
+    </Card>
   )
 }
