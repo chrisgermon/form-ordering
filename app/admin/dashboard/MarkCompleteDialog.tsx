@@ -37,8 +37,8 @@ export function MarkCompleteDialog({ submission, isOpen, onClose }: MarkComplete
 
   useEffect(() => {
     if (!isOpen) {
-      // Reset state when dialog closes
       setDispatchDate(undefined)
+      formRef.current?.reset()
     }
   }, [isOpen])
 
@@ -58,9 +58,7 @@ export function MarkCompleteDialog({ submission, isOpen, onClose }: MarkComplete
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Mark Order as Complete</DialogTitle>
-          <DialogDescription>
-            Fill in the dispatch details for order #{submission.order_number || submission.id.substring(0, 8)}.
-          </DialogDescription>
+          <DialogDescription>Fill in the dispatch details for order #{submission.order_number}.</DialogDescription>
         </DialogHeader>
         <form action={formAction} ref={formRef} className="space-y-4 py-4">
           <input type="hidden" name="submissionId" value={submission.id} />

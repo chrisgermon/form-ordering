@@ -245,32 +245,15 @@ export type Enums<T extends keyof Database["public"]["Enums"]> = Database["publi
 
 export type Brand = {
   id: string
+  created_at: string
   name: string
   slug: string
   logo_url: string | null
-  form_title: string
-  created_at: string
-  sections: Section[]
-}
-
-export type Item = {
-  id: string
-  section_id: string
-  label: string
-  type: "text" | "date" | "checkbox" | "textarea" | "number"
-  required: boolean
-  placeholder: string | null
-  options: string[] | null
-  position: number
-}
-
-export type Section = {
-  id: string
-  brand_id: string
-  title: string
-  description: string | null
-  position: number
-  items: Item[]
+  active: boolean
+  to_emails: string[] | null
+  cc_emails: string[] | null
+  bcc_emails: string[] | null
+  subject_line: string | null
 }
 
 export type Submission = {
@@ -279,23 +262,34 @@ export type Submission = {
   brand_id: string
   ordered_by: string
   email: string
-  patient_name: string
+  order_number: string
+  form_data: Json
   status: "Pending" | "Complete"
-  order_number: string | null
   pdf_url: string | null
-  form_data: Record<string, any>
   dispatch_date: string | null
   tracking_link: string | null
   dispatch_notes: string | null
-  brands: Brand | null // This comes from the join query
-}
-
-export type SubmissionWithBrand = Submission & {
-  brands: Brand
+  brands: Brand | null
+  patient_name: string
 }
 
 export type AllowedIp = {
   id: string
   created_at: string
   ip_address: string
+}
+
+export type Section = {
+  id: string
+  name: string
+  order: number
+  brand_id: string
+  items: FormItem[]
+}
+
+export type FormItem = {
+  id: string
+  name: string
+  order: number
+  section_id: string
 }
