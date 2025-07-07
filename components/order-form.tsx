@@ -1,637 +1,310 @@
 "use client"
 
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
+import { useFormState } from "react-dom"
+import { useEffect, useRef } from "react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Loader2, Send, ChevronDown, ArrowLeft, Search, X } from "lucide-react"
-import { resolveAssetUrl } from "@/lib/utils"
-import type { BrandData, ProductItem } from "@/lib/types"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import Link from "next/link"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { DatePicker } from "@/components/ui/date-picker"
-import Image from "next/image"
-import { Controller, useForm, useWatch } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useState, useMemo } from "react"
-import { getClientSideOrderSchema } from "@/lib/schemas"
-import { toast } from "sonner"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { submitOrder } from "@/app/forms/[brand]/actions"
+import type { Brand, Section, FormItem as FormItemType } from "@/lib/types"
 
-const FormField = ({
-  item,
-  control,
-  getValues,
-  setValue,
-  errors,
-}: {
-  item: ProductItem
-  control: any
-  getValues: any
-  setValue: any
-  errors: any
-}) => {
-  const fieldName = `items.${item.id}`
-  const errorMessage = errors?.items?.[item.id]?.message
+const formSchema = z.object({
+  patient_name: z.string().min(1, "Patient name is required"),
+  patient_dob: z.date({ required_error: "Patient DOB is required" }),
+  patient_phone: z.string().min(1, "Patient phone is required"),
+  patient_email: z.string().email("Invalid email address").optional().or(z.literal("")),
+  patient_medicare: z.string().optional(),
+  referrer_name: z.string().min(1, "Referrer name is required"),
+  referrer_provider_number: z.string().min(1, "Provider number is required"),
+  referrer_email: z.string().email("Invalid email address").optional().or(z.literal("")),
+  clinic_name: z.string().min(1, "Clinic name is required"),
+  urgent: z.boolean().default(false),
+  items: z
+    .array(
+      z.object({
+        name: z.string(),
+        quantity: z.number().min(1),
+      }),
+    )
+    .min(1, "Please select at least one item."),
+})
 
-  const renderField = () => {
-    switch (item.field_type) {
-      case "checkbox_group":
-        const currentItemValue = getValues(fieldName)
-        const handleSelect = (quantity: string, checked: boolean) => {
-          const currentItems = getValues("items") || {}
-          if (checked) {
-            setValue(
-              "items",
-              {
-                ...currentItems,
-                [item.id]: { quantity, name: item.name, code: item.code },
-              },
-              { shouldValidate: true, shouldDirty: true },
-            )
-          } else {
-            const { [item.id]: _, ...rest } = currentItems
-            setValue("items", rest, { shouldValidate: true, shouldDirty: true })
-          }
-        }
-        const handleCustomQuantityChange = (value: string) => {
-          setValue(`${fieldName}.customQuantity`, value, { shouldValidate: true, shouldDirty: true })
-        }
-        const isOtherSelected = currentItemValue?.quantity === "other"
+type FormData = z.infer<typeof formSchema>
 
-        return (
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            {item.options.map((quantity) => (
-              <div key={quantity} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`${item.id}-${quantity}`}
-                  checked={currentItemValue?.quantity === quantity}
-                  onCheckedChange={(checked) => handleSelect(quantity, !!checked)}
-                />
-                <label htmlFor={`${item.id}-${quantity}`} className="text-sm font-medium text-gray-700">
-                  {quantity}
-                </label>
-              </div>
-            ))}
-            {isOtherSelected && (
-              <Input
-                type="text"
-                placeholder="Enter quantity"
-                className="h-8 w-40 border-gray-400"
-                value={currentItemValue?.customQuantity || ""}
-                onChange={(e) => handleCustomQuantityChange(e.target.value)}
-              />
-            )}
-          </div>
-        )
-      case "text":
-        return (
-          <Controller
-            name={`${fieldName}.quantity`}
-            control={control}
-            defaultValue=""
-            render={({ field }) => <Input placeholder={item.placeholder || ""} {...field} />}
-          />
-        )
-      case "textarea":
-        return (
-          <Controller
-            name={`${fieldName}.quantity`}
-            control={control}
-            defaultValue=""
-            render={({ field }) => <Textarea placeholder={item.placeholder || ""} {...field} />}
-          />
-        )
-      case "select":
-        return (
-          <Controller
-            name={`${fieldName}.quantity`}
-            control={control}
-            defaultValue=""
-            render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value}>
-                <SelectTrigger>
-                  <SelectValue placeholder={item.placeholder || "Select an option"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {item.options.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-        )
-      case "date":
-        return (
-          <Controller
-            name={`${fieldName}.quantity`}
-            control={control}
-            render={({ field }) => (
-              <DatePicker
-                value={field.value}
-                onChange={field.onChange}
-                className="bg-gray-100 border-gray-300"
-                placeholder="DD-MM-YYYY"
-              />
-            )}
-          />
-        )
-      default:
-        return null
-    }
-  }
-
-  return (
-    <div className="py-4 border-b border-gray-300 last:border-b-0">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-1 space-y-1">
-          <p className="font-bold text-gray-800">CODE: {item.code}</p>
-          <p className="font-semibold text-gray-700">
-            {item.name} {item.is_required && <span className="text-red-500">*</span>}
-          </p>
-          {item.description && <p className="text-sm text-gray-600">DESCRIPTION: {item.description}</p>}
-          {item.sample_link && (
-            <a
-              href={resolveAssetUrl(item.sample_link)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block mt-1 px-3 py-1 bg-sky-500 text-white text-xs rounded-lg hover:bg-sky-600"
-            >
-              CHECK HERE
-            </a>
-          )}
-        </div>
-        <div className="md:col-span-2">
-          {renderField()}
-          {errorMessage && <p className="text-xs text-red-600 mt-1">{errorMessage}</p>}
-        </div>
-      </div>
-    </div>
-  )
+interface OrderFormProps {
+  brand: Brand & { sections: (Section & { items: FormItemType[] })[] }
 }
 
-function SelectionSidebar({
-  selectedItems,
-  onRemoveItem,
-  formId,
-}: {
-  selectedItems: any
-  onRemoveItem: (itemId: string) => void
-  formId: string
-}) {
-  const items = Object.entries(selectedItems || {}).filter(([_, value]: [string, any]) => value && value.quantity)
+export function OrderForm({ brand }: OrderFormProps) {
+  const formRef = useRef<HTMLFormElement>(null)
+  const [state, formAction] = useFormState(submitOrder.bind(null, brand), {
+    success: false,
+    message: "",
+  })
 
-  return (
-    <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col h-[calc(100vh-4rem)]">
-      <h3 className="text-xl font-semibold text-[#2a3760] mb-4">Current Selection</h3>
-      <div className="flex-grow overflow-y-auto pr-2">
-        {items.length === 0 ? (
-          <p className="text-gray-500 text-sm">No items selected yet.</p>
-        ) : (
-          <ul className="space-y-3">
-            {items.map(([id, item]: [string, any]) => (
-              <li key={id} className="border-b pb-3 last:border-b-0">
-                <div className="flex justify-between items-start gap-2">
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-800 leading-tight">{item.name}</p>
-                    <p className="text-xs text-gray-500">CODE: {item.code}</p>
-                    <p className="text-sm font-bold text-[#1aa7df] mt-1">
-                      Qty: {item.quantity === "other" ? item.customQuantity : item.quantity}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-gray-500 hover:text-red-500 shrink-0"
-                    onClick={() => onRemoveItem(id)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      <div className="mt-auto pt-6 border-t">
-        <Button
-          type="submit"
-          form={formId}
-          disabled={items.length === 0}
-          className="w-full bg-[#2a3760] hover:bg-[#2a3760]/90 text-white font-semibold py-3 text-base disabled:bg-gray-400 disabled:cursor-not-allowed"
-        >
-          <Send className="mr-2 h-4 w-4" />
-          Submit Order
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-function ConfirmationDialog({
-  isOpen,
-  onClose,
-  onConfirm,
-  data,
-  isSubmitting,
-}: {
-  isOpen: boolean
-  onClose: () => void
-  onConfirm: () => void
-  data: any | null
-  isSubmitting: boolean
-}) {
-  if (!data) return null
-
-  const orderItems = Object.values(data.items || {}).filter((item: any) => item && item.quantity)
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[525px]">
-        <DialogHeader>
-          <DialogTitle>Confirm Your Order</DialogTitle>
-          <DialogDescription>Please review your order details below before submitting.</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="space-y-2">
-            <h4 className="font-semibold text-gray-800">Delivery Details</h4>
-            <div className="p-3 bg-gray-50 rounded-md border border-gray-200 text-sm">
-              <p>
-                <span className="font-medium">Deliver To:</span> {data.deliverTo?.name || "N/A"}
-              </p>
-              <p>
-                <span className="font-medium">Confirmation Email:</span> {data.email}
-              </p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <h4 className="font-semibold text-gray-800">Order Contents</h4>
-            <div className="p-3 bg-gray-50 rounded-md border border-gray-200 max-h-60 overflow-y-auto">
-              {orderItems.length > 0 ? (
-                <ul className="space-y-2">
-                  {orderItems.map((item: any) => (
-                    <li key={item.code} className="flex justify-between text-sm">
-                      <span>{item.name}</span>
-                      <span className="font-bold">
-                        {item.quantity === "other" ? item.customQuantity : item.quantity}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-gray-500">No items in this order.</p>
-              )}
-            </div>
-          </div>
-          {data.notes && (
-            <div className="space-y-2">
-              <h4 className="font-semibold text-gray-800">Notes</h4>
-              <div className="p-3 bg-gray-50 rounded-md border border-gray-200 text-sm">
-                <p>{data.notes}</p>
-              </div>
-            </div>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          <Button onClick={onConfirm} disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              "Confirm & Submit"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// Helper to check if clinic data is in the old string[] format
-const isLegacyClinicData = (locations: any): locations is string[] => {
-  return Array.isArray(locations) && locations.length > 0 && typeof locations[0] === "string"
-}
-
-export function OrderForm({ brandData }: { brandData: BrandData }) {
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [isConfirming, setIsConfirming] = useState(false)
-  const [confirmationData, setConfirmationData] = useState<any | null>(null)
-
-  const formSchema = useMemo(() => getClientSideOrderSchema(brandData), [brandData])
-
-  const {
-    register,
-    handleSubmit,
-    control,
-    reset,
-    getValues,
-    setValue,
-    formState: { errors },
-  } = useForm({
+  const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    mode: "onChange",
     defaultValues: {
-      orderedBy: "",
-      email: "",
-      billTo: "",
-      deliverTo: "",
-      items: {},
-      date: new Date(),
-      notes: "",
+      patient_name: "",
+      patient_phone: "",
+      patient_email: "",
+      patient_medicare: "",
+      referrer_name: "",
+      referrer_provider_number: "",
+      referrer_email: "",
+      clinic_name: "",
+      urgent: false,
+      items: [],
     },
   })
 
-  const onInvalid = (errors: any) => {
-    console.error("Form validation errors:", errors)
-    toast.error("Please review the form and fix any errors highlighted in red.")
-  }
-
-  const watchedItems = useWatch({ control, name: "items" })
-
-  const clinicLocations = useMemo(() => {
-    if (isLegacyClinicData(brandData.clinic_locations)) {
-      return brandData.clinic_locations.map((name) => ({ name, address: "", phone: "", email: "" }))
-    }
-    return brandData.clinic_locations || []
-  }, [brandData.clinic_locations])
-
-  const handleFormSubmit = (data: any) => {
-    const selectedBillTo = clinicLocations.find((loc) => loc.name === data.billTo)
-    const selectedDeliverTo = clinicLocations.find((loc) => loc.name === data.deliverTo)
-
-    const payload = {
-      brandId: brandData.id,
-      brandSlug: brandData.slug,
-      orderedBy: data.orderedBy,
-      email: data.email,
-      billTo: selectedBillTo,
-      deliverTo: selectedDeliverTo,
-      date: data.date,
-      items: data.items,
-      notes: data.notes,
-    }
-
-    setConfirmationData(payload)
-    setIsConfirming(true)
-  }
-
-  const handleConfirmSubmit = async () => {
-    if (!confirmationData) return
-
-    setIsSubmitting(true)
-
-    try {
-      const response = await fetch("/api/submit-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(confirmationData),
-      })
-
-      const result = await response.json()
-
-      if (response.ok) {
-        toast.success("Your order has been submitted successfully!")
-        reset()
-        setIsConfirming(false)
+  useEffect(() => {
+    if (state.message) {
+      if (state.success) {
+        toast.success(state.message)
+        form.reset()
       } else {
-        throw new Error(result.details || result.error || "An unknown error occurred.")
+        toast.error(state.message)
       }
-    } catch (error) {
-      toast.error("Failed to submit order.", {
-        description: error instanceof Error ? error.message : "An unknown error occurred.",
-      })
-      setIsConfirming(false)
-    } finally {
-      setIsSubmitting(false)
-      setConfirmationData(null)
     }
+  }, [state, form])
+
+  const onSubmit = (data: FormData) => {
+    const formData = new FormData()
+    Object.entries(data).forEach(([key, value]) => {
+      if (key === "items" && Array.isArray(value)) {
+        value.forEach((item, index) => {
+          formData.append(`items[${index}].name`, item.name)
+          formData.append(`items[${index}].quantity`, String(item.quantity))
+        })
+      } else if (key === "patient_dob" && value instanceof Date) {
+        formData.append(key, value.toISOString().split("T")[0])
+      } else if (typeof value === "boolean") {
+        if (value) formData.append(key, "on")
+      } else {
+        formData.append(key, String(value))
+      }
+    })
+    formAction(formData)
   }
 
-  const handleRemoveItem = (itemId: string) => {
-    const currentItems = getValues("items") || {}
-    const { [itemId]: _, ...rest } = currentItems
-    setValue("items", rest, { shouldValidate: true, shouldDirty: true })
+  const handleItemChange = (checked: boolean, item: FormItemType) => {
+    const currentItems = form.getValues("items")
+    const newItems = checked
+      ? [...currentItems, { name: item.name, quantity: 1 }]
+      : currentItems.filter((i) => i.name !== item.name)
+    form.setValue("items", newItems, { shouldValidate: true })
   }
-
-  const filteredSections = useMemo(() => {
-    if (!searchTerm) {
-      return brandData.product_sections
-    }
-    const lowercasedFilter = searchTerm.toLowerCase()
-    return brandData.product_sections
-      .map((section) => {
-        const filteredItems = section.product_items.filter(
-          (item) =>
-            item.name.toLowerCase().includes(lowercasedFilter) || item.code.toLowerCase().includes(lowercasedFilter),
-        )
-        return { ...section, product_items: filteredItems }
-      })
-      .filter((section) => section.product_items.length > 0)
-  }, [searchTerm, brandData.product_sections])
 
   return (
-    <div className="min-h-screen bg-[#f9f9f9] p-4 sm:p-6 md:p-8 font-work-sans">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <Button asChild variant="outline" className="bg-white">
-            <Link href="/">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to All Forms
-            </Link>
+    <Form {...form}>
+      <form ref={formRef} onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Patient Details</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="patient_name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Patient Name</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="patient_dob"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Date of Birth</FormLabel>
+                  <FormControl>
+                    <DatePicker date={field.value} setDate={field.onChange} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="patient_phone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phone</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="patient_email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email (Optional)</FormLabel>
+                  <FormControl>
+                    <Input type="email" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="patient_medicare"
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>Medicare Number (Optional)</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Referrer Details</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="referrer_name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Referrer Name</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="referrer_provider_number"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Provider Number</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="clinic_name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Clinic Name</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="referrer_email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Referrer Email (for copy of results)</FormLabel>
+                  <FormControl>
+                    <Input type="email" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Order Items</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Accordion type="multiple" className="w-full">
+              {brand.sections.map((section) => (
+                <AccordionItem value={section.id} key={section.id}>
+                  <AccordionTrigger>{section.name}</AccordionTrigger>
+                  <AccordionContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {section.items.map((item) => (
+                      <FormField
+                        key={item.id}
+                        control={form.control}
+                        name="items"
+                        render={() => (
+                          <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                            <FormControl>
+                              <Checkbox
+                                checked={form.watch("items").some((i) => i.name === item.name)}
+                                onCheckedChange={(checked) => handleItemChange(!!checked, item)}
+                              />
+                            </FormControl>
+                            <div className="space-y-1 leading-none">
+                              <FormLabel>{item.name}</FormLabel>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                    ))}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+            <FormField
+              control={form.control}
+              name="items"
+              render={() => (
+                <FormItem>
+                  <FormMessage className="mt-4" />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+
+        <div className="flex items-center justify-between">
+          <FormField
+            control={form.control}
+            name="urgent"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                <FormControl>
+                  <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+                <Label>Mark as Urgent</Label>
+              </FormItem>
+            )}
+          />
+          <Button type="submit" disabled={form.formState.isSubmitting}>
+            {form.formState.isSubmitting ? "Submitting..." : "Submit Order"}
           </Button>
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8 items-start">
-          <div className="flex-grow space-y-8">
-            <div className="text-center">
-              {brandData.logo_url && (
-                <Image
-                  src={resolveAssetUrl(brandData.logo_url) || "/placeholder.svg"}
-                  alt={`${brandData.name} Logo`}
-                  width={331}
-                  height={98}
-                  className="mx-auto object-contain"
-                  priority
-                  crossOrigin="anonymous"
-                />
-              )}
-            </div>
-
-            <div className="bg-white rounded-xl shadow-lg">
-              <div className="bg-[#2a3760] text-white text-center py-4 rounded-t-xl">
-                <h1 className="text-2xl font-semibold">Printing Order Form</h1>
-              </div>
-
-              <form onSubmit={handleSubmit(handleFormSubmit, onInvalid)} className="p-6 sm:p-8" id="order-form">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 mb-8">
-                  <div className="space-y-1">
-                    <label htmlFor="orderedBy" className="text-sm font-medium text-gray-800">
-                      Ordered By: <span className="text-red-500">*</span>
-                    </label>
-                    <Input id="orderedBy" {...register("orderedBy")} className="bg-gray-100 border-gray-300" />
-                    {errors.orderedBy && <p className="text-xs text-red-600">{errors.orderedBy.message}</p>}
-                  </div>
-                  <div className="space-y-1">
-                    <label htmlFor="email" className="text-sm font-medium text-gray-800">
-                      Email Address <span className="text-red-500">*</span>
-                    </label>
-                    <Input id="email" type="email" {...register("email")} className="bg-gray-100 border-gray-300" />
-                    {errors.email && <p className="text-xs text-red-600">{errors.email.message}</p>}
-                  </div>
-                  <div className="space-y-1">
-                    <label htmlFor="billTo" className="text-sm font-medium text-gray-800">
-                      Bill to Clinic: <span className="text-red-500">*</span>
-                    </label>
-                    <Controller
-                      name="billTo"
-                      control={control}
-                      render={({ field }) => (
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <SelectTrigger id="billTo" className="bg-gray-100 border-gray-300">
-                            <SelectValue placeholder="Select a clinic" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {clinicLocations.map((location) => (
-                              <SelectItem key={location.name} value={location.name}>
-                                {location.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                    {errors.billTo && <p className="text-xs text-red-600">{errors.billTo.message}</p>}
-                  </div>
-                  <div className="space-y-1">
-                    <label htmlFor="deliverTo" className="text-sm font-medium text-gray-800">
-                      Deliver to Clinic: <span className="text-red-500">*</span>
-                    </label>
-                    <Controller
-                      name="deliverTo"
-                      control={control}
-                      render={({ field }) => (
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <SelectTrigger id="deliverTo" className="bg-gray-100 border-gray-300">
-                            <SelectValue placeholder="Select a clinic" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {clinicLocations.map((location) => (
-                              <SelectItem key={location.name} value={location.name}>
-                                {location.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                    {errors.deliverTo && <p className="text-xs text-red-600">{errors.deliverTo.message}</p>}
-                  </div>
-                  <div className="space-y-1 sm:col-span-2">
-                    <label htmlFor="date" className="text-sm font-medium text-gray-800">
-                      Date: <span className="text-red-500">*</span>
-                    </label>
-                    <Controller
-                      name="date"
-                      control={control}
-                      render={({ field }) => (
-                        <DatePicker
-                          value={field.value}
-                          onChange={field.onChange}
-                          className="bg-gray-100 border-gray-300"
-                          placeholder="DD-MM-YYYY"
-                        />
-                      )}
-                    />
-                    {errors.date && <p className="text-xs text-red-600">{errors.date.message}</p>}
-                  </div>
-                  <div className="space-y-1 sm:col-span-2">
-                    <label htmlFor="notes" className="text-sm font-medium text-gray-800">
-                      Notes:
-                    </label>
-                    <Textarea id="notes" {...register("notes")} className="bg-gray-100 border-gray-300" />
-                  </div>
-                </div>
-
-                <div className="relative mb-6">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  <Input
-                    type="text"
-                    placeholder="Search by item name or code..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 bg-gray-100 border-gray-300"
-                  />
-                </div>
-
-                <div className="space-y-4">
-                  {filteredSections.map((section) => (
-                    <Collapsible key={section.id} className="border border-dashed border-[#293563] rounded-lg">
-                      <CollapsibleTrigger className="w-full p-4 flex justify-between items-center group hover:bg-gray-50 rounded-t-lg">
-                        <h2 className="text-lg font-semibold text-[#1aa7df]">{section.title}</h2>
-                        <ChevronDown className="h-5 w-5 text-gray-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="p-4 pt-0">
-                          <div className="space-y-4">
-                            {section.product_items.map((item) => (
-                              <FormField
-                                key={item.id}
-                                item={item}
-                                control={control}
-                                getValues={getValues}
-                                setValue={setValue}
-                                errors={errors}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ))}
-                </div>
-
-                <div className="flex justify-center mt-8 pt-6">
-                  <Button
-                    type="submit"
-                    className="bg-[#2a3760] hover:bg-[#2a3760]/90 text-white font-semibold px-12 py-6 text-base"
-                  >
-                    <Send className="mr-2 h-4 w-4" />
-                    Submit
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-
-          <aside className="hidden lg:block sticky top-8">
-            <SelectionSidebar selectedItems={watchedItems} onRemoveItem={handleRemoveItem} formId="order-form" />
-          </aside>
-        </div>
-      </div>
-      <ConfirmationDialog
-        isOpen={isConfirming}
-        onClose={() => setIsConfirming(false)}
-        onConfirm={handleConfirmSubmit}
-        data={confirmationData}
-        isSubmitting={isSubmitting}
-      />
-    </div>
+      </form>
+    </Form>
   )
 }

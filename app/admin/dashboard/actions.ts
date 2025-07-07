@@ -3,38 +3,69 @@
 import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { z } from "zod"
-import type { AllowedIp, Submission, Brand } from "@/lib/types"
 import { sendCompletionEmail } from "@/lib/email"
+import type { Submission, AllowedIp } from "@/lib/types"
 import { promises as fs } from "fs"
 import path from "path"
 
-const BrandSchema = z.object({
-  name: z.string().min(1, "Brand name is required."),
-  slug: z.string().min(1, "Brand slug is required."),
-  active: z.boolean(),
+const markCompleteSchema = z.object({
+  submissionId: z.string(),
+  dispatch_date: z.string().optional().nullable(),
+  tracking_link: z.string().optional().nullable(),
+  dispatch_notes: z.string().optional().nullable(),
 })
 
-export async function addBrand(prevState: any, formData: FormData) {
-  const validatedFields = BrandSchema.safeParse({
-    name: formData.get("name"),
-    slug: formData.get("slug"),
-    active: formData.get("active") === "on",
+export async function markSubmissionAsComplete(prevState: any, formData: FormData) {
+  const supabase = createAdminClient()
+  const validatedFields = markCompleteSchema.safeParse({
+    submissionId: formData.get("submissionId"),
+    dispatch_date: formData.get("dispatch_date"),
+    tracking_link: formData.get("tracking_link"),
+    dispatch_notes: formData.get("dispatch_notes"),
   })
 
   if (!validatedFields.success) {
-    return { success: false, message: "Invalid data.", errors: validatedFields.error.flatten().fieldErrors }
+    return {
+      success: false,
+      message: "Invalid data provided.",
+      errors: validatedFields.error.flatten().fieldErrors,
+    }
   }
 
-  const supabase = createAdminClient()
-  const { error } = await supabase.from("brands").insert(validatedFields.data)
+  const { submissionId, ...updateData } = validatedFields.data
+
+  const { data: submission, error: fetchError } = await supabase
+    .from("submissions")
+    .select("*, brands(*)")
+    .eq("id", submissionId)
+    .single()
+
+  if (fetchError || !submission) {
+    return { success: false, message: "Failed to find submission." }
+  }
+
+  const { error } = await supabase
+    .from("submissions")
+    .update({
+      ...updateData,
+      status: "Complete",
+      dispatch_date: updateData.dispatch_date || null,
+    })
+    .eq("id", submissionId)
 
   if (error) {
-    console.error("Error adding brand:", error)
+    console.error("Error marking order as complete:", error)
     return { success: false, message: `Database Error: ${error.message}` }
   }
 
+  try {
+    await sendCompletionEmail(submission as Submission, updateData)
+  } catch (emailError) {
+    console.error("Failed to send completion email:", emailError)
+  }
+
   revalidatePath("/admin/dashboard")
-  return { success: true, message: "Brand added successfully." }
+  return { success: true, message: "Order marked as complete!" }
 }
 
 export async function deleteBrand(id: string) {
@@ -48,67 +79,6 @@ export async function deleteBrand(id: string) {
 
   revalidatePath("/admin/dashboard")
   return { success: true, message: "Brand deleted successfully." }
-}
-
-const MarkCompleteSchema = z.object({
-  submissionId: z.string().uuid(),
-  dispatchDate: z.string().optional().nullable(),
-  trackingLink: z.string().url("Please enter a valid URL.").optional().or(z.literal("")).nullable(),
-  notes: z.string().optional().nullable(),
-})
-
-export async function markSubmissionAsComplete(
-  prevState: any,
-  formData: FormData,
-): Promise<{ success: boolean; message: string; errors?: any; data?: any }> {
-  const validatedFields = MarkCompleteSchema.safeParse({
-    submissionId: formData.get("submissionId"),
-    dispatchDate: formData.get("dispatchDate"),
-    trackingLink: formData.get("trackingLink"),
-    notes: formData.get("notes"),
-  })
-
-  if (!validatedFields.success) {
-    return {
-      success: false,
-      message: "Invalid data provided.",
-      errors: validatedFields.error.flatten().fieldErrors,
-    }
-  }
-
-  const { submissionId, dispatchDate, trackingLink, notes } = validatedFields.data
-  const supabase = createAdminClient()
-
-  const { data, error } = await supabase
-    .from("submissions")
-    .update({
-      status: "Complete",
-      dispatch_date: dispatchDate || null,
-      tracking_link: trackingLink || null,
-      dispatch_notes: notes || null,
-    })
-    .eq("id", submissionId)
-    .select(
-      `*,
-      brands (
-        id, name, slug, logo_url, to_emails, cc_emails, bcc_emails, subject_line
-      )
-    `,
-    )
-    .single()
-
-  if (error) {
-    console.error("Error marking submission as complete:", error)
-    return { success: false, message: "Database error: Could not update submission." }
-  }
-
-  if (data && data.brands) {
-    const brand = data.brands as unknown as Brand
-    await sendCompletionEmail(data as Submission, brand, brand.logo_url)
-  }
-
-  revalidatePath("/admin/dashboard")
-  return { success: true, message: `Order #${data.order_number} marked as complete.`, data }
 }
 
 const IpSchema = z.string().ip({ version: "v4", message: "Invalid IP address." })

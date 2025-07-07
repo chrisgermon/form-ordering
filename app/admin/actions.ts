@@ -181,28 +181,29 @@ export async function importFromJotform(brandId: string, brandSlug: string, html
   }
 }
 
-const brandFormSchema = z.object({
-  id: z.string().optional(),
+const brandSchema = z.object({
+  id: z.string().optional().or(z.literal("")),
   name: z.string().min(1, "Brand name is required."),
-  slug: z.string().min(1, "Slug is required."),
+  slug: z.string().min(1, "Brand slug is required."),
   active: z.preprocess((val) => val === "on" || val === true, z.boolean()),
   logo: z.instanceof(File).optional(),
-  existing_logo_url: z.string().optional(),
+  existing_logo_url: z.string().optional().or(z.literal("")),
 })
 
 export async function updateBrand(prevState: any, formData: FormData) {
   const supabase = createAdminClient()
 
-  const validatedFields = brandFormSchema.safeParse({
-    id: formData.get("id") as string,
-    name: formData.get("name") as string,
-    slug: formData.get("slug") as string,
-    active: formData.get("active") as string,
-    logo: formData.get("logo") as File,
-    existing_logo_url: formData.get("existing_logo_url") as string,
+  const validatedFields = brandSchema.safeParse({
+    id: formData.get("id"),
+    name: formData.get("name"),
+    slug: formData.get("slug"),
+    active: formData.get("active"),
+    logo: formData.get("logo"),
+    existing_logo_url: formData.get("existing_logo_url"),
   })
 
   if (!validatedFields.success) {
+    console.error("Validation errors:", validatedFields.error.flatten().fieldErrors)
     return {
       success: false,
       message: "Invalid data provided.",
@@ -232,11 +233,15 @@ export async function updateBrand(prevState: any, formData: FormData) {
       return { success: false, message: `Database error: ${error.message}` }
     }
   } else {
-    return { success: false, message: "Brand ID is missing for update." }
+    const { error } = await supabase.from("brands").insert(brandData)
+    if (error) {
+      console.error("Error creating brand:", error)
+      return { success: false, message: `Database error: ${error.message}` }
+    }
   }
 
   revalidatePath("/admin/dashboard")
+  revalidatePath("/")
   revalidatePath(`/forms/${slug}`)
-  revalidatePath(`/admin/editor/${slug}`)
-  return { success: true, message: "Brand updated successfully!" }
+  return { success: true, message: id ? "Brand updated successfully!" : "Brand created successfully!" }
 }
