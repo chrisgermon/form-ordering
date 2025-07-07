@@ -8,65 +8,33 @@ import { sendCompletionEmail } from "@/lib/email"
 import { promises as fs } from "fs"
 import path from "path"
 
-const BrandFormSchema = z.object({
-  id: z.string().optional().or(z.literal("")),
-  name: z.string().min(1, "Name is required"),
-  slug: z.string().min(1, "Slug is required"),
-  active: z.preprocess((val) => val === "on" || val === true, z.boolean()),
+const BrandSchema = z.object({
+  name: z.string().min(1, "Brand name is required."),
+  slug: z.string().min(1, "Brand slug is required."),
+  active: z.boolean(),
 })
 
-export async function createOrUpdateBrand(prevState: any, formData: FormData) {
-  const supabase = createAdminClient()
-
-  const rawData = Object.fromEntries(formData.entries())
-  const validatedFields = BrandFormSchema.safeParse(rawData)
+export async function addBrand(prevState: any, formData: FormData) {
+  const validatedFields = BrandSchema.safeParse({
+    name: formData.get("name"),
+    slug: formData.get("slug"),
+    active: formData.get("active") === "on",
+  })
 
   if (!validatedFields.success) {
-    console.error("Validation Error:", validatedFields.error.flatten())
-    return { success: false, message: "Invalid data provided." }
+    return { success: false, message: "Invalid data.", errors: validatedFields.error.flatten().fieldErrors }
   }
 
-  const { id, ...brandData } = validatedFields.data
-  const logoFile = formData.get("logo") as File
-  let logoUrl: string | undefined = undefined
+  const supabase = createAdminClient()
+  const { error } = await supabase.from("brands").insert(validatedFields.data)
 
-  if (logoFile && logoFile.size > 0) {
-    const filePath = `public/${Date.now()}-${logoFile.name}`
-    const { error: uploadError } = await supabase.storage.from("brand-assets").upload(filePath, logoFile)
-
-    if (uploadError) {
-      console.error("Logo upload error:", uploadError)
-      return { success: false, message: "Failed to upload logo." }
-    }
-
-    const { data: publicUrlData } = supabase.storage.from("brand-assets").getPublicUrl(filePath)
-    logoUrl = publicUrlData.publicUrl
+  if (error) {
+    console.error("Error adding brand:", error)
+    return { success: false, message: `Database Error: ${error.message}` }
   }
 
-  const dataToUpsert: any = { ...brandData }
-  if (logoUrl) {
-    dataToUpsert.logo_url = logoUrl
-  }
-
-  if (id) {
-    // Update
-    const { error } = await supabase.from("brands").update(dataToUpsert).eq("id", id)
-    if (error) {
-      console.error("Brand update error:", error)
-      return { success: false, message: `Failed to update brand: ${error.message}` }
-    }
-    revalidatePath("/admin/dashboard")
-    return { success: true, message: "Brand updated successfully." }
-  } else {
-    // Create
-    const { error } = await supabase.from("brands").insert(dataToUpsert).select().single()
-    if (error) {
-      console.error("Brand create error:", error)
-      return { success: false, message: `Failed to create brand: ${error.message}` }
-    }
-    revalidatePath("/admin/dashboard")
-    return { success: true, message: "Brand created successfully." }
-  }
+  revalidatePath("/admin/dashboard")
+  return { success: true, message: "Brand added successfully." }
 }
 
 export async function deleteBrand(id: string) {
@@ -85,7 +53,7 @@ export async function deleteBrand(id: string) {
 const MarkCompleteSchema = z.object({
   submissionId: z.string().uuid(),
   dispatchDate: z.string().optional().nullable(),
-  trackingLink: z.string().url().optional().or(z.literal("")).nullable(),
+  trackingLink: z.string().url("Please enter a valid URL.").optional().or(z.literal("")).nullable(),
   notes: z.string().optional().nullable(),
 })
 
