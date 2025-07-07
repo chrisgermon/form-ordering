@@ -54,12 +54,21 @@ export async function saveForm(prevState: any, formData: FormData) {
   const brandId = formData.get("id") as string
   const brandSlug = formData.get("slug") as string
 
+  // Helper to convert comma-separated string to a clean string array
+  const stringToArray = (str: string | null | undefined): string[] => {
+    if (!str) return []
+    return str
+      .split(",")
+      .map((email) => email.trim())
+      .filter((email) => email.length > 0)
+  }
+
   const brandUpdateData = {
     name: formData.get("name") as string,
     initials: formData.get("initials") as string,
-    to_emails: formData.get("to_emails") as string,
-    cc_emails: formData.get("cc_emails") as string,
-    bcc_emails: formData.get("bcc_emails") as string,
+    to_emails: stringToArray(formData.get("to_emails") as string),
+    cc_emails: stringToArray(formData.get("cc_emails") as string),
+    bcc_emails: stringToArray(formData.get("bcc_emails") as string),
     subject_line: formData.get("subject_line") as string,
     form_title: formData.get("form_title") as string,
     form_subtitle: formData.get("form_subtitle") as string,
