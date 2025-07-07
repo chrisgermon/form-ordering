@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
-import type { Brand, BrandData, Submission, UploadedFile } from "@/lib/types"
+import type { Brand, BrandData, Submission, UploadedFile, AllowedIp } from "@/lib/types"
 
 export async function getActiveBrands(): Promise<Pick<Brand, "id" | "name" | "slug" | "logo_url">[]> {
   const supabase = createAdminClient()
@@ -24,6 +24,7 @@ export async function getActiveBrands(): Promise<Pick<Brand, "id" | "name" | "sl
 export async function getAllBrands(): Promise<Brand[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase.from("brands").select("*").order("name", { ascending: true })
+
   if (error) {
     console.error("Error fetching brands:", error)
     return []
@@ -35,29 +36,59 @@ export async function getSubmissions(): Promise<Submission[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from("submissions")
-    .select("*, brands(name)")
+    .select(
+      `
+      id,
+      created_at,
+      ordered_by,
+      email,
+      status,
+      pdf_url,
+      ip_address,
+      order_data,
+      order_number,
+      dispatch_date,
+      tracking_link,
+      dispatch_notes,
+      brands (
+        name
+      )
+    `,
+    )
     .order("created_at", { ascending: false })
 
   if (error) {
     console.error("Error fetching submissions:", error)
     return []
   }
-  // The view might return a slightly different shape, so we cast it.
-  // Ensure your `Submission` type matches the view's output.
   return (data as Submission[]) || []
 }
 
-export async function getUploadedFiles(): Promise<UploadedFile[]> {
+export async function getUploadedFiles(brandId?: string): Promise<UploadedFile[]> {
   const supabase = createAdminClient()
-  // Fetch only global files (where brand_id is null)
-  const { data, error } = await supabase
-    .from("uploaded_files")
-    .select("*")
-    .is("brand_id", null)
-    .order("uploaded_at", { ascending: false })
+  let query = supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false })
+
+  if (brandId) {
+    query = query.eq("brand_id", brandId)
+  } else {
+    query = query.is("brand_id", null)
+  }
+
+  const { data, error } = await query
 
   if (error) {
-    console.error("Error fetching global files:", error)
+    console.error("Error fetching files:", error)
+    return []
+  }
+  return data || []
+}
+
+export async function getAllowedIps(): Promise<AllowedIp[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.from("allowed_ips").select("*").order("created_at", { ascending: true })
+
+  if (error) {
+    console.error("Error fetching allowed IPs:", error)
     return []
   }
   return data || []
@@ -65,58 +96,36 @@ export async function getUploadedFiles(): Promise<UploadedFile[]> {
 
 export async function getBrandBySlug(slug: string): Promise<BrandData | null> {
   const supabase = createAdminClient()
-  try {
-    // Step 1: Fetch brand, ensuring it's active. Using '*' is more robust to schema changes.
-    const { data: brand, error: brandError } = await supabase
-      .from("brands")
-      .select("*")
-      .eq("slug", slug)
-      .eq("active", true)
-      .single()
-
-    if (brandError || !brand) {
-      if (brandError) {
-        console.error(`Error fetching brand by slug '${slug}':`, brandError.message)
-      }
-      return null
-    }
-
-    // Step 2: Fetch sections
-    const { data: sections, error: sectionsError } = await supabase
-      .from("product_sections")
-      .select("*")
-      .eq("brand_id", brand.id)
-      .order("sort_order")
-
-    if (sectionsError) {
-      console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
-      return { ...brand, product_sections: [] }
-    }
-
-    // Step 3: Fetch items for each section
-    const sectionsWithItems = await Promise.all(
-      (sections || []).map(async (section) => {
-        const { data: items, error: itemsError } = await supabase
-          .from("product_items")
-          .select("*")
-          .eq("section_id", section.id)
-          .order("sort_order")
-
-        if (itemsError) {
-          console.error(`Error fetching items for section '${section.title}':`, itemsError.message)
-          return { ...section, product_items: [] }
-        }
-        return { ...section, product_items: items || [] }
-      }),
+  const { data, error } = await supabase
+    .from("brands")
+    .select(
+      `
+      *,
+      product_sections (
+        *,
+        product_items (
+          *
+        )
+      )
+    `,
     )
+    .eq("slug", slug)
+    .single()
 
-    // Step 4: Assemble and return final object
-    return {
-      ...brand,
-      product_sections: sectionsWithItems,
-    }
-  } catch (error) {
-    console.error(`Unexpected error in getBrandBySlug for slug '${slug}':`, error)
+  if (error) {
+    console.error(`Error fetching brand by slug ${slug}:`, error)
     return null
   }
+
+  // Sort sections and items within sections
+  if (data && data.product_sections) {
+    data.product_sections.sort((a, b) => a.sort_order - b.sort_order)
+    data.product_sections.forEach((section) => {
+      if (section.product_items) {
+        section.product_items.sort((a, b) => a.sort_order - b.sort_order)
+      }
+    })
+  }
+
+  return data as BrandData
 }

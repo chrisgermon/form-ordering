@@ -7,25 +7,20 @@ import { seedDatabase as seed } from "@/lib/seed-database"
 async function runDbMigration(fileName: string) {
   try {
     const supabase = createAdminClient()
-
     // In this environment, we can't use 'fs'. We fetch the migration file instead.
-    // This relies on the preview environment making project files available via fetch.
     const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"
     const fileUrl = new URL(`/scripts/${fileName}`, baseUrl)
-
     const response = await fetch(fileUrl)
-
     if (!response.ok) {
       throw new Error(`Failed to fetch migration file ${fileName}: ${response.status} ${response.statusText}`)
     }
-
     const sql = await response.text()
-
     const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
     if (error) {
       console.error(`Error running migration ${fileName}:`, error)
       throw new Error(`Migration ${fileName} failed: ${error.message}`)
     }
+    revalidatePath("/admin/dashboard")
     return { success: true, message: `Migration ${fileName} completed successfully.` }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
@@ -81,6 +76,12 @@ export async function runSchemaV16Update() {
 export async function runSchemaV21Update() {
   return runDbMigration("update-schema-v21.sql")
 }
+export async function runSchemaV22Update() {
+  return runDbMigration("update-schema-v22.sql")
+}
+export async function runSchemaV23Update() {
+  return runDbMigration("update-schema-v23.sql")
+}
 
 export async function forceSchemaReload() {
   return runDbMigration("force-schema-reload.sql")
@@ -94,5 +95,40 @@ export async function seedDatabase() {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
     return { success: false, message: `Database seeding failed: ${errorMessage}` }
+  }
+}
+
+export async function markAsComplete(formData: FormData) {
+  const supabase = createAdminClient()
+  const submissionId = formData.get("submissionId") as string
+  const dispatchDate = formData.get("dispatchDate") as string | null
+  const trackingLink = formData.get("trackingLink") as string | null
+  const dispatchNotes = formData.get("dispatchNotes") as string | null
+
+  if (!submissionId) {
+    return { error: "Submission ID is required." }
+  }
+
+  try {
+    const { error } = await supabase
+      .from("submissions")
+      .update({
+        status: "complete",
+        dispatch_date: dispatchDate ? new Date(dispatchDate).toISOString() : null,
+        tracking_link: trackingLink,
+        dispatch_notes: dispatchNotes,
+      })
+      .eq("id", submissionId)
+
+    if (error) {
+      console.error("Error updating submission:", error)
+      throw new Error(error.message)
+    }
+
+    revalidatePath("/admin/dashboard")
+    return { success: true }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return { error: `Failed to mark as complete: ${errorMessage}` }
   }
 }

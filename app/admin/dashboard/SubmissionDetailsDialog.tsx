@@ -1,140 +1,92 @@
 "use client"
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import type { Submission } from "@/lib/types"
-import { format } from "date-fns"
+import type { Submission, OrderSection } from "@/lib/types"
 
-export function SubmissionDetailsDialog({
-  submission,
-  isOpen,
-  onClose,
-}: {
+interface SubmissionDetailsDialogProps {
   submission: Submission | null
   isOpen: boolean
-  onClose: () => void
-}) {
+  onOpenChange: (isOpen: boolean) => void
+}
+
+export function SubmissionDetailsDialog({ submission, isOpen, onOpenChange }: SubmissionDetailsDialogProps) {
   if (!submission) return null
 
-  // Correctly destructure data from the submission object
-  const { order_data, created_at, ordered_by, email, ip_address, brands, pdf_url, order_number } = submission
-
-  // Use a fallback for order_data if it's null or undefined
-  const data = order_data || {}
-
-  // Extract details from the flat order_data structure
-  const billTo = data.billTo
-  const deliverTo = data.deliverTo
-  const notes = data.notes
-  const items = data.items || {}
-  const orderItems = Object.values(items).filter((item: any) => item && item.quantity)
-  const brand_name = brands?.name
-
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-3xl">
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Order Summary: {order_number}</DialogTitle>
+          <DialogTitle>Order Details #{submission.order_number}</DialogTitle>
           <DialogDescription>
-            Submitted on {format(new Date(created_at), "dd/MM/yyyy 'at' hh:mm a")} for {brand_name}
+            Submitted by {submission.ordered_by} ({submission.email}) on{" "}
+            {new Date(submission.created_at).toLocaleString()}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-          <div className="space-y-2">
-            <h4 className="font-semibold text-gray-800">Submitter Details</h4>
-            <div className="text-sm space-y-1">
-              <p>
-                <strong>Name:</strong> {ordered_by}
-              </p>
-              <p>
-                <strong>Email:</strong> {email}
-              </p>
-              <p>
-                <strong>IP Address:</strong> {ip_address || "N/A"}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <h4 className="font-semibold text-gray-800">Billing Address</h4>
-              <div className="text-xs text-muted-foreground space-y-1">
-                <p>{billTo?.name || "N/A"}</p>
-                <p>{billTo?.address || "No address provided"}</p>
-                <p>Phone: {billTo?.phone || "N/A"}</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-semibold text-gray-800">Delivery Address</h4>
-              <div className="text-xs text-muted-foreground space-y-1">
-                <p>{deliverTo?.name || "N/A"}</p>
-                <p>{deliverTo?.address || "No address provided"}</p>
-                <p>Phone: {deliverTo?.phone || "N/A"}</p>
-              </div>
-            </div>
-          </div>
-
+        <div className="mt-4 space-y-6 max-h-[60vh] overflow-y-auto pr-4">
           <div>
-            <h4 className="font-semibold text-gray-800 mb-2">Ordered Items</h4>
-            <div className="border rounded-md">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {orderItems.length > 0 ? (
-                    orderItems.map((item: any) => (
-                      <TableRow key={item.code}>
-                        <TableCell className="font-mono text-xs">{item.code}</TableCell>
-                        <TableCell>{item.name}</TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {item.quantity === "other" ? item.customQuantity : item.quantity}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={3} className="h-24 text-center">
-                        No items in this order.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+            <h3 className="font-semibold text-lg mb-2">Order Summary</h3>
+            <div className="space-y-4">
+              {submission.order_data.sections.map((section: OrderSection, index: number) => (
+                <div key={index} className="rounded-md border p-4">
+                  <h4 className="font-medium text-md mb-2">{section.title}</h4>
+                  <ul className="list-disc pl-5 space-y-1 text-sm">
+                    {section.items.map((item, itemIndex) => (
+                      <li key={itemIndex}>
+                        {item.name}
+                        {item.quantity && `: ${item.quantity}`}
+                        {item.value && `: ${item.value}`}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
           </div>
 
-          {notes && (
+          {submission.status === "complete" && (
             <div>
-              <h4 className="font-semibold text-gray-800">Notes</h4>
-              <p className="text-sm text-muted-foreground p-3 bg-gray-50 rounded-md border mt-2">{notes}</p>
+              <h3 className="font-semibold text-lg mb-2">Dispatch Information</h3>
+              <div className="text-sm space-y-2">
+                <p>
+                  <strong>Dispatch Date:</strong>{" "}
+                  {submission.dispatch_date ? new Date(submission.dispatch_date).toLocaleDateString() : "N/A"}
+                </p>
+                <p>
+                  <strong>Tracking Link:</strong>{" "}
+                  {submission.tracking_link ? (
+                    <a
+                      href={submission.tracking_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      {submission.tracking_link}
+                    </a>
+                  ) : (
+                    "N/A"
+                  )}
+                </p>
+                <div>
+                  <strong>Notes:</strong>
+                  <p className="mt-1 text-gray-600 whitespace-pre-wrap">
+                    {submission.dispatch_notes || "No notes provided."}
+                  </p>
+                </div>
+              </div>
             </div>
           )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Close
-          </Button>
-          {pdf_url && (
-            <Button asChild>
-              <a href={pdf_url} target="_blank" rel="noopener noreferrer">
+        <div className="mt-6 flex justify-end space-x-2">
+          {submission.pdf_url && (
+            <Button asChild variant="outline">
+              <a href={submission.pdf_url} target="_blank" rel="noopener noreferrer">
                 View PDF
               </a>
             </Button>
           )}
-        </DialogFooter>
+          <Button onClick={() => onOpenChange(false)}>Close</Button>
+        </div>
       </DialogContent>
     </Dialog>
   )
