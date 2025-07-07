@@ -1,92 +1,109 @@
 "use client"
 
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import type { Submission, OrderSection } from "@/lib/types"
+import type { Submission } from "@/lib/types"
+import { format, isValid } from "date-fns"
+import { ClientOnly } from "@/components/client-only"
 
 interface SubmissionDetailsDialogProps {
   submission: Submission | null
   isOpen: boolean
-  onOpenChange: (isOpen: boolean) => void
+  onClose: () => void
 }
 
-export function SubmissionDetailsDialog({ submission, isOpen, onOpenChange }: SubmissionDetailsDialogProps) {
+export function SubmissionDetailsDialog({ submission, isOpen, onClose }: SubmissionDetailsDialogProps) {
   if (!submission) return null
 
+  const renderValue = (value: any) => {
+    if (typeof value === "boolean") {
+      return value ? "Yes" : "No"
+    }
+    if (Array.isArray(value)) {
+      return value.join(", ")
+    }
+    return value || "N/A"
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Order Details #{submission.order_number}</DialogTitle>
+          <DialogTitle>Order Details: #{submission.order_number || "N/A"}</DialogTitle>
           <DialogDescription>
-            Submitted by {submission.ordered_by} ({submission.email}) on{" "}
-            {new Date(submission.created_at).toLocaleString()}
+            Submitted on{" "}
+            <ClientOnly>
+              {isValid(new Date(submission.created_at))
+                ? format(new Date(submission.created_at), "PPP 'at' h:mm a")
+                : "Invalid Date"}
+            </ClientOnly>
           </DialogDescription>
         </DialogHeader>
-        <div className="mt-4 space-y-6 max-h-[60vh] overflow-y-auto pr-4">
-          <div>
-            <h3 className="font-semibold text-lg mb-2">Order Summary</h3>
-            <div className="space-y-4">
-              {submission.order_data.sections.map((section: OrderSection, index: number) => (
-                <div key={index} className="rounded-md border p-4">
-                  <h4 className="font-medium text-md mb-2">{section.title}</h4>
-                  <ul className="list-disc pl-5 space-y-1 text-sm">
-                    {section.items.map((item, itemIndex) => (
-                      <li key={itemIndex}>
-                        {item.name}
-                        {item.quantity && `: ${item.quantity}`}
-                        {item.value && `: ${item.value}`}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+        <div className="max-h-[60vh] overflow-y-auto p-1 pr-4">
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="font-semibold">Brand:</div>
+              <div className="col-span-2">{submission.brands?.name || "N/A"}</div>
             </div>
-          </div>
-
-          {submission.status === "complete" && (
-            <div>
-              <h3 className="font-semibold text-lg mb-2">Dispatch Information</h3>
-              <div className="text-sm space-y-2">
-                <p>
-                  <strong>Dispatch Date:</strong>{" "}
-                  {submission.dispatch_date ? new Date(submission.dispatch_date).toLocaleDateString() : "N/A"}
-                </p>
-                <p>
-                  <strong>Tracking Link:</strong>{" "}
-                  {submission.tracking_link ? (
-                    <a
-                      href={submission.tracking_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      {submission.tracking_link}
-                    </a>
-                  ) : (
-                    "N/A"
-                  )}
-                </p>
-                <div>
-                  <strong>Notes:</strong>
-                  <p className="mt-1 text-gray-600 whitespace-pre-wrap">
-                    {submission.dispatch_notes || "No notes provided."}
-                  </p>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="font-semibold">Ordered By:</div>
+              <div className="col-span-2">{submission.ordered_by}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="font-semibold">Email:</div>
+              <div className="col-span-2">{submission.email}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="font-semibold">Phone:</div>
+              <div className="col-span-2">{submission.phone || "N/A"}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="font-semibold">Status:</div>
+              <div className="col-span-2 capitalize">{submission.status || "pending"}</div>
+            </div>
+            {submission.pdf_url && (
+              <div className="grid grid-cols-3 gap-2">
+                <div className="font-semibold">PDF:</div>
+                <div className="col-span-2">
+                  <a
+                    href={submission.pdf_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    View PDF
+                  </a>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+
+            <h3 className="font-bold text-lg mt-4 border-b pb-2">Order Items</h3>
+            {submission.order_items &&
+            typeof submission.order_items === "object" &&
+            !Array.isArray(submission.order_items) ? (
+              Object.entries(submission.order_items).map(([key, value]) => (
+                <div key={key} className="grid grid-cols-3 gap-2 text-sm">
+                  <div className="font-medium truncate" title={key}>
+                    {key}
+                  </div>
+                  <div className="col-span-2">{renderValue(value)}</div>
+                </div>
+              ))
+            ) : (
+              <p>No items in this order.</p>
+            )}
+          </div>
         </div>
-        <div className="mt-6 flex justify-end space-x-2">
-          {submission.pdf_url && (
-            <Button asChild variant="outline">
-              <a href={submission.pdf_url} target="_blank" rel="noopener noreferrer">
-                View PDF
-              </a>
-            </Button>
-          )}
-          <Button onClick={() => onOpenChange(false)}>Close</Button>
-        </div>
+        <DialogFooter>
+          <Button onClick={onClose}>Close</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

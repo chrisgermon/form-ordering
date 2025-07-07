@@ -1,8 +1,8 @@
 "use client"
 
-import type React from "react"
+import type { ReactNode } from "react"
 
-import { useState, useMemo, useTransition, useEffect } from "react"
+import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -24,7 +24,8 @@ import { SubmissionDetailsDialog } from "./SubmissionDetailsDialog"
 import { MarkCompleteDialog } from "./MarkCompleteDialog"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import type { DateRange } from "react-day-picker"
-import { subDays, format } from "date-fns"
+import { subDays, format, isValid } from "date-fns"
+import { ClientOnly } from "@/components/client-only"
 
 interface SubmissionsTableProps {
   initialSubmissions: Submission[]
@@ -35,16 +36,6 @@ type SortableKey = "order_number" | "created_at" | "status" | "brands.name"
 const ITEMS_PER_PAGE = 15
 
 // Create a client-only wrapper to prevent hydration errors
-const ClientOnly = ({ children }: { children: React.ReactNode }) => {
-  const [hasMounted, setHasMounted] = useState(false)
-  useEffect(() => {
-    setHasMounted(true)
-  }, [])
-  if (!hasMounted) {
-    return null
-  }
-  return <>{children}</>
-}
 
 export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) {
   const router = useRouter()
@@ -156,7 +147,7 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
     }
   }
 
-  const SortableHeader = ({ sortKey, children }: { sortKey: SortableKey; children: React.ReactNode }) => (
+  const SortableHeader = ({ sortKey, children }: { sortKey: SortableKey; children: ReactNode }) => (
     <TableHead>
       <Button variant="ghost" onClick={() => handleSort(sortKey)} className="px-2">
         {children}
@@ -219,7 +210,11 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
               <TableRow key={submission.id}>
                 <TableCell className="font-medium">{submission.order_number || "N/A"}</TableCell>
                 <TableCell>
-                  <ClientOnly>{format(new Date(submission.created_at), "dd MMM yyyy, h:mm a")}</ClientOnly>
+                  <ClientOnly>
+                    {isValid(new Date(submission.created_at))
+                      ? format(new Date(submission.created_at), "dd MMM yyyy, h:mm a")
+                      : "Invalid Date"}
+                  </ClientOnly>
                 </TableCell>
                 <TableCell>{submission.brands?.name || "N/A"}</TableCell>
                 <TableCell>{submission.ordered_by}</TableCell>
