@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+
 import { useState } from "react"
 import Image from "next/image"
 import { Upload, CheckCircle, Trash2 } from "lucide-react"
@@ -19,7 +20,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import type { UploadedFile } from "@/lib/types"
 
-type FileUploaderProps = {
+type EditorFileManagerProps = {
   uploadedFiles: UploadedFile[]
   logoUrl: string | null | undefined
   headerImageUrl: string | null | undefined
@@ -28,14 +29,14 @@ type FileUploaderProps = {
   brandId: string
 }
 
-export function FileUploader({
+export default function EditorFileManager({
   uploadedFiles: initialFiles,
   logoUrl,
   headerImageUrl,
   onSelectLogo,
   onSelectHeader,
   brandId,
-}: FileUploaderProps) {
+}: EditorFileManagerProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>(initialFiles)
   const [isUploading, setIsUploading] = useState(false)
   const { toast } = useToast()

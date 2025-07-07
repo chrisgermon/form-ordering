@@ -1,15 +1,6 @@
 import { z } from "zod"
 import type { BrandData } from "./types"
 
-const itemSchema = z
-  .object({
-    quantity: z.any(), // Can be string, date, or boolean depending on field_type
-    name: z.string(),
-    code: z.string(),
-    customQuantity: z.string().optional(),
-  })
-  .optional()
-
 // This is the schema for the form data on the client side
 export const getClientSideOrderSchema = (brandData: BrandData) =>
   z
@@ -19,28 +10,21 @@ export const getClientSideOrderSchema = (brandData: BrandData) =>
       billTo: z.string().min(1, "Bill to clinic is required."),
       deliverTo: z.string().min(1, "Deliver to clinic is required."),
       date: z.date({ required_error: "A date is required." }),
-      items: z.record(itemSchema).optional(),
+      items: z.record(z.any()).optional(),
       notes: z.string().optional(),
     })
     .superRefine((data, ctx) => {
-      const hasItems = Object.values(data.items || {}).some(
-        (item) => item && item.quantity !== "" && item.quantity !== null && item.quantity !== undefined,
-      )
-
-      if (!hasItems) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["items"],
-          message: "Please select at least one item to order.",
-        })
-      }
-
+      let hasItems = false
       if (brandData && brandData.product_sections) {
-        ;(brandData.product_sections || []).forEach((section) => {
-          ;(section.product_items || []).forEach((item) => {
+        brandData.product_sections.forEach((section) => {
+          section.product_items.forEach((item) => {
+            const value = data.items?.[item.id]
+            if (value && value.quantity !== "") {
+              hasItems = true
+            }
+
             if (item.is_required) {
-              const value = data.items?.[item.id]
-              if (!value || value.quantity === "" || value.quantity === null || value.quantity === undefined) {
+              if (!value || value.quantity === "") {
                 ctx.addIssue({
                   code: z.ZodIssueCode.custom,
                   path: [`items.${item.id}`],
@@ -51,6 +35,14 @@ export const getClientSideOrderSchema = (brandData: BrandData) =>
           })
         })
       }
+
+      if (!hasItems) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["items"],
+          message: "Please select at least one item to order.",
+        })
+      }
     })
 
 // This is the schema for the data received by the API route
@@ -58,27 +50,23 @@ export const apiOrderSchema = z.object({
   brandId: z.string(),
   orderedBy: z.string(),
   email: z.string().email(),
-  billTo: z
-    .object({
-      name: z.string(),
-      address: z.string().optional().nullable(),
-      phone: z.string().optional().nullable(),
-      email: z.string().optional().nullable(),
-    })
-    .nullable(),
-  deliverTo: z
-    .object({
-      name: z.string(),
-      address: z.string().optional().nullable(),
-      phone: z.string().optional().nullable(),
-      email: z.string().optional().nullable(),
-    })
-    .nullable(),
+  billTo: z.object({
+    name: z.string(),
+    address: z.string().optional().nullable(),
+    phone: z.string().optional().nullable(),
+    email: z.string().optional().nullable(),
+  }),
+  deliverTo: z.object({
+    name: z.string(),
+    address: z.string().optional().nullable(),
+    phone: z.string().optional().nullable(),
+    email: z.string().optional().nullable(),
+  }),
   date: z.string().datetime(),
   items: z
     .record(
       z.object({
-        quantity: z.any(),
+        quantity: z.string(),
         name: z.string(),
         code: z.string(),
         customQuantity: z.string().optional(),

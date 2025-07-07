@@ -37,56 +37,45 @@ function SubmitButton() {
 const initialState = {
   success: false,
   message: "",
-  errors: null,
 }
 
 export function MarkCompleteDialog({ submission, isOpen, onOpenChange }: MarkCompleteDialogProps) {
   const [state, formAction] = useFormState(markSubmissionAsComplete, initialState)
-  const [dispatchDate, setDispatchDate] = useState<Date | null>(null)
-
-  useEffect(() => {
-    if (!isOpen) {
-      // Reset state when dialog closes
-      setDispatchDate(null)
-    }
-  }, [isOpen])
+  const [dispatchDate, setDispatchDate] = useState<Date | undefined>(undefined)
 
   useEffect(() => {
     if (state.success) {
       toast.success(state.message)
       onOpenChange(false)
-    } else if (state.message && !state.success) {
-      const errorMessages = state.errors ? Object.values(state.errors).flat().join("\n") : state.message
-      toast.error("Failed to mark as complete", {
-        description: errorMessages,
-      })
+    } else if (state.message) {
+      toast.error(state.message)
     }
   }, [state, onOpenChange])
 
   if (!submission) return null
 
+  const handleSubmit = (formData: FormData) => {
+    if (dispatchDate) {
+      formData.set("dispatchDate", dispatchDate.toISOString().split("T")[0]) // YYYY-MM-DD
+    }
+    formAction(formData)
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
-        <form action={formAction}>
+        <form action={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Mark Order #{submission.order_number} as Complete</DialogTitle>
             <DialogDescription>Add dispatch details for this order. This is optional.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <input type="hidden" name="submissionId" value={submission.id} />
-            <input
-              type="hidden"
-              name="dispatchDate"
-              value={dispatchDate ? dispatchDate.toISOString().split("T")[0] : ""}
-            />
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="dispatchDate" className="text-right">
                 Dispatch Date
               </Label>
-              <div className="col-span-3">
-                <DatePicker value={dispatchDate} onChange={setDispatchDate} placeholder="Select dispatch date" />
-              </div>
+              <DatePicker date={dispatchDate} onDateChange={setDispatchDate} />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="trackingLink" className="text-right">

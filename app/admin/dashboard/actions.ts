@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { z } from "zod"
 import type { AllowedIp } from "@/lib/types"
+import { promises as fs } from "fs"
+import path from "path"
 
 const BrandSchema = z.object({
   id: z.string().optional(),
@@ -72,9 +74,9 @@ export async function deleteBrand(id: string) {
 
 const MarkCompleteSchema = z.object({
   submissionId: z.string().uuid(),
-  dispatchDate: z.string().optional().nullable(),
-  trackingLink: z.string().optional().nullable(),
-  notes: z.string().optional().nullable(),
+  dispatchDate: z.string().optional(),
+  trackingLink: z.string().url().optional().or(z.literal("")),
+  notes: z.string().optional(),
 })
 
 export async function markSubmissionAsComplete(
@@ -113,7 +115,7 @@ export async function markSubmissionAsComplete(
 
   if (error) {
     console.error("Error marking submission as complete:", error)
-    return { success: false, message: `Database error: ${error.message}` }
+    return { success: false, message: "Database error: Could not update submission." }
   }
 
   revalidatePath("/admin/dashboard")
@@ -154,9 +156,6 @@ export async function deleteAllowedIp(id: string) {
 }
 
 export async function runSchemaMigration(scriptName: string) {
-  const fs = require("fs").promises
-  const path = require("path")
-
   if (scriptName.includes("..") || !scriptName.endsWith(".sql")) {
     return { success: false, message: "Invalid script name." }
   }

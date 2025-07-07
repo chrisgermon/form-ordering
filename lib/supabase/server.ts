@@ -32,8 +32,6 @@ export function createClient(cookieStore: ReturnType<typeof cookies>) {
 
 // Also export under the old name to fix dependencies in other files.
 export const createServerSupabaseClient = createClient
-// FIX: Add the missing export that the build process is looking for.
-export const createSupabaseServerClient = createClient
 
 // Re-export the admin client to fix the persistent deployment error.
 // This makes the import valid for the file that is incorrectly referencing it.

@@ -20,42 +20,61 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Link from "next/link"
 import { DatePicker } from "@/components/ui/date-picker"
 import Image from "next/image"
-import { Controller, useForm, useWatch, type FieldError } from "react-hook-form"
+import { Controller, useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useState, useMemo } from "react"
 import { getClientSideOrderSchema } from "@/lib/schemas"
 import { toast } from "sonner"
-import { format } from "date-fns" // Import format from date-fns
 
-const FormItemComponent = ({
+const FormField = ({
   item,
-  field,
-  error,
+  control,
+  getValues,
+  setValue,
+  errors,
 }: {
   item: ProductItem
-  field: any
-  error?: FieldError
+  control: any
+  getValues: any
+  setValue: any
+  errors: any
 }) => {
-  const renderField = () => {
-    const basePayload = { name: item.name, code: item.code }
+  const fieldName = `items.${item.id}`
+  const errorMessage = errors?.items?.[item.id]?.message
 
+  const renderField = () => {
     switch (item.field_type) {
       case "checkbox_group":
-        const isOtherSelected = field.value?.quantity === "other"
+        const currentItemValue = getValues(fieldName)
+        const handleSelect = (quantity: string, checked: boolean) => {
+          const currentItems = getValues("items") || {}
+          if (checked) {
+            setValue(
+              "items",
+              {
+                ...currentItems,
+                [item.id]: { quantity, name: item.name, code: item.code },
+              },
+              { shouldValidate: true, shouldDirty: true },
+            )
+          } else {
+            const { [item.id]: _, ...rest } = currentItems
+            setValue("items", rest, { shouldValidate: true, shouldDirty: true })
+          }
+        }
+        const handleCustomQuantityChange = (value: string) => {
+          setValue(`${fieldName}.customQuantity`, value, { shouldValidate: true, shouldDirty: true })
+        }
+        const isOtherSelected = currentItemValue?.quantity === "other"
+
         return (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            {(item.options || []).map((quantity) => (
+            {item.options.map((quantity) => (
               <div key={quantity} className="flex items-center space-x-2">
                 <Checkbox
                   id={`${item.id}-${quantity}`}
-                  checked={field.value?.quantity === quantity}
-                  onCheckedChange={(checked) => {
-                    if (checked) {
-                      field.onChange({ ...basePayload, quantity })
-                    } else {
-                      field.onChange(undefined) // Clear the value
-                    }
-                  }}
+                  checked={currentItemValue?.quantity === quantity}
+                  onCheckedChange={(checked) => handleSelect(quantity, !!checked)}
                 />
                 <label htmlFor={`${item.id}-${quantity}`} className="text-sm font-medium text-gray-700">
                   {quantity}
@@ -67,52 +86,65 @@ const FormItemComponent = ({
                 type="text"
                 placeholder="Enter quantity"
                 className="h-8 w-40 border-gray-400"
-                value={field.value?.customQuantity || ""}
-                onChange={(e) => field.onChange({ ...field.value, customQuantity: e.target.value })}
+                value={currentItemValue?.customQuantity || ""}
+                onChange={(e) => handleCustomQuantityChange(e.target.value)}
               />
             )}
           </div>
         )
       case "text":
         return (
-          <Input
-            placeholder={item.placeholder || ""}
-            value={field.value?.quantity || ""}
-            onChange={(e) => field.onChange({ ...basePayload, quantity: e.target.value })}
+          <Controller
+            name={`${fieldName}.quantity`}
+            control={control}
+            defaultValue=""
+            render={({ field }) => <Input placeholder={item.placeholder || ""} {...field} />}
           />
         )
       case "textarea":
         return (
-          <Textarea
-            placeholder={item.placeholder || ""}
-            value={field.value?.quantity || ""}
-            onChange={(e) => field.onChange({ ...basePayload, quantity: e.target.value })}
+          <Controller
+            name={`${fieldName}.quantity`}
+            control={control}
+            defaultValue=""
+            render={({ field }) => <Textarea placeholder={item.placeholder || ""} {...field} />}
           />
         )
       case "select":
         return (
-          <Select
-            onValueChange={(value) => field.onChange({ ...basePayload, quantity: value })}
-            value={field.value?.quantity}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={item.placeholder || "Select an option"} />
-            </SelectTrigger>
-            <SelectContent>
-              {(item.options || []).map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Controller
+            name={`${fieldName}.quantity`}
+            control={control}
+            defaultValue=""
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger>
+                  <SelectValue placeholder={item.placeholder || "Select an option"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {item.options.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
         )
       case "date":
         return (
-          <DatePicker
-            value={field.value?.quantity}
-            onChange={(date) => field.onChange({ ...basePayload, quantity: date })}
-            placeholder="DD-MM-YYYY"
+          <Controller
+            name={`${fieldName}.quantity`}
+            control={control}
+            render={({ field }) => (
+              <DatePicker
+                value={field.value}
+                onChange={field.onChange}
+                className="bg-gray-100 border-gray-300"
+                placeholder="DD-MM-YYYY"
+              />
+            )}
           />
         )
       default:
@@ -142,7 +174,7 @@ const FormItemComponent = ({
         </div>
         <div className="md:col-span-2">
           {renderField()}
-          {error && <p className="text-xs text-red-600 mt-1">{error.message}</p>}
+          {errorMessage && <p className="text-xs text-red-600 mt-1">{errorMessage}</p>}
         </div>
       </div>
     </div>
@@ -175,12 +207,7 @@ function SelectionSidebar({
                     <p className="font-semibold text-gray-800 leading-tight">{item.name}</p>
                     <p className="text-xs text-gray-500">CODE: {item.code}</p>
                     <p className="text-sm font-bold text-[#1aa7df] mt-1">
-                      Qty:{" "}
-                      {item.quantity === "other"
-                        ? item.customQuantity
-                        : item.quantity instanceof Date
-                          ? format(item.quantity, "PPP")
-                          : item.quantity}
+                      Qty: {item.quantity === "other" ? item.customQuantity : item.quantity}
                     </p>
                   </div>
                   <Button
@@ -257,11 +284,7 @@ function ConfirmationDialog({
                     <li key={item.code} className="flex justify-between text-sm">
                       <span>{item.name}</span>
                       <span className="font-bold">
-                        {item.quantity === "other"
-                          ? item.customQuantity
-                          : item.quantity instanceof Date
-                            ? format(item.quantity, "PPP")
-                            : item.quantity}
+                        {item.quantity === "other" ? item.customQuantity : item.quantity}
                       </span>
                     </li>
                   ))}
@@ -318,6 +341,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
     handleSubmit,
     control,
     reset,
+    getValues,
     setValue,
     formState: { errors },
   } = useForm({
@@ -352,14 +376,6 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
     const selectedBillTo = clinicLocations.find((loc) => loc.name === data.billTo)
     const selectedDeliverTo = clinicLocations.find((loc) => loc.name === data.deliverTo)
 
-    // Filter out empty items before submitting
-    const cleanItems = Object.fromEntries(
-      Object.entries(data.items || {}).filter(
-        ([_, value]: [string, any]) =>
-          value && value.quantity !== "" && value.quantity !== null && value.quantity !== undefined,
-      ),
-    )
-
     const payload = {
       brandId: brandData.id,
       brandSlug: brandData.slug,
@@ -368,7 +384,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
       billTo: selectedBillTo,
       deliverTo: selectedDeliverTo,
       date: data.date,
-      items: cleanItems,
+      items: data.items,
       notes: data.notes,
     }
 
@@ -395,12 +411,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
         reset()
         setIsConfirming(false)
       } else {
-        const errorDetails = result.details?.fieldErrors
-        let errorMessage = result.error || "An unknown error occurred."
-        if (errorDetails) {
-          errorMessage = Object.values(errorDetails).flat().join(", ")
-        }
-        throw new Error(errorMessage)
+        throw new Error(result.details || result.error || "An unknown error occurred.")
       }
     } catch (error) {
       toast.error("Failed to submit order.", {
@@ -414,17 +425,19 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
   }
 
   const handleRemoveItem = (itemId: string) => {
-    setValue(`items.${itemId}`, undefined, { shouldValidate: true, shouldDirty: true })
+    const currentItems = getValues("items") || {}
+    const { [itemId]: _, ...rest } = currentItems
+    setValue("items", rest, { shouldValidate: true, shouldDirty: true })
   }
 
   const filteredSections = useMemo(() => {
     if (!searchTerm) {
-      return brandData.product_sections || []
+      return brandData.product_sections
     }
     const lowercasedFilter = searchTerm.toLowerCase()
-    return (brandData.product_sections || [])
+    return brandData.product_sections
       .map((section) => {
-        const filteredItems = (section.product_items || []).filter(
+        const filteredItems = section.product_items.filter(
           (item) =>
             item.name.toLowerCase().includes(lowercasedFilter) || item.code.toLowerCase().includes(lowercasedFilter),
         )
@@ -473,14 +486,14 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                       Ordered By: <span className="text-red-500">*</span>
                     </label>
                     <Input id="orderedBy" {...register("orderedBy")} className="bg-gray-100 border-gray-300" />
-                    {errors.orderedBy && <p className="text-xs text-red-600">{errors.orderedBy.message as string}</p>}
+                    {errors.orderedBy && <p className="text-xs text-red-600">{errors.orderedBy.message}</p>}
                   </div>
                   <div className="space-y-1">
                     <label htmlFor="email" className="text-sm font-medium text-gray-800">
                       Email Address <span className="text-red-500">*</span>
                     </label>
                     <Input id="email" type="email" {...register("email")} className="bg-gray-100 border-gray-300" />
-                    {errors.email && <p className="text-xs text-red-600">{errors.email.message as string}</p>}
+                    {errors.email && <p className="text-xs text-red-600">{errors.email.message}</p>}
                   </div>
                   <div className="space-y-1">
                     <label htmlFor="billTo" className="text-sm font-medium text-gray-800">
@@ -504,7 +517,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                         </Select>
                       )}
                     />
-                    {errors.billTo && <p className="text-xs text-red-600">{errors.billTo.message as string}</p>}
+                    {errors.billTo && <p className="text-xs text-red-600">{errors.billTo.message}</p>}
                   </div>
                   <div className="space-y-1">
                     <label htmlFor="deliverTo" className="text-sm font-medium text-gray-800">
@@ -528,7 +541,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                         </Select>
                       )}
                     />
-                    {errors.deliverTo && <p className="text-xs text-red-600">{errors.deliverTo.message as string}</p>}
+                    {errors.deliverTo && <p className="text-xs text-red-600">{errors.deliverTo.message}</p>}
                   </div>
                   <div className="space-y-1 sm:col-span-2">
                     <label htmlFor="date" className="text-sm font-medium text-gray-800">
@@ -538,10 +551,15 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                       name="date"
                       control={control}
                       render={({ field }) => (
-                        <DatePicker value={field.value} onChange={field.onChange} placeholder="DD-MM-YYYY" />
+                        <DatePicker
+                          value={field.value}
+                          onChange={field.onChange}
+                          className="bg-gray-100 border-gray-300"
+                          placeholder="DD-MM-YYYY"
+                        />
                       )}
                     />
-                    {errors.date && <p className="text-xs text-red-600">{errors.date.message as string}</p>}
+                    {errors.date && <p className="text-xs text-red-600">{errors.date.message}</p>}
                   </div>
                   <div className="space-y-1 sm:col-span-2">
                     <label htmlFor="notes" className="text-sm font-medium text-gray-800">
@@ -564,11 +582,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
 
                 <div className="space-y-4">
                   {filteredSections.map((section) => (
-                    <Collapsible
-                      key={section.id}
-                      defaultOpen
-                      className="border border-dashed border-[#293563] rounded-lg"
-                    >
+                    <Collapsible key={section.id} className="border border-dashed border-[#293563] rounded-lg">
                       <CollapsibleTrigger className="w-full p-4 flex justify-between items-center group hover:bg-gray-50 rounded-t-lg">
                         <h2 className="text-lg font-semibold text-[#1aa7df]">{section.title}</h2>
                         <ChevronDown className="h-5 w-5 text-gray-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
@@ -576,18 +590,14 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                       <CollapsibleContent>
                         <div className="p-4 pt-0">
                           <div className="space-y-4">
-                            {(section.product_items || []).map((item) => (
-                              <Controller
+                            {section.product_items.map((item) => (
+                              <FormField
                                 key={item.id}
-                                name={`items.${item.id}`}
+                                item={item}
                                 control={control}
-                                render={({ field }) => (
-                                  <FormItemComponent
-                                    item={item}
-                                    field={field}
-                                    error={errors.items?.[item.id] as FieldError}
-                                  />
-                                )}
+                                getValues={getValues}
+                                setValue={setValue}
+                                errors={errors}
                               />
                             ))}
                           </div>
