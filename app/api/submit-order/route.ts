@@ -32,6 +32,11 @@ export async function POST(request: NextRequest) {
       throw new Error(`Brand with ID ${orderData.brandId} not found.`)
     }
 
+    // Defensive check for clinic locations
+    if (!orderData.billTo || !orderData.deliverTo) {
+      throw new Error("Billing or delivery location is missing.")
+    }
+
     // 2. Get next order number
     const { data: orderNumberData, error: rpcError } = await supabase.rpc("get_next_order_number", {
       brand_id_param: brand.id,

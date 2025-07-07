@@ -15,16 +15,22 @@ export const getClientSideOrderSchema = (brandData: BrandData) =>
     })
     .superRefine((data, ctx) => {
       let hasItems = false
-      if (brandData && brandData.product_sections) {
-        brandData.product_sections.forEach((section) => {
-          section.product_items.forEach((item) => {
-            const value = data.items?.[item.id]
-            if (value && value.quantity !== "") {
-              hasItems = true
-            }
+      if (data.items) {
+        for (const key in data.items) {
+          const item = data.items[key]
+          if (item && item.quantity) {
+            hasItems = true
+            break
+          }
+        }
+      }
 
+      if (brandData && brandData.product_sections) {
+        ;(brandData.product_sections || []).forEach((section) => {
+          ;(section.product_items || []).forEach((item) => {
             if (item.is_required) {
-              if (!value || value.quantity === "") {
+              const value = data.items?.[item.id]
+              if (!value || !value.quantity) {
                 ctx.addIssue({
                   code: z.ZodIssueCode.custom,
                   path: [`items.${item.id}`],
@@ -50,18 +56,22 @@ export const apiOrderSchema = z.object({
   brandId: z.string(),
   orderedBy: z.string(),
   email: z.string().email(),
-  billTo: z.object({
-    name: z.string(),
-    address: z.string().optional().nullable(),
-    phone: z.string().optional().nullable(),
-    email: z.string().optional().nullable(),
-  }),
-  deliverTo: z.object({
-    name: z.string(),
-    address: z.string().optional().nullable(),
-    phone: z.string().optional().nullable(),
-    email: z.string().optional().nullable(),
-  }),
+  billTo: z
+    .object({
+      name: z.string(),
+      address: z.string().optional().nullable(),
+      phone: z.string().optional().nullable(),
+      email: z.string().optional().nullable(),
+    })
+    .nullable(),
+  deliverTo: z
+    .object({
+      name: z.string(),
+      address: z.string().optional().nullable(),
+      phone: z.string().optional().nullable(),
+      email: z.string().optional().nullable(),
+    })
+    .nullable(),
   date: z.string().datetime(),
   items: z
     .record(

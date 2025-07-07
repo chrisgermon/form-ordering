@@ -26,7 +26,7 @@ import { useState, useMemo } from "react"
 import { getClientSideOrderSchema } from "@/lib/schemas"
 import { toast } from "sonner"
 
-const FormField = ({
+const FormItemComponent = ({
   item,
   control,
   getValues,
@@ -63,7 +63,15 @@ const FormField = ({
           }
         }
         const handleCustomQuantityChange = (value: string) => {
-          setValue(`${fieldName}.customQuantity`, value, { shouldValidate: true, shouldDirty: true })
+          const currentItems = getValues("items") || {}
+          setValue(
+            "items",
+            {
+              ...currentItems,
+              [item.id]: { ...currentItems[item.id], customQuantity: value },
+            },
+            { shouldValidate: true, shouldDirty: true },
+          )
         }
         const isOtherSelected = currentItemValue?.quantity === "other"
 
@@ -98,7 +106,24 @@ const FormField = ({
             name={`${fieldName}.quantity`}
             control={control}
             defaultValue=""
-            render={({ field }) => <Input placeholder={item.placeholder || ""} {...field} />}
+            render={({ field }) => (
+              <Input
+                placeholder={item.placeholder || ""}
+                {...field}
+                onChange={(e) => {
+                  field.onChange(e.target.value)
+                  const currentItems = getValues("items") || {}
+                  setValue(
+                    "items",
+                    {
+                      ...currentItems,
+                      [item.id]: { quantity: e.target.value, name: item.name, code: item.code },
+                    },
+                    { shouldValidate: true, shouldDirty: true },
+                  )
+                }}
+              />
+            )}
           />
         )
       case "textarea":
@@ -107,7 +132,24 @@ const FormField = ({
             name={`${fieldName}.quantity`}
             control={control}
             defaultValue=""
-            render={({ field }) => <Textarea placeholder={item.placeholder || ""} {...field} />}
+            render={({ field }) => (
+              <Textarea
+                placeholder={item.placeholder || ""}
+                {...field}
+                onChange={(e) => {
+                  field.onChange(e.target.value)
+                  const currentItems = getValues("items") || {}
+                  setValue(
+                    "items",
+                    {
+                      ...currentItems,
+                      [item.id]: { quantity: e.target.value, name: item.name, code: item.code },
+                    },
+                    { shouldValidate: true, shouldDirty: true },
+                  )
+                }}
+              />
+            )}
           />
         )
       case "select":
@@ -117,7 +159,21 @@ const FormField = ({
             control={control}
             defaultValue=""
             render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value}>
+              <Select
+                onValueChange={(value) => {
+                  field.onChange(value)
+                  const currentItems = getValues("items") || {}
+                  setValue(
+                    "items",
+                    {
+                      ...currentItems,
+                      [item.id]: { quantity: value, name: item.name, code: item.code },
+                    },
+                    { shouldValidate: true, shouldDirty: true },
+                  )
+                }}
+                value={field.value}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder={item.placeholder || "Select an option"} />
                 </SelectTrigger>
@@ -140,7 +196,18 @@ const FormField = ({
             render={({ field }) => (
               <DatePicker
                 value={field.value}
-                onChange={field.onChange}
+                onChange={(date) => {
+                  field.onChange(date)
+                  const currentItems = getValues("items") || {}
+                  setValue(
+                    "items",
+                    {
+                      ...currentItems,
+                      [item.id]: { quantity: date?.toISOString(), name: item.name, code: item.code },
+                    },
+                    { shouldValidate: true, shouldDirty: true },
+                  )
+                }}
                 className="bg-gray-100 border-gray-300"
                 placeholder="DD-MM-YYYY"
               />
@@ -174,7 +241,7 @@ const FormField = ({
         </div>
         <div className="md:col-span-2">
           {renderField()}
-          {errorMessage && <p className="text-xs text-red-600 mt-1">{errorMessage}</p>}
+          {errorMessage && <p className="text-xs text-red-600 mt-1">{errorMessage as string}</p>}
         </div>
       </div>
     </div>
@@ -411,7 +478,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
         reset()
         setIsConfirming(false)
       } else {
-        throw new Error(result.details || result.error || "An unknown error occurred.")
+        throw new Error(result.details?.message || result.error || "An unknown error occurred.")
       }
     } catch (error) {
       toast.error("Failed to submit order.", {
@@ -595,7 +662,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                         <div className="p-4 pt-0">
                           <div className="space-y-4">
                             {(section.product_items || []).map((item) => (
-                              <FormField
+                              <FormItemComponent
                                 key={item.id}
                                 item={item}
                                 control={control}
