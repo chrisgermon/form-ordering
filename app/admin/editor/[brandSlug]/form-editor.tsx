@@ -144,6 +144,7 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
               headerImageUrl={headerImageUrl}
               onSelectLogo={(pathname) => methods.setValue("logo_url", pathname, { shouldDirty: true })}
               onSelectHeader={(pathname) => methods.setValue("header_image_url", pathname, { shouldDirty: true })}
+              brandId={initialBrandData.id}
             />
           </TabsContent>
         </Tabs>

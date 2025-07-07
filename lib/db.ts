@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
-import type { Brand, BrandData } from "@/lib/types"
+import type { Brand, BrandData, Submission, UploadedFile } from "@/lib/types"
 
 export async function getActiveBrands(): Promise<Pick<Brand, "id" | "name" | "slug" | "logo_url">[]> {
   const supabase = createAdminClient()
@@ -19,6 +19,48 @@ export async function getActiveBrands(): Promise<Pick<Brand, "id" | "name" | "sl
     console.error("Unexpected error in getActiveBrands:", error)
     return []
   }
+}
+
+export async function getAllBrands(): Promise<Brand[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.from("brands").select("*").order("name", { ascending: true })
+  if (error) {
+    console.error("Error fetching brands:", error)
+    return []
+  }
+  return data || []
+}
+
+export async function getSubmissions(): Promise<Submission[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from("submissions")
+    .select("*, brands(name)")
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching submissions:", error)
+    return []
+  }
+  // The view might return a slightly different shape, so we cast it.
+  // Ensure your `Submission` type matches the view's output.
+  return (data as Submission[]) || []
+}
+
+export async function getUploadedFiles(): Promise<UploadedFile[]> {
+  const supabase = createAdminClient()
+  // Fetch only global files (where brand_id is null)
+  const { data, error } = await supabase
+    .from("uploaded_files")
+    .select("*")
+    .is("brand_id", null)
+    .order("uploaded_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching global files:", error)
+    return []
+  }
+  return data || []
 }
 
 export async function getBrandBySlug(slug: string): Promise<BrandData | null> {

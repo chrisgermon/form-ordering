@@ -63,7 +63,7 @@ function MigrationButton({ version, description, onRun, isCritical = false }: Mi
   )
 }
 
-export default function SystemActions() {
+export function SystemActions() {
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSeedDatabase = async () => {

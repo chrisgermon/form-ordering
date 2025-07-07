@@ -17,7 +17,7 @@ interface SubmissionsTableProps {
 
 const ITEMS_PER_PAGE = 10
 
-export default function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) {
+export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) {
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [dateRange, setDateRange] = useState<DateRange | undefined>({

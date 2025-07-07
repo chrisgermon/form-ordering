@@ -18,7 +18,7 @@ interface BrandManagementProps {
   uploadedFiles: UploadedFile[]
 }
 
-export default function BrandManagement({ initialBrands, uploadedFiles }: BrandManagementProps) {
+export function BrandManagement({ initialBrands, uploadedFiles }: BrandManagementProps) {
   const router = useRouter()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
