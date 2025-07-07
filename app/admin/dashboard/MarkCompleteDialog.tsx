@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useFormState, useFormStatus } from "react-dom"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DatePicker } from "@/components/ui/date-picker"
-import { markAsComplete } from "./actions"
+import { markSubmissionAsComplete } from "./actions"
 import type { Submission } from "@/lib/types"
 
 interface MarkCompleteDialogProps {
@@ -34,24 +34,31 @@ function SubmitButton() {
   )
 }
 
+const initialState = {
+  success: false,
+  message: "",
+}
+
 export function MarkCompleteDialog({ submission, isOpen, onOpenChange }: MarkCompleteDialogProps) {
-  const [state, formAction] = useFormState(markAsComplete, null)
+  const [state, formAction] = useFormState(markSubmissionAsComplete, initialState)
   const [dispatchDate, setDispatchDate] = useState<Date | undefined>(undefined)
+
+  useEffect(() => {
+    if (state.success) {
+      toast.success(state.message)
+      onOpenChange(false)
+    } else if (state.message) {
+      toast.error(state.message)
+    }
+  }, [state, onOpenChange])
 
   if (!submission) return null
 
   const handleSubmit = (formData: FormData) => {
     if (dispatchDate) {
-      formData.set("dispatchDate", dispatchDate.toISOString())
+      formData.set("dispatchDate", dispatchDate.toISOString().split("T")[0]) // YYYY-MM-DD
     }
     formAction(formData)
-
-    if (state?.success) {
-      toast.success("Order marked as complete.")
-      onOpenChange(false)
-    } else if (state?.error) {
-      toast.error(state.error)
-    }
   }
 
   return (
@@ -68,7 +75,7 @@ export function MarkCompleteDialog({ submission, isOpen, onOpenChange }: MarkCom
               <Label htmlFor="dispatchDate" className="text-right">
                 Dispatch Date
               </Label>
-              <DatePicker date={dispatchDate} setDate={setDispatchDate} className="col-span-3" />
+              <DatePicker date={dispatchDate} onDateChange={setDispatchDate} />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="trackingLink" className="text-right">
@@ -77,10 +84,10 @@ export function MarkCompleteDialog({ submission, isOpen, onOpenChange }: MarkCom
               <Input id="trackingLink" name="trackingLink" className="col-span-3" />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="dispatchNotes" className="text-right">
+              <Label htmlFor="notes" className="text-right">
                 Notes
               </Label>
-              <Textarea id="dispatchNotes" name="dispatchNotes" className="col-span-3" />
+              <Textarea id="notes" name="notes" className="col-span-3" />
             </div>
           </div>
           <DialogFooter>

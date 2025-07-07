@@ -1,5 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { getAllBrands, getSubmissions, getUploadedFiles } from "@/lib/db"
+import { getAllBrands, getSubmissions, getUploadedFiles, getAllowedIps } from "@/lib/db"
 import { BrandManagement } from "./brand-management"
 import { SubmissionsTable } from "./submissions-table"
 import { SystemActions } from "./system-actions"
@@ -9,8 +9,15 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { HelpCircle } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
 export default async function AdminDashboard() {
-  const [brands, submissions, uploadedFiles] = await Promise.all([getAllBrands(), getSubmissions(), getUploadedFiles()])
+  const [brands, submissions, uploadedFiles, allowedIps] = await Promise.all([
+    getAllBrands(),
+    getSubmissions(),
+    getUploadedFiles(),
+    getAllowedIps(),
+  ])
 
   return (
     <>
@@ -43,7 +50,7 @@ export default async function AdminDashboard() {
               <FileManager initialFiles={uploadedFiles || []} />
             </TabsContent>
             <TabsContent value="system" className="mt-6">
-              <SystemActions />
+              <SystemActions allowedIps={allowedIps || []} />
             </TabsContent>
           </Tabs>
         </div>

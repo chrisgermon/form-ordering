@@ -1,134 +1,183 @@
 "use server"
 
-import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
-import { seedDatabase as seed } from "@/lib/seed-database"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { z } from "zod"
+import type { AllowedIp } from "@/lib/types"
+import { promises as fs } from "fs"
+import path from "path"
 
-async function runDbMigration(fileName: string) {
-  try {
-    const supabase = createAdminClient()
-    // In this environment, we can't use 'fs'. We fetch the migration file instead.
-    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"
-    const fileUrl = new URL(`/scripts/${fileName}`, baseUrl)
-    const response = await fetch(fileUrl)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch migration file ${fileName}: ${response.status} ${response.statusText}`)
-    }
-    const sql = await response.text()
-    const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
-    if (error) {
-      console.error(`Error running migration ${fileName}:`, error)
-      throw new Error(`Migration ${fileName} failed: ${error.message}`)
-    }
-    revalidatePath("/admin/dashboard")
-    return { success: true, message: `Migration ${fileName} completed successfully.` }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return { success: false, message: errorMessage }
+const BrandSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1, "Brand name is required."),
+  slug: z.string().min(1, "Brand slug is required."),
+  logo_url: z.string().url("Must be a valid URL.").optional().or(z.literal("")),
+  active: z.boolean(),
+})
+
+export async function addBrand(formData: FormData) {
+  const validatedFields = BrandSchema.safeParse(Object.fromEntries(formData.entries()))
+
+  if (!validatedFields.success) {
+    return { success: false, message: "Invalid data.", errors: validatedFields.error.flatten().fieldErrors }
   }
-}
 
-export async function runSchemaV2Update() {
-  return runDbMigration("update-schema-v2.sql")
-}
-export async function runSchemaV3Update() {
-  return runDbMigration("update-schema-v3.sql")
-}
-export async function runSchemaV4Update() {
-  return runDbMigration("update-schema-v4.sql")
-}
-export async function runSchemaV5Update() {
-  return runDbMigration("update-schema-v5.sql")
-}
-export async function runSchemaV6Update() {
-  return runDbMigration("update-schema-v6.sql")
-}
-export async function runSchemaV7Update() {
-  return runDbMigration("update-schema-v7.sql")
-}
-export async function runSchemaV8Update() {
-  return runDbMigration("update-schema-v8.sql")
-}
-export async function runSchemaV9Update() {
-  return runDbMigration("update-schema-v9.sql")
-}
-export async function runSchemaV10Update() {
-  return runDbMigration("update-schema-v10.sql")
-}
-export async function runSchemaV11Update() {
-  return runDbMigration("update-schema-v11.sql")
-}
-export async function runSchemaV12Update() {
-  return runDbMigration("update-schema-v12.sql")
-}
-export async function runSchemaV13Update() {
-  return runDbMigration("update-schema-v13.sql")
-}
-export async function runSchemaV14Update() {
-  return runDbMigration("update-schema-v14.sql")
-}
-export async function runSchemaV15Update() {
-  return runDbMigration("update-schema-v15.sql")
-}
-export async function runSchemaV16Update() {
-  return runDbMigration("update-schema-v16.sql")
-}
-export async function runSchemaV21Update() {
-  return runDbMigration("update-schema-v21.sql")
-}
-export async function runSchemaV22Update() {
-  return runDbMigration("update-schema-v22.sql")
-}
-export async function runSchemaV23Update() {
-  return runDbMigration("update-schema-v23.sql")
-}
-
-export async function forceSchemaReload() {
-  return runDbMigration("force-schema-reload.sql")
-}
-
-export async function seedDatabase() {
-  try {
-    await seed()
-    revalidatePath("/admin/dashboard")
-    return { success: true, message: "Database seeded successfully." }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return { success: false, message: `Database seeding failed: ${errorMessage}` }
-  }
-}
-
-export async function markAsComplete(formData: FormData) {
   const supabase = createAdminClient()
-  const submissionId = formData.get("submissionId") as string
-  const dispatchDate = formData.get("dispatchDate") as string | null
-  const trackingLink = formData.get("trackingLink") as string | null
-  const dispatchNotes = formData.get("dispatchNotes") as string | null
+  const { error } = await supabase.from("brands").insert(validatedFields.data)
 
-  if (!submissionId) {
-    return { error: "Submission ID is required." }
+  if (error) {
+    console.error("Error adding brand:", error)
+    return { success: false, message: `Database Error: ${error.message}` }
+  }
+
+  revalidatePath("/admin/dashboard")
+  return { success: true, message: "Brand added successfully." }
+}
+
+export async function updateBrand(formData: FormData) {
+  const validatedFields = BrandSchema.safeParse(Object.fromEntries(formData.entries()))
+
+  if (!validatedFields.success) {
+    return { success: false, message: "Invalid data.", errors: validatedFields.error.flatten().fieldErrors }
+  }
+
+  const { id, ...brandData } = validatedFields.data
+  if (!id) {
+    return { success: false, message: "Brand ID is missing." }
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from("brands").update(brandData).eq("id", id)
+
+  if (error) {
+    console.error("Error updating brand:", error)
+    return { success: false, message: `Database Error: ${error.message}` }
+  }
+
+  revalidatePath("/admin/dashboard")
+  revalidatePath(`/admin/editor/${brandData.slug}`)
+  return { success: true, message: "Brand updated successfully." }
+}
+
+export async function deleteBrand(id: string) {
+  const supabase = createAdminClient()
+  const { error } = await supabase.from("brands").delete().eq("id", id)
+
+  if (error) {
+    console.error("Error deleting brand:", error)
+    return { success: false, message: `Database Error: ${error.message}` }
+  }
+
+  revalidatePath("/admin/dashboard")
+  return { success: true, message: "Brand deleted successfully." }
+}
+
+const MarkCompleteSchema = z.object({
+  submissionId: z.string().uuid(),
+  dispatchDate: z.string().optional(),
+  trackingLink: z.string().url().optional().or(z.literal("")),
+  notes: z.string().optional(),
+})
+
+export async function markSubmissionAsComplete(
+  prevState: any,
+  formData: FormData,
+): Promise<{ success: boolean; message: string; errors?: any; data?: any }> {
+  const validatedFields = MarkCompleteSchema.safeParse({
+    submissionId: formData.get("submissionId"),
+    dispatchDate: formData.get("dispatchDate"),
+    trackingLink: formData.get("trackingLink"),
+    notes: formData.get("notes"),
+  })
+
+  if (!validatedFields.success) {
+    return {
+      success: false,
+      message: "Invalid data provided.",
+      errors: validatedFields.error.flatten().fieldErrors,
+    }
+  }
+
+  const { submissionId, dispatchDate, trackingLink, notes } = validatedFields.data
+  const supabase = createAdminClient()
+
+  const { data, error } = await supabase
+    .from("submissions")
+    .update({
+      status: "Complete",
+      dispatch_date: dispatchDate || null,
+      tracking_link: trackingLink || null,
+      dispatch_notes: notes || null,
+    })
+    .eq("id", submissionId)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("Error marking submission as complete:", error)
+    return { success: false, message: "Database error: Could not update submission." }
+  }
+
+  revalidatePath("/admin/dashboard")
+  return { success: true, message: `Order #${data.order_number} marked as complete.`, data }
+}
+
+const IpSchema = z.string().ip({ version: "v4", message: "Invalid IP address." })
+
+export async function addAllowedIp(ipAddress: string) {
+  const validatedIp = IpSchema.safeParse(ipAddress)
+  if (!validatedIp.success) {
+    return { success: false, message: validatedIp.error.errors[0].message }
+  }
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.from("allowed_ips").insert({ ip_address: validatedIp.data }).select().single()
+
+  if (error) {
+    console.error("Error adding IP:", error)
+    return { success: false, message: "Failed to add IP address." }
+  }
+
+  revalidatePath("/admin/dashboard")
+  return { success: true, message: "IP address added successfully.", data: data as AllowedIp }
+}
+
+export async function deleteAllowedIp(id: string) {
+  const supabase = createAdminClient()
+  const { error } = await supabase.from("allowed_ips").delete().eq("id", id)
+
+  if (error) {
+    console.error("Error deleting IP:", error)
+    return { success: false, message: "Failed to delete IP address." }
+  }
+
+  revalidatePath("/admin/dashboard")
+  return { success: true, message: "IP address deleted successfully." }
+}
+
+export async function runSchemaMigration(scriptName: string) {
+  if (scriptName.includes("..") || !scriptName.endsWith(".sql")) {
+    return { success: false, message: "Invalid script name." }
   }
 
   try {
-    const { error } = await supabase
-      .from("submissions")
-      .update({
-        status: "complete",
-        dispatch_date: dispatchDate ? new Date(dispatchDate).toISOString() : null,
-        tracking_link: trackingLink,
-        dispatch_notes: dispatchNotes,
-      })
-      .eq("id", submissionId)
+    const scriptPath = path.join(process.cwd(), "scripts", scriptName)
+    const sql = await fs.readFile(scriptPath, "utf8")
+
+    const supabase = createAdminClient()
+    const { error } = await supabase.rpc("run_sql", { sql_query: sql })
 
     if (error) {
-      console.error("Error updating submission:", error)
-      throw new Error(error.message)
+      console.error(`Error running migration script ${scriptName}:`, error)
+      return { success: false, message: `Migration failed: ${error.message}` }
     }
 
-    revalidatePath("/admin/dashboard")
-    return { success: true }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return { error: `Failed to mark as complete: ${errorMessage}` }
+    return { success: true, message: `Script ${scriptName} executed successfully.` }
+  } catch (e: any) {
+    console.error(`Error reading migration script ${scriptName}:`, e)
+    if (e.code === "ENOENT") {
+      return { success: false, message: `Script file not found: ${scriptName}` }
+    }
+    return { success: false, message: "An unexpected error occurred." }
   }
 }

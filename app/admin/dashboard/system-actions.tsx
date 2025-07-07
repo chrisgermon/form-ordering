@@ -1,143 +1,147 @@
 "use client"
 
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { toast } from "sonner"
-import {
-  runSchemaV2Update,
-  runSchemaV4Update,
-  runSchemaV5Update,
-  runSchemaV7Update,
-  runSchemaV9Update,
-  runSchemaV10Update,
-  runSchemaV11Update,
-  runSchemaV12Update,
-  runSchemaV14Update,
-  runSchemaV15Update,
-  runSchemaV16Update,
-  runSchemaV21Update,
-  forceSchemaReload,
-  seedDatabase,
-} from "./actions"
-import { useState } from "react"
-import { Loader2, AlertTriangle } from "lucide-react"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { addAllowedIp, deleteAllowedIp, runSchemaMigration } from "./actions"
+import type { AllowedIp } from "@/lib/types"
+import { Trash2 } from "lucide-react"
 
-interface MigrationButtonProps {
-  version: string
-  description: string
-  onRun: () => Promise<{ success: boolean; message: string }>
-  isCritical?: boolean
-}
+export function SystemActions({ allowedIps: initialAllowedIps }: { allowedIps: AllowedIp[] }) {
+  const [allowedIps, setAllowedIps] = useState<AllowedIp[]>(initialAllowedIps)
+  const [newIp, setNewIp] = useState("")
+  const [isAdding, setIsAdding] = useState(false)
+  const [isMigrating, setIsMigrating] = useState(false)
 
-function MigrationButton({ version, description, onRun, isCritical = false }: MigrationButtonProps) {
-  const [isLoading, setIsLoading] = useState(false)
-
-  const handleClick = async () => {
-    setIsLoading(true)
-    const result = await onRun()
-    if (result.success) {
-      toast.success(`Schema Update ${version}`, { description: result.message })
+  const handleAddIp = async () => {
+    if (!newIp.trim()) {
+      toast.error("IP address cannot be empty.")
+      return
+    }
+    setIsAdding(true)
+    const result = await addAllowedIp(newIp)
+    if (result.success && result.data) {
+      setAllowedIps([...allowedIps, result.data])
+      setNewIp("")
+      toast.success(result.message)
     } else {
-      toast.error(`Schema Update ${version} Failed`, { description: result.message })
+      toast.error(result.message)
     }
-    setIsLoading(false)
+    setIsAdding(false)
   }
 
-  return (
-    <div
-      className={`flex items-center justify-between p-3 rounded-lg ${isCritical ? "bg-yellow-50 border border-yellow-200" : "bg-gray-50"}`}
-    >
-      <div>
-        <p className="font-semibold text-gray-700 flex items-center">
-          {isCritical && <AlertTriangle className="h-4 w-4 mr-2 text-yellow-600" />}
-          Schema Update {version}
-        </p>
-        <p className="text-sm text-gray-500">{description}</p>
-      </div>
-      <Button onClick={handleClick} disabled={isLoading} variant="outline" size="sm">
-        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Run Update
-      </Button>
-    </div>
-  )
-}
-
-export function SystemActions() {
-  const [isLoading, setIsLoading] = useState(false)
-
-  const handleSeedDatabase = async () => {
-    setIsLoading(true)
-    const confirmation = confirm(
-      "Are you sure you want to seed the database? This will delete existing brands and add sample data.",
-    )
-    if (confirmation) {
-      const result = await seedDatabase()
-      if (result.success) {
-        toast.success("Database Seeding", { description: result.message })
-      } else {
-        toast.error("Database Seeding Failed", { description: result.message })
-      }
+  const handleDeleteIp = async (id: string) => {
+    const result = await deleteAllowedIp(id)
+    if (result.success) {
+      setAllowedIps(allowedIps.filter((ip) => ip.id !== id))
+      toast.success(result.message)
+    } else {
+      toast.error(result.message)
     }
-    setIsLoading(false)
   }
 
+  const handleRunMigration = async (version: string) => {
+    setIsMigrating(true)
+    toast.info(`Running migration for ${version}...`)
+    const result = await runSchemaMigration(version)
+    if (result.success) {
+      toast.success(result.message)
+    } else {
+      toast.error(result.message)
+    }
+    setIsMigrating(false)
+  }
+
+  const availableMigrations = [
+    "v2",
+    "v3",
+    "v4",
+    "v5",
+    "v6",
+    "v7",
+    "v8",
+    "v9",
+    "v10",
+    "v11",
+    "v12",
+    "v13",
+    "v14",
+    "v15",
+    "v16",
+    "v17",
+    "v18",
+    "v19",
+    "v20",
+    "v21",
+    "v22",
+    "v23",
+  ].map((v) => `update-schema-${v}.sql`)
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+    <div className="grid gap-6 md:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>Database Migrations</CardTitle>
-          <CardDescription>
-            Run these updates to apply new features or fixes to your database schema. Run them in order if you are
-            setting up a new instance.
-          </CardDescription>
+          <CardTitle>IP Access Control</CardTitle>
+          <CardDescription>Manage IP addresses that are allowed to access the admin area.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2">
-          <MigrationButton
-            version="v21"
-            description="CRITICAL FIX: Aligns the brands table with all required fields."
-            onRun={runSchemaV21Update}
-            isCritical={true}
-          />
-          <MigrationButton version="v16" description="Fixes order number data type." onRun={runSchemaV16Update} />
-          <MigrationButton version="v15" description="Adds order number to submissions." onRun={runSchemaV15Update} />
-          <MigrationButton version="v14" description="Adds unique constraint to slug." onRun={runSchemaV14Update} />
-          <MigrationButton version="v12" description="Adds allowed IPs table." onRun={runSchemaV12Update} />
-          <MigrationButton version="v11" description="Adds order data to submissions." onRun={runSchemaV11Update} />
-          <MigrationButton version="v10" description="Adds active flag to brands." onRun={runSchemaV10Update} />
-          <MigrationButton version="v9" description="Adds IP address to submissions." onRun={runSchemaV9Update} />
-          <MigrationButton version="v7" description="Adds columns to submissions." onRun={runSchemaV7Update} />
-          <MigrationButton version="v5" description="Adds pathname to uploaded files." onRun={runSchemaV5Update} />
-          <MigrationButton version="v4" description="Ensures all item columns exist." onRun={runSchemaV4Update} />
-          <MigrationButton version="v2" description="Adds more field types." onRun={runSchemaV2Update} />
+        <CardContent>
+          <div className="flex gap-2 mb-4">
+            <Input
+              placeholder="Enter new IP address"
+              value={newIp}
+              onChange={(e) => setNewIp(e.target.value)}
+              disabled={isAdding}
+            />
+            <Button onClick={handleAddIp} disabled={isAdding}>
+              {isAdding ? "Adding..." : "Add IP"}
+            </Button>
+          </div>
+          <div className="border rounded-md">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>IP Address</TableHead>
+                  <TableHead>Added At</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {allowedIps.map((ip) => (
+                  <TableRow key={ip.id}>
+                    <TableCell className="font-medium">{ip.ip_address}</TableCell>
+                    <TableCell>{new Date(ip.created_at).toLocaleString()}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteIp(ip.id)}>
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Delete</span>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>System Actions</CardTitle>
-          <CardDescription>Perform system-level actions.</CardDescription>
+          <CardTitle>Database Migrations</CardTitle>
+          <CardDescription>Run schema updates on your database. Run these in order.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-            <div>
-              <p className="font-semibold text-gray-700">Force Schema Reload</p>
-              <p className="text-sm text-gray-500">Notifies the API to reload the schema.</p>
-            </div>
-            <Button onClick={forceSchemaReload} variant="outline" size="sm">
-              Reload Schema
+        <CardContent className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+          {availableMigrations.map((scriptName) => (
+            <Button
+              key={scriptName}
+              variant="outline"
+              onClick={() => handleRunMigration(scriptName)}
+              disabled={isMigrating}
+            >
+              Run {scriptName.match(/v\d+/)?.[0]}
             </Button>
-          </div>
-          <Alert variant="destructive">
-            <AlertTitle>Seed Database</AlertTitle>
-            <AlertDescription>
-              This will delete all existing brands, sections, and items, and replace them with sample data. Use with
-              caution.
-            </AlertDescription>
-            <Button onClick={handleSeedDatabase} disabled={isLoading} variant="destructive" className="mt-4">
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Seed Database
-            </Button>
-          </Alert>
+          ))}
         </CardContent>
       </Card>
     </div>
