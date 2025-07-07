@@ -243,53 +243,13 @@ export interface Database {
 export type Tables<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Row"]
 export type Enums<T extends keyof Database["public"]["Enums"]> = Database["public"]["Enums"][T]
 
-export type Brand = {
-  id: string
-  created_at: string
-  name: string
-  slug: string
-  logo_url: string | null
-  active: boolean
-  to_emails: string[] | null
-  cc_emails: string[] | null
-  bcc_emails: string[] | null
-  subject_line: string | null
-}
-
-export type Submission = {
-  id: string
-  created_at: string
-  brand_id: string
-  ordered_by: string
-  email: string
-  order_number: string
-  form_data: Json
-  status: "Pending" | "Complete"
-  pdf_url: string | null
-  dispatch_date: string | null
-  tracking_link: string | null
-  dispatch_notes: string | null
-  brands: Brand | null
-  patient_name: string
-}
-
-export type AllowedIp = {
-  id: string
-  created_at: string
-  ip_address: string
-}
-
-export type Section = {
-  id: string
-  name: string
-  order: number
-  brand_id: string
+export type Brand = Database["public"]["Tables"]["brands"]["Row"]
+export type AllowedIp = Database["public"]["Tables"]["allowed_ips"]["Row"]
+export type Section = Database["public"]["Tables"]["sections"]["Row"] & {
   items: FormItem[]
 }
+export type FormItem = Database["public"]["Tables"]["items"]["Row"]
 
-export type FormItem = {
-  id: string
-  name: string
-  order: number
-  section_id: string
+export type Submission = Omit<Database["public"]["Tables"]["submissions"]["Row"], "brands"> & {
+  brands: Brand | null
 }

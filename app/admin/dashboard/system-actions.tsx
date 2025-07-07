@@ -5,28 +5,35 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { toast } from "sonner"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { addAllowedIp, deleteAllowedIp, runSchemaMigration } from "./actions"
+import { toast } from "sonner"
 import type { AllowedIp } from "@/lib/types"
 import { Trash2 } from "lucide-react"
 
-export function SystemActions({ allowedIps: initialAllowedIps }: { allowedIps: AllowedIp[] }) {
-  const [allowedIps, setAllowedIps] = useState<AllowedIp[]>(initialAllowedIps)
-  const [newIp, setNewIp] = useState("")
+type SystemActionsProps = {
+  allowedIps: AllowedIp[]
+  scriptFiles: string[]
+}
+
+export function SystemActions({ allowedIps: initialIps, scriptFiles }: SystemActionsProps) {
+  const [allowedIps, setAllowedIps] = useState(initialIps)
+  const [ipAddress, setIpAddress] = useState("")
+  const [selectedScript, setSelectedScript] = useState("")
   const [isAdding, setIsAdding] = useState(false)
   const [isMigrating, setIsMigrating] = useState(false)
 
   const handleAddIp = async () => {
-    if (!newIp.trim()) {
+    if (!ipAddress.trim()) {
       toast.error("IP address cannot be empty.")
       return
     }
     setIsAdding(true)
-    const result = await addAllowedIp(newIp)
+    const result = await addAllowedIp(ipAddress)
     if (result.success && result.data) {
-      setAllowedIps([...allowedIps, result.data])
-      setNewIp("")
+      setAllowedIps((prev) => [...prev, result.data!])
       toast.success(result.message)
+      setIpAddress("")
     } else {
       toast.error(result.message)
     }
@@ -36,63 +43,45 @@ export function SystemActions({ allowedIps: initialAllowedIps }: { allowedIps: A
   const handleDeleteIp = async (id: string) => {
     const result = await deleteAllowedIp(id)
     if (result.success) {
-      setAllowedIps(allowedIps.filter((ip) => ip.id !== id))
+      setAllowedIps((prev) => prev.filter((ip) => ip.id !== id))
       toast.success(result.message)
     } else {
       toast.error(result.message)
     }
   }
 
-  const handleRunMigration = async (version: string) => {
-    setIsMigrating(true)
-    toast.info(`Running migration for ${version}...`)
-    const result = await runSchemaMigration(version)
-    if (result.success) {
-      toast.success(result.message)
-    } else {
-      toast.error(result.message)
+  const handleRunMigration = async () => {
+    if (!selectedScript) {
+      toast.error("Please select a migration script to run.")
+      return
     }
-    setIsMigrating(false)
+    if (
+      window.confirm(`Are you sure you want to run the script: ${selectedScript}? This can cause irreversible changes.`)
+    ) {
+      setIsMigrating(true)
+      const result = await runSchemaMigration(selectedScript)
+      if (result.success) {
+        toast.success(result.message)
+      } else {
+        toast.error(result.message)
+      }
+      setIsMigrating(false)
+    }
   }
-
-  const availableMigrations = [
-    "v2",
-    "v3",
-    "v4",
-    "v5",
-    "v6",
-    "v7",
-    "v8",
-    "v9",
-    "v10",
-    "v11",
-    "v12",
-    "v13",
-    "v14",
-    "v15",
-    "v16",
-    "v17",
-    "v18",
-    "v19",
-    "v20",
-    "v21",
-    "v22",
-    "v23",
-  ].map((v) => `update-schema-${v}.sql`)
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div className="grid gap-4 md:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>IP Access Control</CardTitle>
-          <CardDescription>Manage IP addresses that are allowed to access the admin area.</CardDescription>
+          <CardTitle>Allowed IP Addresses</CardTitle>
+          <CardDescription>Manage IP addresses that can access the admin area.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2 mb-4">
             <Input
               placeholder="Enter new IP address"
-              value={newIp}
-              onChange={(e) => setNewIp(e.target.value)}
+              value={ipAddress}
+              onChange={(e) => setIpAddress(e.target.value)}
               disabled={isAdding}
             />
             <Button onClick={handleAddIp} disabled={isAdding}>
@@ -104,19 +93,18 @@ export function SystemActions({ allowedIps: initialAllowedIps }: { allowedIps: A
               <TableHeader>
                 <TableRow>
                   <TableHead>IP Address</TableHead>
-                  <TableHead>Added At</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Added On</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {allowedIps.map((ip) => (
                   <TableRow key={ip.id}>
-                    <TableCell className="font-medium">{ip.ip_address}</TableCell>
-                    <TableCell>{new Date(ip.created_at).toLocaleString()}</TableCell>
+                    <TableCell>{ip.ip_address}</TableCell>
+                    <TableCell>{new Date(ip.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => handleDeleteIp(ip.id)}>
+                      <Button variant="destructive" size="icon" onClick={() => handleDeleteIp(ip.id)}>
                         <Trash2 className="h-4 w-4" />
-                        <span className="sr-only">Delete</span>
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -129,19 +117,26 @@ export function SystemActions({ allowedIps: initialAllowedIps }: { allowedIps: A
       <Card>
         <CardHeader>
           <CardTitle>Database Migrations</CardTitle>
-          <CardDescription>Run schema updates on your database. Run these in order.</CardDescription>
+          <CardDescription>Run SQL migration scripts. Use with caution.</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-          {availableMigrations.map((scriptName) => (
-            <Button
-              key={scriptName}
-              variant="outline"
-              onClick={() => handleRunMigration(scriptName)}
-              disabled={isMigrating}
-            >
-              Run {scriptName.match(/v\d+/)?.[0]}
+        <CardContent>
+          <div className="flex gap-2">
+            <Select onValueChange={setSelectedScript} value={selectedScript}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a script" />
+              </SelectTrigger>
+              <SelectContent>
+                {scriptFiles.map((script) => (
+                  <SelectItem key={script} value={script}>
+                    {script}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button onClick={handleRunMigration} variant="destructive" disabled={isMigrating || !selectedScript}>
+              {isMigrating ? "Running..." : "Run Script"}
             </Button>
-          ))}
+          </div>
         </CardContent>
       </Card>
     </div>

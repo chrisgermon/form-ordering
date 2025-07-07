@@ -1,142 +1,154 @@
 "use server"
 
+import { createServerClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { z } from "zod"
-import { sendCompletionEmail } from "@/lib/email"
-import type { Submission, AllowedIp } from "@/lib/types"
 import { promises as fs } from "fs"
 import path from "path"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { sendCompletionEmail } from "@/lib/email"
+import { markCompleteSchema } from "@/lib/schemas"
 
-const markCompleteSchema = z.object({
-  submissionId: z.string(),
-  dispatch_date: z.string().optional().nullable(),
-  tracking_link: z.string().optional().nullable(),
-  dispatch_notes: z.string().optional().nullable(),
-})
-
-export async function markSubmissionAsComplete(prevState: any, formData: FormData) {
-  const supabase = createAdminClient()
-  const validatedFields = markCompleteSchema.safeParse({
-    submissionId: formData.get("submissionId"),
-    dispatch_date: formData.get("dispatch_date"),
-    tracking_link: formData.get("tracking_link"),
-    dispatch_notes: formData.get("dispatch_notes"),
-  })
-
-  if (!validatedFields.success) {
-    return {
-      success: false,
-      message: "Invalid data provided.",
-      errors: validatedFields.error.flatten().fieldErrors,
-    }
-  }
-
-  const { submissionId, ...updateData } = validatedFields.data
-
-  const { data: submission, error: fetchError } = await supabase
+export async function getSubmissions() {
+  const supabase = createServerClient()
+  const { data, error } = await supabase
     .from("submissions")
-    .select("*, brands(*)")
-    .eq("id", submissionId)
-    .single()
-
-  if (fetchError || !submission) {
-    return { success: false, message: "Failed to find submission." }
-  }
-
-  const { error } = await supabase
-    .from("submissions")
-    .update({
-      ...updateData,
-      status: "Complete",
-      dispatch_date: updateData.dispatch_date || null,
-    })
-    .eq("id", submissionId)
+    .select(
+      `
+      *,
+      brands (name)
+    `,
+    )
+    .order("created_at", { ascending: false })
 
   if (error) {
-    console.error("Error marking order as complete:", error)
-    return { success: false, message: `Database Error: ${error.message}` }
+    console.error("Error fetching submissions:", error)
+    return []
   }
+  return data
+}
 
-  try {
-    await sendCompletionEmail(submission as Submission, updateData)
-  } catch (emailError) {
-    console.error("Failed to send completion email:", emailError)
+export async function getBrands() {
+  const supabase = createServerClient()
+  const { data, error } = await supabase.from("brands").select("*")
+  if (error) {
+    console.error("Error fetching brands:", error)
+    return []
   }
-
-  revalidatePath("/admin/dashboard")
-  return { success: true, message: "Order marked as complete!" }
+  return data
 }
 
 export async function deleteBrand(id: string) {
-  const supabase = createAdminClient()
+  const supabase = createServerClient()
   const { error } = await supabase.from("brands").delete().eq("id", id)
-
   if (error) {
-    console.error("Error deleting brand:", error)
-    return { success: false, message: `Database Error: ${error.message}` }
+    return { success: false, message: `Failed to delete brand: ${error.message}` }
   }
-
   revalidatePath("/admin/dashboard")
   return { success: true, message: "Brand deleted successfully." }
 }
 
-const IpSchema = z.string().ip({ version: "v4", message: "Invalid IP address." })
+export async function getAllowedIps() {
+  const supabase = createServerClient()
+  const { data, error } = await supabase.from("allowed_ips").select("*")
+  if (error) {
+    console.error("Error fetching allowed IPs:", error)
+    return []
+  }
+  return data
+}
 
 export async function addAllowedIp(ipAddress: string) {
-  const validatedIp = IpSchema.safeParse(ipAddress)
-  if (!validatedIp.success) {
-    return { success: false, message: validatedIp.error.errors[0].message }
-  }
-
-  const supabase = createAdminClient()
-  const { data, error } = await supabase.from("allowed_ips").insert({ ip_address: validatedIp.data }).select().single()
+  const supabase = createServerClient()
+  const { data, error } = await supabase.from("allowed_ips").insert({ ip_address: ipAddress }).select().single()
 
   if (error) {
-    console.error("Error adding IP:", error)
-    return { success: false, message: "Failed to add IP address." }
+    return { success: false, message: `Failed to add IP: ${error.message}` }
   }
-
   revalidatePath("/admin/dashboard")
-  return { success: true, message: "IP address added successfully.", data: data as AllowedIp }
+  return { success: true, message: "IP address added successfully.", data }
 }
 
 export async function deleteAllowedIp(id: string) {
-  const supabase = createAdminClient()
+  const supabase = createServerClient()
   const { error } = await supabase.from("allowed_ips").delete().eq("id", id)
-
   if (error) {
-    console.error("Error deleting IP:", error)
-    return { success: false, message: "Failed to delete IP address." }
+    return { success: false, message: `Failed to delete IP: ${error.message}` }
   }
-
   revalidatePath("/admin/dashboard")
   return { success: true, message: "IP address deleted successfully." }
 }
 
-export async function runSchemaMigration(scriptName: string) {
-  if (scriptName.includes("..") || !scriptName.endsWith(".sql")) {
-    return { success: false, message: "Invalid script name." }
-  }
-
+export async function getMigrationScripts() {
   try {
-    const scriptPath = path.join(process.cwd(), "scripts", scriptName)
-    const sql = await fs.readFile(scriptPath, "utf8")
+    const scriptsDir = path.join(process.cwd(), "scripts")
+    const files = await fs.readdir(scriptsDir)
+    return files.filter((file) => file.endsWith(".sql"))
+  } catch (error) {
+    console.error("Error reading migration scripts:", error)
+    return []
+  }
+}
 
-    const supabase = createAdminClient()
-    const { error } = await supabase.rpc("run_sql", { sql_query: sql })
+export async function runSchemaMigration(scriptName: string) {
+  try {
+    const supabaseAdmin = createAdminClient()
+    const scriptPath = path.join(process.cwd(), "scripts", scriptName)
+    const sql = await fs.readFile(scriptPath, "utf-8")
+    const { error } = await supabaseAdmin.rpc("run_sql", { sql_query: sql })
 
     if (error) {
-      console.error(`Error running migration script ${scriptName}:`, error)
       return { success: false, message: `Migration failed: ${error.message}` }
     }
-
-    return { success: true, message: `Script ${scriptName} executed successfully.` }
-  } catch (e: any) {
-    console.error(`Error reading migration script ${scriptName}:`, e)
-    if (e.code === "ENOENT") {
-      return { success: false, message: `Script file not found: ${scriptName}` }
-    }
-    return { success: false, message: "An unexpected error occurred." }
+    return { success: true, message: `Migration ${scriptName} ran successfully.` }
+  } catch (error: any) {
+    return { success: false, message: `Error running migration: ${error.message}` }
   }
+}
+
+export async function markOrderAsComplete(submissionId: string, formData: FormData) {
+  const supabase = createServerClient()
+
+  const values = {
+    completion_notes: formData.get("completion_notes"),
+    completed_by: formData.get("completed_by"),
+  }
+
+  const validatedFields = markCompleteSchema.safeParse(values)
+
+  if (!validatedFields.success) {
+    return {
+      success: false,
+      message: "Validation failed.",
+      errors: validatedFields.error.flatten().fieldErrors,
+    }
+  }
+
+  const { completion_notes, completed_by } = validatedFields.data
+
+  const { data: submission, error: updateError } = await supabase
+    .from("submissions")
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      completion_notes: completion_notes || null,
+      completed_by: completed_by || null,
+    })
+    .eq("id", submissionId)
+    .select()
+    .single()
+
+  if (updateError) {
+    return { success: false, message: `Database error: ${updateError.message}` }
+  }
+
+  if (submission.patient_email) {
+    await sendCompletionEmail({
+      to: submission.patient_email,
+      patientName: submission.patient_name,
+      notes: completion_notes,
+    })
+  }
+
+  revalidatePath("/admin/dashboard")
+  return { success: true, message: "Order marked as complete." }
 }

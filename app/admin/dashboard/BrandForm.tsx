@@ -1,115 +1,117 @@
 "use client"
 
-import type React from "react"
-
-import { useFormState, useFormStatus } from "react-dom"
-import { useEffect, useRef, useState } from "react"
-import Image from "next/image"
-import { toast } from "sonner"
-import { updateBrand } from "@/app/admin/actions"
-import type { Brand } from "@/lib/types"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import type { z } from "zod"
 import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
-import { X } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { toast } from "sonner"
+import { createOrUpdateBrand } from "../actions"
+import type { Brand } from "@/lib/types"
+import { brandSchema } from "@/lib/schemas"
 
-function SubmitButton({ isEditing }: { isEditing: boolean }) {
-  const { pending } = useFormStatus()
-  return (
-    <Button type="submit" disabled={pending}>
-      {pending ? "Saving..." : isEditing ? "Update Brand" : "Create Brand"}
-    </Button>
-  )
+type BrandFormProps = {
+  brand: Brand | null
+  onSuccess: (brand: Brand) => void
+  onCancel: () => void
 }
 
-export function BrandForm({ brand }: { brand?: Brand }) {
-  const [state, formAction] = useFormState(updateBrand, { success: false, message: "" })
-  const formRef = useRef<HTMLFormElement>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(brand?.logo_url || null)
+export function BrandForm({ brand, onSuccess, onCancel }: BrandFormProps) {
+  const form = useForm<z.infer<typeof brandSchema>>({
+    resolver: zodResolver(brandSchema),
+    defaultValues: {
+      id: brand?.id,
+      name: brand?.name || "",
+      slug: brand?.slug || "",
+      logo_path: brand?.logo_path || "",
+    },
+  })
 
-  useEffect(() => {
-    if (state.success) {
-      toast.success(state.message)
-      if (!brand) {
-        formRef.current?.reset()
-        setImagePreview(null)
-      }
-    } else if (state.message) {
-      toast.error(state.message)
+  const { isSubmitting } = form.formState
+
+  const onSubmit = async (values: z.infer<typeof brandSchema>) => {
+    const formData = new FormData()
+    formData.append("id", values.id || "")
+    formData.append("name", values.name)
+    formData.append("slug", values.slug)
+
+    const logoFile = (document.getElementById("logo_path") as HTMLInputElement)?.files?.[0]
+    if (logoFile) {
+      formData.append("logoFile", logoFile)
+    } else if (values.logo_path) {
+      formData.append("logo_path", values.logo_path)
     }
-  }, [state, brand])
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
+    const result = await createOrUpdateBrand(formData)
 
-  const removeImage = () => {
-    setImagePreview(null)
-    // This requires a hidden input to signal removal if we want to delete from storage
-    // For now, we just clear the preview and the file input
-    const fileInput = formRef.current?.querySelector('input[type="file"]') as HTMLInputElement
-    if (fileInput) {
-      fileInput.value = ""
+    if (result.success && result.data) {
+      toast.success(result.message)
+      onSuccess(result.data)
+    } else {
+      toast.error(result.message)
     }
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{brand ? "Edit Brand" : "Create New Brand"}</CardTitle>
+        <CardTitle>{brand ? "Edit Brand" : "Add New Brand"}</CardTitle>
       </CardHeader>
-      <form ref={formRef} action={formAction}>
-        <CardContent className="space-y-4">
-          {brand && <input type="hidden" name="id" value={brand.id} />}
-          <input type="hidden" name="existing_logo_url" value={brand?.logo_url || ""} />
-
-          <div className="space-y-2">
-            <Label htmlFor="name">Brand Name</Label>
-            <Input id="name" name="name" defaultValue={brand?.name} required />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="slug">Brand Slug</Label>
-            <Input id="slug" name="slug" defaultValue={brand?.slug} required />
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Switch id="active" name="active" defaultChecked={brand?.active ?? true} />
-            <Label htmlFor="active">Active</Label>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="logo">Logo</Label>
-            <Input id="logo" name="logo" type="file" accept="image/*" onChange={handleFileChange} />
-            {imagePreview && (
-              <div className="mt-2 relative w-32 h-32">
-                <Image src={imagePreview || "/placeholder.svg"} alt="Logo preview" layout="fill" objectFit="contain" />
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="icon"
-                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
-                  onClick={removeImage}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardContent>
-        <CardFooter>
-          <SubmitButton isEditing={!!brand} />
-        </CardFooter>
-      </form>
+      <CardContent>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Brand Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. Focus Radiology" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="slug"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Slug</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. focus-radiology" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormItem>
+              <FormLabel>Logo</FormLabel>
+              <FormControl>
+                <Input id="logo_path" type="file" accept="image/*" />
+              </FormControl>
+              {brand?.logo_path && !form.watch("logo_path") && (
+                <div className="mt-2">
+                  <p className="text-sm text-muted-foreground">Current logo:</p>
+                  <img src={brand.logo_path || "/placeholder.svg"} alt="Current logo" className="h-16 mt-1" />
+                </div>
+              )}
+              <FormMessage />
+            </FormItem>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </CardContent>
     </Card>
   )
 }

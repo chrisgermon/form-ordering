@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 import { useFormState } from "react-dom"
 import {
   Dialog,
@@ -19,10 +19,10 @@ import { markSubmissionAsComplete } from "./actions"
 import type { Submission } from "@/lib/types"
 import { toast } from "sonner"
 
-interface MarkCompleteDialogProps {
-  submission: Submission | null
+type MarkCompleteDialogProps = {
   isOpen: boolean
   onClose: () => void
+  submission: Submission | null
 }
 
 const initialState = {
@@ -30,23 +30,15 @@ const initialState = {
   message: "",
 }
 
-export function MarkCompleteDialog({ submission, isOpen, onClose }: MarkCompleteDialogProps) {
+export function MarkCompleteDialog({ isOpen, onClose, submission }: MarkCompleteDialogProps) {
   const [state, formAction] = useFormState(markSubmissionAsComplete, initialState)
   const formRef = useRef<HTMLFormElement>(null)
-  const [dispatchDate, setDispatchDate] = useState<Date | undefined>()
-
-  useEffect(() => {
-    if (!isOpen) {
-      setDispatchDate(undefined)
-      formRef.current?.reset()
-    }
-  }, [isOpen])
 
   useEffect(() => {
     if (state.success) {
       toast.success(state.message)
       onClose()
-    } else if (state.message && !state.success) {
+    } else if (state.message) {
       toast.error(state.message)
     }
   }, [state, onClose])
@@ -58,18 +50,13 @@ export function MarkCompleteDialog({ submission, isOpen, onClose }: MarkComplete
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Mark Order as Complete</DialogTitle>
-          <DialogDescription>Fill in the dispatch details for order #{submission.order_number}.</DialogDescription>
+          <DialogDescription>Enter dispatch details for order #{submission.id.substring(0, 8)}.</DialogDescription>
         </DialogHeader>
-        <form action={formAction} ref={formRef} className="space-y-4 py-4">
+        <form action={formAction} ref={formRef} className="space-y-4">
           <input type="hidden" name="submissionId" value={submission.id} />
           <div>
             <Label htmlFor="dispatch_date">Dispatch Date</Label>
-            <DatePicker date={dispatchDate} onDateChange={setDispatchDate} />
-            <input
-              type="hidden"
-              name="dispatch_date"
-              value={dispatchDate ? dispatchDate.toISOString().split("T")[0] : ""}
-            />
+            <DatePicker name="dispatch_date" />
           </div>
           <div>
             <Label htmlFor="tracking_link">Tracking Link</Label>
@@ -77,16 +64,14 @@ export function MarkCompleteDialog({ submission, isOpen, onClose }: MarkComplete
           </div>
           <div>
             <Label htmlFor="dispatch_notes">Dispatch Notes</Label>
-            <Textarea id="dispatch_notes" name="dispatch_notes" placeholder="Any notes for the dispatch..." />
+            <Textarea id="dispatch_notes" name="dispatch_notes" placeholder="Any notes for the customer..." />
           </div>
         </form>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" onClick={() => formRef.current?.requestSubmit()}>
-            Save and Send Email
-          </Button>
+          <Button onClick={() => formRef.current?.requestSubmit()}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
