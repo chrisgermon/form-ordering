@@ -1,28 +1,28 @@
 "use client"
 
-import { useState } from "react"
-
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useFormState } from "react-dom"
-import { toast } from "sonner"
-import { CalendarIcon } from "lucide-react"
-import { format } from "date-fns"
-
-import type { Submission } from "@/lib/types"
-import { cn } from "@/lib/utils"
-import { markSubmissionAsComplete } from "./actions"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
+import { DatePicker } from "@/components/ui/date-picker"
+import { markSubmissionAsComplete } from "./actions"
+import type { Submission } from "@/lib/types"
+import { toast } from "sonner"
 
 interface MarkCompleteDialogProps {
   submission: Submission | null
   isOpen: boolean
-  onOpenChange: (isOpen: boolean) => void
+  onClose: () => void
 }
 
 const initialState = {
@@ -30,64 +30,65 @@ const initialState = {
   message: "",
 }
 
-export function MarkCompleteDialog({ submission, isOpen, onOpenChange }: MarkCompleteDialogProps) {
+export function MarkCompleteDialog({ submission, isOpen, onClose }: MarkCompleteDialogProps) {
   const [state, formAction] = useFormState(markSubmissionAsComplete, initialState)
   const formRef = useRef<HTMLFormElement>(null)
-  const [date, setDate] = useState<Date | undefined>(
-    submission?.dispatch_date ? new Date(submission.dispatch_date) : undefined,
-  )
+  const [dispatchDate, setDispatchDate] = useState<Date | undefined>()
+
+  useEffect(() => {
+    if (!isOpen) {
+      // Reset state when dialog closes
+      setDispatchDate(undefined)
+    }
+  }, [isOpen])
 
   useEffect(() => {
     if (state.success) {
       toast.success(state.message)
-      onOpenChange(false)
+      onClose()
     } else if (state.message && !state.success) {
       toast.error(state.message)
     }
-  }, [state, onOpenChange])
+  }, [state, onClose])
 
   if (!submission) return null
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Mark Order #{submission.order_number} as Complete</DialogTitle>
+          <DialogTitle>Mark Order as Complete</DialogTitle>
+          <DialogDescription>
+            Fill in the dispatch details for order #{submission.order_number || submission.id.substring(0, 8)}.
+          </DialogDescription>
         </DialogHeader>
-        <form ref={formRef} action={formAction} className="space-y-4">
+        <form action={formAction} ref={formRef} className="space-y-4 py-4">
           <input type="hidden" name="submissionId" value={submission.id} />
           <div>
-            <Label htmlFor="dispatchDate">Dispatch Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant={"outline"}
-                  className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {date ? format(date, "PPP") : <span>Pick a date</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
-              </PopoverContent>
-            </Popover>
-            <input type="hidden" name="dispatchDate" value={date ? format(date, "yyyy-MM-dd") : ""} />
+            <Label htmlFor="dispatch_date">Dispatch Date</Label>
+            <DatePicker date={dispatchDate} onDateChange={setDispatchDate} />
+            <input
+              type="hidden"
+              name="dispatch_date"
+              value={dispatchDate ? dispatchDate.toISOString().split("T")[0] : ""}
+            />
           </div>
           <div>
-            <Label htmlFor="trackingLink">Tracking Link</Label>
-            <Input id="trackingLink" name="trackingLink" />
+            <Label htmlFor="tracking_link">Tracking Link</Label>
+            <Input id="tracking_link" name="tracking_link" placeholder="https://courier.com/tracking/..." />
           </div>
           <div>
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea id="notes" name="notes" />
+            <Label htmlFor="dispatch_notes">Dispatch Notes</Label>
+            <Textarea id="dispatch_notes" name="dispatch_notes" placeholder="Any notes for the dispatch..." />
           </div>
         </form>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => formRef.current?.requestSubmit()}>Save</Button>
+          <Button type="button" onClick={() => formRef.current?.requestSubmit()}>
+            Save and Send Email
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

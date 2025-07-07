@@ -28,8 +28,8 @@ export function SubmissionsTable({ submissions }: { submissions: Submission[] })
     return submissions.filter((submission) => {
       const searchLower = searchTerm.toLowerCase()
       const matchesSearch =
-        submission.ordered_by.toLowerCase().includes(searchLower) ||
-        submission.email.toLowerCase().includes(searchLower) ||
+        (submission.ordered_by || "").toLowerCase().includes(searchLower) ||
+        (submission.email || "").toLowerCase().includes(searchLower) ||
         (submission.order_number || "").toLowerCase().includes(searchLower) ||
         (submission.brands?.name || "").toLowerCase().includes(searchLower)
 
@@ -69,8 +69,8 @@ export function SubmissionsTable({ submissions }: { submissions: Submission[] })
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-grow">
+      <div className="flex flex-col sm:flex-row gap-4 items-center">
+        <div className="relative flex-grow w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
           <Input
             placeholder="Search by name, email, order #, brand..."
@@ -79,25 +79,25 @@ export function SubmissionsTable({ submissions }: { submissions: Submission[] })
             className="pl-10"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="complete">Complete</SelectItem>
-          </SelectContent>
-        </Select>
-        <DateRangePicker date={dateRange} onDateChange={setDateRange} />
-        <Button variant="ghost" onClick={clearFilters} className="flex items-center gap-2">
-          <X className="h-4 w-4" />
-          Clear
-        </Button>
-        <Button variant="outline" onClick={handleRefresh} disabled={isPending}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="complete">Complete</SelectItem>
+            </SelectContent>
+          </Select>
+          <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+          <Button variant="ghost" onClick={clearFilters} className="flex items-center gap-2">
+            <X className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" onClick={handleRefresh} disabled={isPending}>
+            <RefreshCw className={`h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </div>
       <div className="border rounded-lg overflow-hidden">
         <Table>

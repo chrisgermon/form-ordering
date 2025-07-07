@@ -248,21 +248,19 @@ export type Brand = {
   name: string
   slug: string
   logo_url: string | null
-  active: boolean
-  to_emails: string[] | null
-  cc_emails: string[] | null
-  bcc_emails: string[] | null
-  subject_line: string | null
+  form_title: string
+  created_at: string
+  sections: Section[]
 }
 
 export type Item = {
   id: string
-  brand_id: string
   section_id: string
   label: string
-  type: "text" | "textarea" | "checkbox" | "radio" | "date"
-  options: string[] | null
+  type: "text" | "date" | "checkbox" | "textarea" | "number"
+  required: boolean
   placeholder: string | null
+  options: string[] | null
   position: number
 }
 
@@ -270,6 +268,7 @@ export type Section = {
   id: string
   brand_id: string
   title: string
+  description: string | null
   position: number
   items: Item[]
 }
@@ -280,25 +279,23 @@ export type Submission = {
   brand_id: string
   ordered_by: string
   email: string
+  patient_name: string
+  status: "Pending" | "Complete"
   order_number: string | null
-  notes: string | null
-  form_data: Record<string, any>
-  status: "Pending" | "Complete" | null
   pdf_url: string | null
+  form_data: Record<string, any>
   dispatch_date: string | null
   tracking_link: string | null
   dispatch_notes: string | null
-  brands: Brand | null
+  brands: Brand | null // This comes from the join query
 }
 
 export type SubmissionWithBrand = Submission & {
-  brands: {
-    name: string
-  }
+  brands: Brand
 }
 
 export type AllowedIp = {
   id: string
-  ip_address: string
   created_at: string
+  ip_address: string
 }
