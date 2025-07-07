@@ -2,14 +2,25 @@
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
-import { promises as fs } from "fs"
-import path from "path"
 import { seedDatabase as seed } from "@/lib/seed-database"
 
 async function runDbMigration(fileName: string) {
   try {
     const supabase = createAdminClient()
-    const sql = await fs.readFile(path.join(process.cwd(), "scripts", fileName), "utf8")
+
+    // In this environment, we can't use 'fs'. We fetch the migration file instead.
+    // This relies on the preview environment making project files available via fetch.
+    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"
+    const fileUrl = new URL(`/scripts/${fileName}`, baseUrl)
+
+    const response = await fetch(fileUrl)
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch migration file ${fileName}: ${response.status} ${response.statusText}`)
+    }
+
+    const sql = await response.text()
+
     const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
     if (error) {
       console.error(`Error running migration ${fileName}:`, error)
