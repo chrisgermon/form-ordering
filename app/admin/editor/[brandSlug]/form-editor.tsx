@@ -1,154 +1,200 @@
 "use client"
 
-import { useEffect } from "react"
-import { useFormState } from "react-dom"
-import Link from "next/link"
-import { ArrowLeft, Save } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { useForm, FormProvider } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-
-import type { BrandData, UploadedFile } from "@/lib/types"
-import { Button } from "@/components/ui/button"
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { createProductSchema, type CreateProductType } from "@/lib/validations/product"
 import { useToast } from "@/components/ui/use-toast"
-import { saveForm } from "./actions"
-import EditorFileManager from "./file-manager"
-import { SectionsAndItems } from "./sections-and-items"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { createProduct, getProduct, updateProduct } from "@/lib/api/product"
+import { useParams } from "next/navigation"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
+import { FileUploader } from "./file-manager"
 
-const brandFormSchema = z.object({
-  id: z.string(),
-  slug: z.string(),
-  name: z.string().min(1, "Brand name is required"),
-  initials: z.string().min(1, "Brand initials are required"),
-  to_emails: z.string().optional(),
-  cc_emails: z.string().optional(),
-  bcc_emails: z.string().optional(),
-  subject_line: z.string().optional(),
-  form_title: z.string().optional(),
-  form_subtitle: z.string().optional(),
-  logo_url: z.string().optional().nullable(),
-  header_image_url: z.string().optional().nullable(),
-  product_sections: z.any(), // We'll handle validation in the action
-})
-
-type FormEditorProps = {
-  initialBrandData: BrandData
-  uploadedFiles: UploadedFile[]
+interface Props {
+  brandSlug: string
 }
 
-export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps) {
+const FormEditor = ({ brandSlug }: Props) => {
+  const router = useRouter()
   const { toast } = useToast()
-  const [state, formAction] = useFormState(saveForm, { success: false, message: "" })
+  const { productId } = useParams()
+  const [isNewProduct, setIsNewProduct] = useState(true)
 
-  const methods = useForm<BrandData>({
-    resolver: zodResolver(brandFormSchema),
-    defaultValues: initialBrandData,
+  const form = useForm<CreateProductType>({
+    resolver: zodResolver(createProductSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      price: 0,
+      brandSlug: brandSlug,
+      images: [],
+      isFeatured: false,
+      isTrending: false,
+    },
+    mode: "onChange",
+  })
+
+  const { data: product, isLoading } = useQuery({
+    queryKey: ["product", productId],
+    queryFn: () => getProduct(productId as string),
+    enabled: !!productId,
+    refetchOnWindowFocus: false,
   })
 
   useEffect(() => {
-    if (state.message) {
-      toast({
-        title: state.success ? "Success" : "Error",
-        description: state.message,
-        variant: state.success ? "default" : "destructive",
-      })
+    if (product) {
+      form.reset(product)
+      setIsNewProduct(false)
     }
-  }, [state, toast])
+  }, [product, form])
 
-  const logoUrl = methods.watch("logo_url")
-  const headerImageUrl = methods.watch("header_image_url")
+  const { mutate: create, isPending: isCreatePending } = useMutation({
+    mutationFn: createProduct,
+    onSuccess: () => {
+      toast({
+        title: "Product created successfully",
+      })
+      router.push(`/admin/editor/${brandSlug}`)
+    },
+    onError: (error) => {
+      toast({
+        title: "Something went wrong",
+        description: error.message,
+        variant: "destructive",
+      })
+    },
+  })
+
+  const { mutate: update, isPending: isUpdatePending } = useMutation({
+    mutationFn: updateProduct,
+    onSuccess: () => {
+      toast({
+        title: "Product updated successfully",
+      })
+      router.push(`/admin/editor/${brandSlug}`)
+    },
+    onError: (error) => {
+      toast({
+        title: "Something went wrong",
+        description: error.message,
+        variant: "destructive",
+      })
+    },
+  })
+
+  const onSubmit = (values: CreateProductType) => {
+    if (isNewProduct) {
+      create(values)
+    } else {
+      update({ id: productId as string, ...values })
+    }
+  }
 
   return (
-    <FormProvider {...methods}>
-      <form action={formAction}>
-        <input type="hidden" {...methods.register("id")} />
-        <input type="hidden" {...methods.register("slug")} />
+    <div className="container py-10">
+      <h1 className="text-3xl font-bold tracking-tight">{isNewProduct ? "Create Product" : "Edit Product"}</h1>
+      <Separator className="my-4" />
+      {isLoading ? (
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-10 w-[300px]" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-10 w-[100px]" />
+        </div>
+      ) : (
+        <FormProvider {...form}>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Product name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Product description" className="resize-none" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="price"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Price</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="Product price" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-        <header className="bg-gray-100 dark:bg-gray-800 p-4 flex items-center justify-between sticky top-0 z-10 border-b">
-          <div className="flex items-center gap-4">
-            <Button variant="outline" size="icon" asChild>
-              <Link href="/admin/dashboard">
-                <ArrowLeft className="h-4 w-4" />
-                <span className="sr-only">Back to Dashboard</span>
-              </Link>
-            </Button>
-            <h1 className="text-xl font-semibold">Editing: {initialBrandData.name}</h1>
-          </div>
-          <Button type="submit">
-            <Save className="mr-2 h-4 w-4" />
-            Save Changes
-          </Button>
-        </header>
+              <FormField
+                control={form.control}
+                name="isFeatured"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel>Featured</FormLabel>
+                      <FormDescription>Mark this product as featured</FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
 
-        <Tabs defaultValue="details" className="p-4">
-          <TabsList>
-            <TabsTrigger value="details">Form Details</TabsTrigger>
-            <TabsTrigger value="sections">Sections & Items</TabsTrigger>
-            <TabsTrigger value="files">File Manager</TabsTrigger>
-          </TabsList>
-          <TabsContent value="details" className="mt-4">
-            <div className="space-y-6 max-w-4xl mx-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <Label htmlFor="name">Brand Name</Label>
-                  <Input id="name" {...methods.register("name")} />
-                  {methods.formState.errors.name && (
-                    <p className="text-red-500 text-sm mt-1">{methods.formState.errors.name.message}</p>
-                  )}
-                </div>
-                <div>
-                  <Label htmlFor="initials">Brand Initials</Label>
-                  <Input id="initials" {...methods.register("initials")} />
-                  {methods.formState.errors.initials && (
-                    <p className="text-red-500 text-sm mt-1">{methods.formState.errors.initials.message}</p>
-                  )}
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="to_emails">To Emails (comma-separated)</Label>
-                <Input id="to_emails" {...methods.register("to_emails")} />
-              </div>
-              <div>
-                <Label htmlFor="cc_emails">CC Emails (comma-separated)</Label>
-                <Input id="cc_emails" {...methods.register("cc_emails")} />
-              </div>
-              <div>
-                <Label htmlFor="bcc_emails">BCC Emails (comma-separated)</Label>
-                <Input id="bcc_emails" {...methods.register("bcc_emails")} />
-              </div>
-              <div>
-                <Label htmlFor="subject_line">Email Subject Line</Label>
-                <Input id="subject_line" {...methods.register("subject_line")} />
-              </div>
-              <div>
-                <Label htmlFor="form_title">Form Title</Label>
-                <Input id="form_title" {...methods.register("form_title")} />
-              </div>
-              <div>
-                <Label htmlFor="form_subtitle">Form Subtitle</Label>
-                <Textarea id="form_subtitle" {...methods.register("form_subtitle")} />
-              </div>
-            </div>
-          </TabsContent>
-          <TabsContent value="sections">
-            <SectionsAndItems brand={initialBrandData} />
-          </TabsContent>
-          <TabsContent value="files">
-            <EditorFileManager
-              uploadedFiles={uploadedFiles}
-              logoUrl={logoUrl}
-              headerImageUrl={headerImageUrl}
-              onSelectLogo={(pathname) => methods.setValue("logo_url", pathname, { shouldDirty: true })}
-              onSelectHeader={(pathname) => methods.setValue("header_image_url", pathname, { shouldDirty: true })}
-              brandId={initialBrandData.id}
-            />
-          </TabsContent>
-        </Tabs>
-      </form>
-    </FormProvider>
+              <FormField
+                control={form.control}
+                name="isTrending"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel>Trending</FormLabel>
+                      <FormDescription>Mark this product as trending</FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <FileUploader />
+
+              <Button type="submit" disabled={isCreatePending || isUpdatePending}>
+                {isCreatePending || isUpdatePending ? "Loading..." : isNewProduct ? "Create" : "Update"}
+              </Button>
+            </form>
+          </Form>
+        </FormProvider>
+      )}
+    </div>
   )
 }
+
+export default FormEditor
