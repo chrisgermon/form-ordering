@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useMemo, useTransition } from "react"
+import { useState, useMemo, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -24,7 +24,7 @@ import { SubmissionDetailsDialog } from "./SubmissionDetailsDialog"
 import { MarkCompleteDialog } from "./MarkCompleteDialog"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import type { DateRange } from "react-day-picker"
-import { subDays } from "date-fns"
+import { subDays, format } from "date-fns"
 
 interface SubmissionsTableProps {
   initialSubmissions: Submission[]
@@ -33,6 +33,18 @@ interface SubmissionsTableProps {
 type SortableKey = "order_number" | "created_at" | "status" | "brands.name"
 
 const ITEMS_PER_PAGE = 15
+
+// Create a client-only wrapper to prevent hydration errors
+const ClientOnly = ({ children }: { children: React.ReactNode }) => {
+  const [hasMounted, setHasMounted] = useState(false)
+  useEffect(() => {
+    setHasMounted(true)
+  }, [])
+  if (!hasMounted) {
+    return null
+  }
+  return <>{children}</>
+}
 
 export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) {
   const router = useRouter()
@@ -180,7 +192,9 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
               <SelectItem value="complete">Complete</SelectItem>
             </SelectContent>
           </Select>
-          <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+          <ClientOnly>
+            <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+          </ClientOnly>
           <Button variant="outline" onClick={handleRefresh} disabled={isPending}>
             <RefreshCw className={`mr-2 h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
             Refresh
@@ -204,7 +218,9 @@ export function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) 
             {paginatedSubmissions.map((submission) => (
               <TableRow key={submission.id}>
                 <TableCell className="font-medium">{submission.order_number || "N/A"}</TableCell>
-                <TableCell>{new Date(submission.created_at).toLocaleString()}</TableCell>
+                <TableCell>
+                  <ClientOnly>{format(new Date(submission.created_at), "dd MMM yyyy, h:mm a")}</ClientOnly>
+                </TableCell>
                 <TableCell>{submission.brands?.name || "N/A"}</TableCell>
                 <TableCell>{submission.ordered_by}</TableCell>
                 <TableCell>{submission.email}</TableCell>
