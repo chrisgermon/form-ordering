@@ -1,27 +1,5 @@
 "use client"
 
-import { AlertDescription } from "@/components/ui/alert"
-
-import { Alert } from "@/components/ui/alert"
-
-import { CollapsibleContent } from "@/components/ui/collapsible"
-
-import { CollapsibleTrigger } from "@/components/ui/collapsible"
-
-import { Collapsible } from "@/components/ui/collapsible"
-
-import { DialogFooter } from "@/components/ui/dialog"
-
-import { DialogDescription } from "@/components/ui/dialog"
-
-import { DialogTitle } from "@/components/ui/dialog"
-
-import { DialogHeader } from "@/components/ui/dialog"
-
-import { DialogContent } from "@/components/ui/dialog"
-
-import { Dialog } from "@/components/ui/dialog"
-
 import { useState, useMemo } from "react"
 import Image from "next/image"
 import { useForm, Controller, useWatch } from "react-hook-form"
@@ -31,12 +9,24 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Loader2, Send, CheckCircle, XCircle, ChevronDown, ArrowLeft, Search, X } from "lucide-react"
-import { resolveAssetUrl } from "@/lib/utils"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ChevronDown, ArrowLeft, Search, X } from "lucide-react"
+import { format } from "date-fns"
+import { cn, resolveAssetUrl } from "@/lib/utils"
 import type { BrandData, ProductItem } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
-import { DatePicker } from "@/components/ui/date-picker"
 
 const createFormSchema = (brandData: BrandData) => {
   const baseSchema = z.object({
@@ -191,12 +181,23 @@ const FormField = ({
             name={`${fieldName}.quantity`}
             control={control}
             render={({ field }) => (
-              <DatePicker
-                value={field.value}
-                onChange={field.onChange}
-                className="bg-gray-100 border-gray-300"
-                placeholder="DD-MM-YYYY"
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal bg-gray-100 border-gray-300",
+                      !field.value && "text-muted-foreground",
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {field.value ? format(field.value, "dd-MM-yyyy") : <span>DD-MM-YYYY</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                </PopoverContent>
+              </Popover>
             )}
           />
         )
@@ -581,12 +582,23 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                       name="date"
                       control={control}
                       render={({ field }) => (
-                        <DatePicker
-                          value={field.value}
-                          onChange={field.onChange}
-                          className="bg-gray-100 border-gray-300"
-                          placeholder="DD-MM-YYYY"
-                        />
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full justify-start text-left font-normal bg-gray-100 border-gray-300",
+                                !field.value && "text-muted-foreground",
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {field.value ? format(field.value, "dd-MM-yyyy") : <span>DD-MM-YYYY</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                          </PopoverContent>
+                        </Popover>
                       )}
                     />
                     {errors.date && <p className="text-xs text-red-600">{errors.date.message}</p>}

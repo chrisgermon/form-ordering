@@ -46,7 +46,7 @@ export interface BrandData extends Brand {
 }
 
 export interface OrderInfo {
-  orderNumber: number
+  orderNumber: string
   orderedBy: string
   email: string
   billTo?: ClinicLocation
@@ -70,17 +70,4 @@ export interface UploadedFile {
   uploaded_at: string
   size: number
   content_type: string | null
-}
-
-export interface Submission {
-  id: string
-  created_at: string
-  ordered_by: string
-  email: string
-  status: string | null
-  pdf_url: string | null
-  ip_address: string | null
-  order_data: OrderPayload | null
-  brands: { name: string } | null
-  order_number?: number
 }

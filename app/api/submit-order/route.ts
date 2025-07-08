@@ -1,8 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { sendOrderEmail } from "@/lib/email"
-import type { OrderPayload, Brand, ClinicLocation, OrderData } from "@/lib/types"
+import type { OrderPayload, Brand, ClinicLocation } from "@/lib/types"
 import { jsPDF } from "jspdf"
+import { put } from "@vercel/blob"
 
 function addClinicInfo(doc: jsPDF, yPos: number, title: string, clinic: ClinicLocation | null) {
   if (!clinic) return yPos
@@ -102,77 +103,88 @@ async function generateOrderPdf(order: OrderPayload, brand: Brand, logoUrl: stri
 export async function POST(request: NextRequest) {
   try {
     const ip = request.ip ?? request.headers.get("x-forwarded-for") ?? "Unknown"
-    const orderData: OrderData = await request.json()
-    const { brand_id, ordered_by, email, orderInfo } = orderData
+    const flatBody = await request.json()
 
-    if (!brand_id || !ordered_by || !email) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
-    }
+    const supabase = createServerSupabaseClient()
 
-    const supabase = createAdminClient()
-
-    // 1. Get the next order number
-    const { data: orderNumberData, error: orderNumberError } = await supabase.rpc("get_next_order_number", {
-      brand_id_param: brand_id,
-    })
+    // Call the new database function to get the next order number
+    const { data: orderNumber, error: orderNumberError } = await supabase
+      .rpc("get_next_order_number", { brand_id_param: flatBody.brandId })
+      .single()
 
     if (orderNumberError) {
-      console.error("Error getting next order number:", orderNumberError)
-      return NextResponse.json({ error: "Could not generate order number." }, { status: 500 })
+      console.error("Error generating order number:", orderNumberError)
+      throw new Error(
+        `Could not generate order number: ${orderNumberError.message}. Have you run the v13 schema update from the admin dashboard?`,
+      )
     }
-    const orderNumber = orderNumberData
 
-    // Add order number to order data
-    const finalOrderData = {
-      ...orderData,
+    const { data: brand, error: brandError } = await supabase
+      .from("brands")
+      .select("id, name, emails, logo")
+      .eq("id", flatBody.brandId)
+      .single()
+
+    if (brandError || !brand) {
+      console.error("Error fetching brand for order submission:", brandError)
+      return NextResponse.json({ error: "Brand not found" }, { status: 404 })
+    }
+
+    let logoUrl: string | null = null
+    if (brand.logo) {
+      const { data: fileData } = await supabase.from("uploaded_files").select("url").eq("pathname", brand.logo).single()
+      if (fileData) {
+        logoUrl = fileData.url
+      }
+    }
+
+    const orderPayload: OrderPayload = {
+      brandId: flatBody.brandId,
+      items: flatBody.items,
       orderInfo: {
-        ...orderInfo,
-        orderNumber: orderNumber,
+        orderNumber: orderNumber, // Use the new sequential order number
+        orderedBy: flatBody.orderedBy,
+        email: flatBody.email,
+        billTo: flatBody.billTo,
+        deliverTo: flatBody.deliverTo,
+        notes: flatBody.notes,
       },
     }
 
-    // 2. Save submission to the database
-    const { data: submission, error: submissionError } = await supabase
-      .from("submissions")
-      .insert({
-        brand_id: brand_id,
-        ordered_by: ordered_by,
-        email: email,
-        order_data: finalOrderData,
-        status: "pending", // We'll update this after sending the email
-        ip_address: ip,
-        order_number: orderNumber, // Add order number here
-      })
-      .select()
-      .single()
+    const pdfArrayBuffer = await generateOrderPdf(orderPayload, brand, logoUrl)
+    const pdfBuffer = Buffer.from(pdfArrayBuffer)
+
+    const blob = await put(`orders/order-${orderPayload.orderInfo.orderNumber}.pdf`, pdfBuffer, {
+      access: "public",
+      contentType: "application/pdf",
+    })
+
+    const emailResult = await sendOrderEmail(orderPayload, brand, pdfBuffer, logoUrl)
+
+    const { error: submissionError } = await supabase.from("submissions").insert({
+      brand_id: orderPayload.brandId,
+      ordered_by: orderPayload.orderInfo.orderedBy,
+      email: orderPayload.orderInfo.email,
+      bill_to: orderPayload.orderInfo.billTo?.name,
+      deliver_to: orderPayload.orderInfo.deliverTo?.name,
+      items: orderPayload.items as any,
+      pdf_url: blob.url,
+      status: emailResult.success ? "sent" : "failed",
+      email_response: emailResult.message,
+      order_data: orderPayload as any,
+      ip_address: ip,
+    })
 
     if (submissionError) {
       console.error("Error saving submission to database:", submissionError)
-      return NextResponse.json({ error: "Could not save submission." }, { status: 500 })
+      throw submissionError
     }
 
-    // 3. Send email
-    try {
-      const emailResponse = await sendOrderEmail(finalOrderData)
-
-      // 4. Update submission status to 'sent'
-      await supabase
-        .from("submissions")
-        .update({ status: "sent", email_response: JSON.stringify(emailResponse) })
-        .eq("id", submission.id)
-
-      return NextResponse.json({ success: true, orderNumber: orderNumber })
-    } catch (emailError: any) {
-      console.error("Error sending email:", emailError)
-
-      // 4b. Update submission status to 'failed'
-      await supabase
-        .from("submissions")
-        .update({ status: "failed", email_response: emailError.message })
-        .eq("id", submission.id)
-
-      return NextResponse.json({ error: "Could not send email." }, { status: 500 })
+    if (!emailResult.success) {
+      throw new Error(emailResult.message)
     }
+
+    return NextResponse.json({ success: true, message: "Order processed successfully." })
   } catch (error) {
     console.error("Error processing order:", error)
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"

@@ -1,91 +1,103 @@
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import AdminBrandGrid from "./admin-brand-grid"
 import { createAdminClient } from "@/lib/supabase/admin"
-import type { Brand, UploadedFile, Submission } from "@/lib/types"
-import SubmissionsTable from "./submissions-table"
-import DashboardFileManager from "./file-manager"
-import SystemActions from "./system-actions"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { BrandGrid } from "@/components/brand-grid"
 import { Button } from "@/components/ui/button"
-import Link from "next/link"
-import { HelpCircle } from "lucide-react"
-import { Toaster } from "sonner"
+import {
+  initializeDatabase,
+  runSchemaV5Update,
+  forceSchemaReload,
+  runClinicImport,
+  runSchemaV13Update,
+  runSchemaV14Update,
+} from "./actions"
+import type { Brand, Submission } from "@/lib/types"
+import { SubmissionsTable } from "./submissions-table"
 
-async function getBrands(): Promise<Brand[]> {
-  const supabase = createAdminClient()
-  const { data, error } = await supabase.from("brands").select("*").order("name", { ascending: true })
-  if (error) {
-    console.error("Error fetching brands:", error)
-    return []
-  }
-  return data
-}
-
-async function getSubmissions(): Promise<Submission[]> {
-  const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from("submissions")
-    .select("*, brands(name)")
-    .order("created_at", { ascending: false })
-
-  if (error) {
-    console.error("Error fetching submissions:", error)
-    return []
-  }
-  return data
-}
-
-async function getFiles(): Promise<UploadedFile[]> {
-  const supabase = createAdminClient()
-  const { data, error } = await supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false })
-  if (error) {
-    console.error("Error fetching files:", error)
-    return []
-  }
-  return data
-}
+export const dynamic = "force-dynamic"
 
 export default async function AdminDashboard() {
-  const brands = await getBrands()
-  const submissions = await getSubmissions()
-  const files = await getFiles()
+  const supabase = createAdminClient()
+  const { data: brands, error: brandsError } = await supabase
+    .from("brands")
+    .select("*")
+    .order("name", { ascending: true })
+
+  const { data: submissions, error: submissionsError } = await supabase
+    .from("submissions")
+    .select("*")
+    .order("created_at", { ascending: false })
+
+  if (brandsError) {
+    console.error("Error fetching brands:", brandsError)
+  }
+  if (submissionsError) {
+    console.error("Error fetching submissions:", submissionsError)
+  }
 
   return (
-    <>
-      <div className="min-h-screen bg-gray-50 p-4 sm:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
-            <Button asChild variant="outline">
-              <Link href="/admin/instructions">
-                <HelpCircle className="mr-2 h-4 w-4" />
-                Admin Guide
-              </Link>
-            </Button>
-          </div>
+    <div className="container mx-auto p-4 md:p-8">
+      <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
 
-          <Tabs defaultValue="brands" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="brands">Brands</TabsTrigger>
-              <TabsTrigger value="submissions">Submissions</TabsTrigger>
-              <TabsTrigger value="files">Files</TabsTrigger>
-              <TabsTrigger value="system">System Actions</TabsTrigger>
-            </TabsList>
-            <TabsContent value="brands" className="mt-6">
-              <AdminBrandGrid initialBrands={brands} uploadedFiles={files} />
-            </TabsContent>
-            <TabsContent value="submissions" className="mt-6">
-              <SubmissionsTable initialSubmissions={submissions} brands={brands} />
-            </TabsContent>
-            <TabsContent value="files" className="mt-6">
-              <DashboardFileManager initialFiles={files} />
-            </TabsContent>
-            <TabsContent value="system" className="mt-6">
-              <SystemActions />
-            </TabsContent>
-          </Tabs>
-        </div>
-      </div>
-      <Toaster richColors />
-    </>
+      <Tabs defaultValue="brands">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="brands">Brands</TabsTrigger>
+          <TabsTrigger value="submissions">Submissions</TabsTrigger>
+          <TabsTrigger value="system">System Actions</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="brands">
+          <BrandGrid brands={(brands as Brand[]) || []} />
+        </TabsContent>
+
+        <TabsContent value="submissions">
+          <div className="mt-6">
+            <h2 className="text-2xl font-semibold mb-4">Order Submissions</h2>
+            <SubmissionsTable
+              initialSubmissions={(submissions as Submission[]) || []}
+              brands={(brands as Brand[]) || []}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="system">
+          <div className="mt-6 p-6 border rounded-lg bg-gray-50">
+            <h2 className="text-2xl font-semibold mb-4">System Actions</h2>
+            <p className="text-gray-600 mb-6">Run system-wide actions. Use with caution.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <form action={initializeDatabase}>
+                <Button type="submit" variant="destructive" className="w-full">
+                  Initialize Database (v1-v4)
+                </Button>
+              </form>
+              <form action={runSchemaV5Update}>
+                <Button type="submit" variant="secondary" className="w-full">
+                  Run Schema Update (v5)
+                </Button>
+              </form>
+              <form action={runClinicImport}>
+                <Button type="submit" variant="secondary" className="w-full">
+                  Run Clinic & Logo Import
+                </Button>
+              </form>
+              <form action={runSchemaV13Update}>
+                <Button type="submit" variant="secondary" className="w-full">
+                  Run Schema Update (v13)
+                </Button>
+              </form>
+              <form action={runSchemaV14Update}>
+                <Button type="submit" variant="secondary" className="w-full">
+                  Run Schema Update (v14)
+                </Button>
+              </form>
+              <form action={forceSchemaReload}>
+                <Button type="submit" variant="outline" className="w-full bg-transparent">
+                  Force Schema Reload
+                </Button>
+              </form>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
   )
 }

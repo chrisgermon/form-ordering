@@ -15,31 +15,37 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Download } from "lucide-react"
+import { CalendarIcon, ChevronDown, Download } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
 import { addDays, format } from "date-fns"
 import type { DateRange } from "react-day-picker"
-import type { Brand, Submission } from "@/lib/types"
+import type { Submission } from "@/lib/types"
 import { SubmissionDetailsDialog } from "./SubmissionDetailsDialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 
-export default function SubmissionsTable({
+export function SubmissionsTable({
   initialSubmissions,
   brands,
 }: {
   initialSubmissions: Submission[]
-  brands: Brand[]
+  brands: { name: string }[]
 }) {
   const [data, setData] = React.useState(initialSubmissions)
-  const [sorting, setSorting] = React.useState<SortingState>([{ id: "created_at", desc: true }])
+  const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = React.useState("")
   const [date, setDate] = React.useState<DateRange | undefined>()
   const [selectedSubmission, setSelectedSubmission] = React.useState<Submission | null>(null)
   const [isDetailsOpen, setIsDetailsOpen] = React.useState(false)
+
+  const uniqueBrands = [...new Set(brands.map((b) => b.name))]
+  const uniqueStatuses = [...new Set(data.map((s) => s.status))]
 
   const columns: ColumnDef<Submission>[] = [
     {
@@ -47,12 +53,19 @@ export default function SubmissionsTable({
       header: "Order #",
     },
     {
-      accessorFn: (row) => row.brands?.name,
+      accessorKey: "brand_name",
       header: "Brand",
+      filterFn: (row, id, value) => {
+        return value.includes(row.getValue(id))
+      },
     },
     {
-      accessorKey: "ordered_by",
+      accessorKey: "name",
       header: "Name",
+    },
+    {
+      accessorKey: "email",
+      header: "Email",
     },
     {
       accessorKey: "created_at",
@@ -65,41 +78,24 @@ export default function SubmissionsTable({
     {
       accessorKey: "status",
       header: "Status",
-      cell: ({ row }) => {
-        const status = row.getValue("status") as string
-        return (
-          <Badge variant={status === "sent" ? "default" : "destructive"} className="capitalize">
-            {status}
-          </Badge>
-        )
+      filterFn: (row, id, value) => {
+        return value.includes(row.getValue(id))
       },
     },
     {
       id: "actions",
-      cell: ({ row }) => {
-        const submission = row.original
-        return (
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSelectedSubmission(submission)
-                setIsDetailsOpen(true)
-              }}
-            >
-              View Details
-            </Button>
-            {submission.pdf_url && (
-              <Button variant="outline" size="sm" asChild>
-                <a href={submission.pdf_url} target="_blank" rel="noopener noreferrer">
-                  View PDF
-                </a>
-              </Button>
-            )}
-          </div>
-        )
-      },
+      cell: ({ row }) => (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setSelectedSubmission(row.original)
+            setIsDetailsOpen(true)
+          }}
+        >
+          View
+        </Button>
+      ),
     },
   ]
 
@@ -121,42 +117,34 @@ export default function SubmissionsTable({
   })
 
   React.useEffect(() => {
-    let filteredData = initialSubmissions
-
-    // Date filter
-    if (date?.from) {
-      filteredData = filteredData.filter((submission) => {
+    if (date?.from && date?.to) {
+      const filteredData = initialSubmissions.filter((submission) => {
         const submissionDate = new Date(submission.created_at)
-        const fromDate = date.from!
-        fromDate.setHours(0, 0, 0, 0)
-        const toDate = date.to ? date.to : fromDate
-        toDate.setHours(23, 59, 59, 999)
-        return submissionDate >= fromDate && submissionDate <= toDate
+        return submissionDate >= date.from! && submissionDate <= date.to!
       })
+      setData(filteredData)
+    } else {
+      setData(initialSubmissions)
     }
-
-    setData(filteredData)
   }, [date, initialSubmissions])
 
   const downloadCSV = () => {
-    const headers = ["Order #", "Brand", "Name", "Email", "Date", "Status", "IP Address", "Order Data"]
+    const headers = ["Order #", "Brand", "Name", "Email", "Date", "Status", "Order Data"]
     const rows = table.getRowModel().rows.map((row) => {
-      const sub = row.original
-      const orderDataString = JSON.stringify(sub.order_data).replace(/"/g, '""')
+      const submission = row.original
       return [
-        sub.order_number,
-        sub.brands?.name,
-        sub.ordered_by,
-        sub.email,
-        format(new Date(sub.created_at), "yyyy-MM-dd HH:mm:ss"),
-        sub.status,
-        sub.ip_address,
-        `"${orderDataString}"`,
+        submission.order_number,
+        submission.brand_name,
+        submission.name,
+        submission.email,
+        format(new Date(submission.created_at), "dd/MM/yyyy hh:mm a"),
+        submission.status,
+        JSON.stringify(submission.order_data),
       ].join(",")
     })
 
     const csvContent = [headers.join(","), ...rows].join("\n")
-    const blob = new Blob([`\uFEFF${csvContent}`], { type: "text/csv;charset=utf-8;" })
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
     const link = document.createElement("a")
     const url = URL.createObjectURL(blob)
     link.setAttribute("href", url)
@@ -168,48 +156,70 @@ export default function SubmissionsTable({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-4 py-4">
+      <div className="flex items-center justify-between py-4">
         <Input
           placeholder="Search all columns..."
           value={globalFilter ?? ""}
           onChange={(event) => setGlobalFilter(String(event.target.value))}
           className="max-w-sm"
         />
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={(table.getColumn("Brand")?.getFilterValue() as string) ?? ""}
-            onValueChange={(value) => table.getColumn("Brand")?.setFilterValue(value === "all" ? "" : value)}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by Brand" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Brands</SelectItem>
-              {brands.map((brand) => (
-                <SelectItem key={brand.id} value={brand.name}>
-                  {brand.name}
-                </SelectItem>
+        <div className="flex items-center space-x-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="ml-auto bg-transparent">
+                Brand <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {uniqueBrands.map((brand) => (
+                <DropdownMenuCheckboxItem
+                  key={brand}
+                  className="capitalize"
+                  checked={
+                    (table.getColumn("brand_name")?.getFilterValue() as string[] | undefined)?.includes(brand) ?? false
+                  }
+                  onCheckedChange={(value) => {
+                    const currentFilter =
+                      (table.getColumn("brand_name")?.getFilterValue() as string[] | undefined) || []
+                    const newFilter = value ? [...currentFilter, brand] : currentFilter.filter((b) => b !== brand)
+                    table.getColumn("brand_name")?.setFilterValue(newFilter.length ? newFilter : undefined)
+                  }}
+                >
+                  {brand}
+                </DropdownMenuCheckboxItem>
               ))}
-            </SelectContent>
-          </Select>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-          <Select
-            value={(table.getColumn("status")?.getFilterValue() as string) ?? ""}
-            onValueChange={(value) => table.getColumn("status")?.setFilterValue(value === "all" ? "" : value)}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="sent">Sent</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
-            </SelectContent>
-          </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="ml-auto bg-transparent">
+                Status <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {uniqueStatuses.map((status) => (
+                <DropdownMenuCheckboxItem
+                  key={status}
+                  className="capitalize"
+                  checked={
+                    (table.getColumn("status")?.getFilterValue() as string[] | undefined)?.includes(status) ?? false
+                  }
+                  onCheckedChange={(value) => {
+                    const currentFilter = (table.getColumn("status")?.getFilterValue() as string[] | undefined) || []
+                    const newFilter = value ? [...currentFilter, status] : currentFilter.filter((s) => s !== status)
+                    table.getColumn("status")?.setFilterValue(newFilter.length ? newFilter : undefined)
+                  }}
+                >
+                  {status}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Popover>
             <PopoverTrigger asChild>
-              <Button id="date" variant={"outline"} className="w-[260px] justify-start text-left font-normal">
+              <Button id="date" variant={"outline"} className="w-[300px] justify-start text-left font-normal">
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {date?.from ? (
                   date.to ? (
@@ -225,31 +235,32 @@ export default function SubmissionsTable({
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="end">
-              <div className="flex items-center p-2">
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => setDate({ from: new Date(), to: new Date() })}>
-                    Today
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setDate({ from: addDays(new Date(), -1), to: addDays(new Date(), -1) })}
-                  >
-                    Yesterday
-                  </Button>
-                </div>
-                <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setDate(undefined)}>
-                  Clear
+              <div className="flex p-2 space-x-2">
+                <Button variant="outline" size="sm" onClick={() => setDate({ from: new Date(), to: new Date() })}>
+                  Today
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDate({ from: addDays(new Date(), -1), to: addDays(new Date(), -1) })}
+                >
+                  Yesterday
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDate({ from: addDays(new Date(), -7), to: new Date() })}
+                >
+                  Last 7 Days
                 </Button>
               </div>
-              <Separator />
               <Calendar
                 initialFocus
                 mode="range"
                 defaultMonth={date?.from}
                 selected={date}
                 onSelect={setDate}
-                numberOfMonths={1}
+                numberOfMonths={2}
               />
             </PopoverContent>
           </Popover>
@@ -301,11 +312,7 @@ export default function SubmissionsTable({
           Next
         </Button>
       </div>
-      <SubmissionDetailsDialog
-        submission={selectedSubmission}
-        isOpen={isDetailsOpen}
-        onClose={() => setIsDetailsOpen(false)}
-      />
+      <SubmissionDetailsDialog submission={selectedSubmission} isOpen={isDetailsOpen} onOpenChange={setIsDetailsOpen} />
     </div>
   )
 }

@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { saveForm } from "./actions"
-import EditorFileManager from "./file-manager"
+import { FileManager } from "./file-manager"
 import { SectionsAndItems } from "./sections-and-items"
 
 const brandFormSchema = z.object({
@@ -36,17 +36,17 @@ const brandFormSchema = z.object({
 })
 
 type FormEditorProps = {
-  initialBrandData: BrandData
+  brand: BrandData
   uploadedFiles: UploadedFile[]
 }
 
-export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps) {
+export function FormEditor({ brand, uploadedFiles }: FormEditorProps) {
   const { toast } = useToast()
   const [state, formAction] = useFormState(saveForm, { success: false, message: "" })
 
   const methods = useForm<BrandData>({
     resolver: zodResolver(brandFormSchema),
-    defaultValues: initialBrandData,
+    defaultValues: brand,
   })
 
   useEffect(() => {
@@ -76,7 +76,7 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
                 <span className="sr-only">Back to Dashboard</span>
               </Link>
             </Button>
-            <h1 className="text-xl font-semibold">Editing: {initialBrandData.name}</h1>
+            <h1 className="text-xl font-semibold">Editing: {brand.name}</h1>
           </div>
           <Button type="submit">
             <Save className="mr-2 h-4 w-4" />
@@ -135,15 +135,15 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
             </div>
           </TabsContent>
           <TabsContent value="sections">
-            <SectionsAndItems brand={initialBrandData} />
+            <SectionsAndItems brand={brand} />
           </TabsContent>
           <TabsContent value="files">
-            <EditorFileManager
+            <FileManager
               uploadedFiles={uploadedFiles}
               logoUrl={logoUrl}
               headerImageUrl={headerImageUrl}
-              onSelectLogo={(pathname) => methods.setValue("logo_url", pathname, { shouldDirty: true })}
-              onSelectHeader={(pathname) => methods.setValue("header_image_url", pathname, { shouldDirty: true })}
+              onSelectLogo={(url) => methods.setValue("logo_url", url, { shouldDirty: true })}
+              onSelectHeader={(url) => methods.setValue("header_image_url", url, { shouldDirty: true })}
             />
           </TabsContent>
         </Tabs>

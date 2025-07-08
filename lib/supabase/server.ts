@@ -1,6 +1,5 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies } from "next/headers"
-import { createAdminClient as adminClient } from "./admin"
 
 export function createClient() {
   const cookieStore = cookies()
@@ -34,7 +33,3 @@ export function createClient() {
 
 // Also export under the old name to fix dependencies in other files.
 export const createServerSupabaseClient = createClient
-
-// Re-export the admin client to fix the persistent deployment error.
-// This makes the import valid for the file that is incorrectly referencing it.
-export const createAdminClient = adminClient
