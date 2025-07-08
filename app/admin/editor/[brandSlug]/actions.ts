@@ -28,7 +28,6 @@ export async function getBrand(slug: string): Promise<BrandData | null> {
   }
   if (!data) return null
 
-  // Sort sections and items by their order property
   const sortedSections = data.product_sections?.sort((a, b) => a.sort_order - b.sort_order) || []
   const sectionsWithSortedItems = sortedSections.map((section) => ({
     ...section,
@@ -54,13 +53,12 @@ export async function saveForm(prevState: any, formData: FormData) {
   const brandId = formData.get("id") as string
   const brandSlug = formData.get("slug") as string
 
-  // Helper to convert comma-separated string to a clean string array
   const stringToArray = (str: string | null | undefined): string[] => {
     if (!str) return []
     return str
       .split(",")
       .map((email) => email.trim())
-      .filter((email) => email.length > 0)
+      .filter((email) => email.length > 0 && /.+@.+\..+/.test(email))
   }
 
   const brandUpdateData = {
@@ -77,7 +75,22 @@ export async function saveForm(prevState: any, formData: FormData) {
   }
 
   const sectionsJson = formData.get("product_sections_json") as string
-  const sectionsData = sectionsJson ? JSON.parse(sectionsJson) : []
+  let sectionsData: any[] = []
+  try {
+    if (sectionsJson) {
+      sectionsData = JSON.parse(sectionsJson)
+    }
+  } catch (e) {
+    console.error("Error parsing sections JSON:", e)
+    return { success: false, message: "Failed to save form: Invalid sections data." }
+  }
+
+  sectionsData.forEach((section, sectionIndex) => {
+    section.sort_order = section.sort_order ?? sectionIndex
+    section.product_items?.forEach((item: any, itemIndex: number) => {
+      item.sort_order = item.sort_order ?? itemIndex
+    })
+  })
 
   const { error } = await supabase.rpc("save_brand_form", {
     brand_id_in: brandId,
@@ -86,7 +99,7 @@ export async function saveForm(prevState: any, formData: FormData) {
   })
 
   if (error) {
-    console.error("Error saving form:", error)
+    console.error("Error saving form via RPC:", error)
     return { success: false, message: `Failed to save form: ${error.message}` }
   }
 

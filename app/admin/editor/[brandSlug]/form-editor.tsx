@@ -32,7 +32,7 @@ const brandFormSchema = z.object({
   form_subtitle: z.string().optional(),
   logo_url: z.string().optional().nullable(),
   header_image_url: z.string().optional().nullable(),
-  product_sections: z.any(), // We'll handle validation in the action
+  product_sections: z.any(), // This will now be managed by react-hook-form
 })
 
 type FormEditorProps = {
@@ -44,7 +44,6 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
   const { toast } = useToast()
   const [state, formAction] = useFormState(saveForm, { success: false, message: "" })
 
-  // Transform initial data for the form. This handles both arrays and strings for email fields to prevent crashes.
   const transformedInitialData = {
     ...initialBrandData,
     to_emails: Array.isArray(initialBrandData.to_emails)
@@ -56,6 +55,7 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
     bcc_emails: Array.isArray(initialBrandData.bcc_emails)
       ? initialBrandData.bcc_emails.join(", ")
       : initialBrandData.bcc_emails || "",
+    product_sections: initialBrandData.product_sections || [],
   }
 
   const methods = useForm({
@@ -73,6 +73,7 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
     }
   }, [state, toast])
 
+  const watchedSections = methods.watch("product_sections")
   const logoUrl = methods.watch("logo_url")
   const headerImageUrl = methods.watch("header_image_url")
 
@@ -81,6 +82,7 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
       <form action={formAction}>
         <input type="hidden" {...methods.register("id")} />
         <input type="hidden" {...methods.register("slug")} />
+        <input type="hidden" name="product_sections_json" value={JSON.stringify(watchedSections)} />
 
         <header className="bg-gray-100 dark:bg-gray-800 p-4 flex items-center justify-between sticky top-0 z-10 border-b">
           <div className="flex items-center gap-4">
@@ -149,7 +151,7 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
             </div>
           </TabsContent>
           <TabsContent value="sections">
-            <SectionsAndItems brand={initialBrandData} />
+            <SectionsAndItems />
           </TabsContent>
           <TabsContent value="files">
             <EditorFileManager
