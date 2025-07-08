@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { CalendarIcon, Download } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
-import { addDays, format, startOfWeek, endOfWeek } from "date-fns"
+import { addDays, format } from "date-fns"
 import type { DateRange } from "react-day-picker"
 import type { Brand, Submission } from "@/lib/types"
 import { SubmissionDetailsDialog } from "./SubmissionDetailsDialog"
@@ -123,16 +123,14 @@ export default function SubmissionsTable({
   React.useEffect(() => {
     let filteredData = initialSubmissions
 
+    // Date filter
     if (date?.from) {
       filteredData = filteredData.filter((submission) => {
         const submissionDate = new Date(submission.created_at)
-
-        const fromDate = new Date(date.from!)
+        const fromDate = date.from!
         fromDate.setHours(0, 0, 0, 0)
-
-        const toDate = date.to ? new Date(date.to) : new Date(date.from!)
+        const toDate = date.to ? date.to : fromDate
         toDate.setHours(23, 59, 59, 999)
-
         return submissionDate >= fromDate && submissionDate <= toDate
       })
     }
@@ -238,13 +236,6 @@ export default function SubmissionsTable({
                     onClick={() => setDate({ from: addDays(new Date(), -1), to: addDays(new Date(), -1) })}
                   >
                     Yesterday
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setDate({ from: startOfWeek(new Date()), to: endOfWeek(new Date()) })}
-                  >
-                    This Week
                   </Button>
                 </div>
                 <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setDate(undefined)}>

@@ -11,7 +11,7 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
   // Step 1: Fetch the brand by slug, ensuring it's active
   const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select("id, name, slug, logo, emails, clinic_locations, active, order_prefix")
+    .select("id, name, slug, logo, emails, clinic_locations, active")
     .eq("slug", slug)
     .eq("active", true)
     .single()

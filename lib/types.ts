@@ -1,6 +1,3 @@
-import type { z } from "zod"
-import type { orderFormSchema } from "./schemas"
-
 export interface ClinicLocation {
   name: string
   address: string
@@ -41,7 +38,6 @@ export interface Brand {
   clinic_locations: ClinicLocation[]
   active: boolean
   order_sequence: number
-  order_prefix: string | null
 }
 
 // For the public form and the editor, includes all nested data
@@ -50,13 +46,12 @@ export interface BrandData extends Brand {
 }
 
 export interface OrderInfo {
-  orderNumber: string
+  orderNumber: number
   orderedBy: string
   email: string
   billTo?: ClinicLocation
   deliverTo?: ClinicLocation
   notes?: string
-  date?: Date | string // Add this line
 }
 
 export interface OrderPayload {
@@ -85,7 +80,7 @@ export interface Submission {
   status: string | null
   pdf_url: string | null
   ip_address: string | null
-  order_data: z.infer<typeof orderFormSchema> | null
+  order_data: OrderPayload | null
   brands: { name: string } | null
-  order_number?: string
+  order_number?: number
 }

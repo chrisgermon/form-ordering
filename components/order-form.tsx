@@ -1,15 +1,32 @@
 "use client"
 
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
+import { AlertDescription } from "@/components/ui/alert"
+
+import { Alert } from "@/components/ui/alert"
+
+import { CollapsibleContent } from "@/components/ui/collapsible"
+
+import { CollapsibleTrigger } from "@/components/ui/collapsible"
+
+import { Collapsible } from "@/components/ui/collapsible"
+
+import { DialogFooter } from "@/components/ui/dialog"
+
+import { DialogDescription } from "@/components/ui/dialog"
+
+import { DialogTitle } from "@/components/ui/dialog"
+
+import { DialogHeader } from "@/components/ui/dialog"
+
+import { DialogContent } from "@/components/ui/dialog"
+
+import { Dialog } from "@/components/ui/dialog"
+
+import { useState, useMemo } from "react"
+import Image from "next/image"
+import { useForm, Controller, useWatch } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -20,11 +37,47 @@ import type { BrandData, ProductItem } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
 import { DatePicker } from "@/components/ui/date-picker"
-import Image from "next/image"
-import { Controller, useForm, useWatch } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useState, useMemo } from "react"
-import { getClientSideOrderSchema } from "@/lib/schemas"
+
+const createFormSchema = (brandData: BrandData) => {
+  const baseSchema = z.object({
+    orderedBy: z.string().min(1, "Ordered by is required."),
+    email: z.string().email("A valid email address is required."),
+    billTo: z.string().min(1, "Bill to clinic is required."),
+    deliverTo: z.string().min(1, "Deliver to clinic is required."),
+    date: z.date({ required_error: "A date is required." }),
+    items: z.record(z.any()).optional(),
+  })
+
+  return baseSchema.superRefine((data, ctx) => {
+    let hasItems = false
+    brandData.product_sections.forEach((section) => {
+      section.product_items.forEach((item) => {
+        const value = data.items?.[item.id]
+        if (value && value.quantity !== "") {
+          hasItems = true
+        }
+
+        if (item.is_required) {
+          if (!value || value.quantity === "") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [`items.${item.id}`],
+              message: `${item.name} is required.`,
+            })
+          }
+        }
+      })
+    })
+
+    if (!hasItems) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["items"],
+        message: "Please select at least one item to order.",
+      })
+    }
+  })
+}
 
 const FormField = ({
   item,
@@ -184,57 +237,42 @@ const FormField = ({
 function SelectionSidebar({
   selectedItems,
   onRemoveItem,
-  formId,
 }: {
   selectedItems: any
   onRemoveItem: (itemId: string) => void
-  formId: string
 }) {
   const items = Object.entries(selectedItems || {}).filter(([_, value]: [string, any]) => value && value.quantity)
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col h-[calc(100vh-4rem)]">
+    <div className="bg-white rounded-xl shadow-lg p-6">
       <h3 className="text-xl font-semibold text-[#2a3760] mb-4">Current Selection</h3>
-      <div className="flex-grow overflow-y-auto pr-2">
-        {items.length === 0 ? (
-          <p className="text-gray-500 text-sm">No items selected yet.</p>
-        ) : (
-          <ul className="space-y-3">
-            {items.map(([id, item]: [string, any]) => (
-              <li key={id} className="border-b pb-3 last:border-b-0">
-                <div className="flex justify-between items-start gap-2">
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-800 leading-tight">{item.name}</p>
-                    <p className="text-xs text-gray-500">CODE: {item.code}</p>
-                    <p className="text-sm font-bold text-[#1aa7df] mt-1">
-                      Qty: {item.quantity === "other" ? item.customQuantity : item.quantity}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-gray-500 hover:text-red-500 shrink-0"
-                    onClick={() => onRemoveItem(id)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+      {items.length === 0 ? (
+        <p className="text-gray-500 text-sm">No items selected yet.</p>
+      ) : (
+        <ul className="space-y-3 max-h-[60vh] overflow-y-auto">
+          {items.map(([id, item]: [string, any]) => (
+            <li key={id} className="border-b pb-3 last:border-b-0">
+              <div className="flex justify-between items-start gap-2">
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-800 leading-tight">{item.name}</p>
+                  <p className="text-xs text-gray-500">CODE: {item.code}</p>
+                  <p className="text-sm font-bold text-[#1aa7df] mt-1">
+                    Qty: {item.quantity === "other" ? item.customQuantity : item.quantity}
+                  </p>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      <div className="mt-auto pt-6 border-t">
-        <Button
-          type="submit"
-          form={formId}
-          disabled={items.length === 0}
-          className="w-full bg-[#2a3760] hover:bg-[#2a3760]/90 text-white font-semibold py-3 text-base disabled:bg-gray-400 disabled:cursor-not-allowed"
-        >
-          <Send className="mr-2 h-4 w-4" />
-          Submit Order
-        </Button>
-      </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-gray-500 hover:text-red-500 shrink-0"
+                  onClick={() => onRemoveItem(id)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -294,14 +332,6 @@ function ConfirmationDialog({
               )}
             </div>
           </div>
-          {data.notes && (
-            <div className="space-y-2">
-              <h4 className="font-semibold text-gray-800">Notes</h4>
-              <div className="p-3 bg-gray-50 rounded-md border border-gray-200 text-sm">
-                <p>{data.notes}</p>
-              </div>
-            </div>
-          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
@@ -336,7 +366,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
   const [isConfirming, setIsConfirming] = useState(false)
   const [confirmationData, setConfirmationData] = useState<any | null>(null)
 
-  const formSchema = useMemo(() => getClientSideOrderSchema(brandData), [brandData])
+  const formSchema = useMemo(() => createFormSchema(brandData), [brandData])
 
   const {
     register,
@@ -356,7 +386,6 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
       deliverTo: "",
       items: {},
       date: new Date(),
-      notes: "",
     },
   })
 
@@ -370,7 +399,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
 
   const clinicLocations = useMemo(() => {
     if (isLegacyClinicData(brandData.clinic_locations)) {
-      return brandData.clinic_locations.map((name) => ({ name, address: "", phone: "", email: "" }))
+      return brandData.clinic_locations.map((name) => ({ name, address: "", phone: "" }))
     }
     return brandData.clinic_locations || []
   }, [brandData.clinic_locations])
@@ -380,15 +409,12 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
     const selectedDeliverTo = clinicLocations.find((loc) => loc.name === data.deliverTo)
 
     const payload = {
-      brandId: brandData.id,
-      brandSlug: brandData.slug,
-      orderedBy: data.orderedBy,
-      email: data.email,
+      ...data,
       billTo: selectedBillTo,
       deliverTo: selectedDeliverTo,
-      date: data.date,
-      items: data.items,
-      notes: data.notes,
+      brandId: brandData.id,
+      brandName: brandData.name,
+      recipientEmails: brandData.emails,
     }
 
     setConfirmationData(payload)
@@ -483,7 +509,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                 <h1 className="text-2xl font-semibold">Printing Order Form</h1>
               </div>
 
-              <form onSubmit={handleSubmit(handleFormSubmit, onInvalid)} className="p-6 sm:p-8" id="order-form">
+              <form onSubmit={handleSubmit(handleFormSubmit, onInvalid)} className="p-6 sm:p-8">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 mb-8">
                   <div className="space-y-1">
                     <label htmlFor="orderedBy" className="text-sm font-medium text-gray-800">
@@ -565,12 +591,6 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                     />
                     {errors.date && <p className="text-xs text-red-600">{errors.date.message}</p>}
                   </div>
-                  <div className="space-y-1 sm:col-span-2">
-                    <label htmlFor="notes" className="text-sm font-medium text-gray-800">
-                      Notes:
-                    </label>
-                    <Textarea id="notes" {...register("notes")} className="bg-gray-100 border-gray-300" />
-                  </div>
                 </div>
 
                 <div className="relative mb-6">
@@ -639,7 +659,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
           </div>
 
           <aside className="hidden lg:block sticky top-8">
-            <SelectionSidebar selectedItems={watchedItems} onRemoveItem={handleRemoveItem} formId="order-form" />
+            <SelectionSidebar selectedItems={watchedItems} onRemoveItem={handleRemoveItem} />
           </aside>
         </div>
       </div>

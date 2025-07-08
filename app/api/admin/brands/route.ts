@@ -20,7 +20,7 @@ export async function GET() {
 
     const { data: brands, error } = await supabase
       .from("brands")
-      .select("id, name, slug, logo, emails, clinic_locations, active, order_prefix")
+      .select("id, name, slug, logo, emails, clinic_locations, active")
       .order("name")
 
     if (error) throw error
@@ -52,9 +52,8 @@ export async function POST(request: NextRequest) {
         emails: body.emails || [],
         clinic_locations: body.clinicLocations || [],
         active: body.active,
-        order_prefix: body.order_prefix,
       })
-      .select("id, name, slug, logo, emails, clinic_locations, active, order_prefix")
+      .select("id, name, slug, logo, emails, clinic_locations, active")
       .single()
 
     if (error) {
@@ -95,10 +94,9 @@ export async function PUT(request: NextRequest) {
         emails: body.emails || [],
         clinic_locations: body.clinicLocations || [],
         active: body.active,
-        order_prefix: body.order_prefix,
       })
       .eq("id", body.id)
-      .select("id, name, slug, logo, emails, clinic_locations, active, order_prefix")
+      .select("id, name, slug, logo, emails, clinic_locations, active")
       .single()
 
     if (error) {

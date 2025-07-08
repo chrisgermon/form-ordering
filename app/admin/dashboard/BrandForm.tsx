@@ -44,7 +44,6 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
         active: brand.active,
         emails: brand.emails?.length > 0 ? brand.emails : [""],
         clinicLocations: locations?.length > 0 ? locations : [newLocation()],
-        order_prefix: brand.order_prefix || "",
       }
     }
     // For a new brand
@@ -54,7 +53,6 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
       active: true,
       emails: [""],
       clinicLocations: [newLocation()],
-      order_prefix: "",
     }
   }
 
@@ -155,15 +153,6 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
         <div>
           <Label htmlFor="name">Brand Name</Label>
           <Input id="name" value={formData.name} onChange={handleChange} required />
-        </div>
-        <div>
-          <Label htmlFor="order_prefix">Order Prefix</Label>
-          <Input
-            id="order_prefix"
-            value={formData.order_prefix || ""}
-            onChange={handleChange}
-            placeholder="e.g., PRN-FR"
-          />
         </div>
       </div>
 

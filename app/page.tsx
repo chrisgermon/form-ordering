@@ -1,8 +1,24 @@
-import { getActiveBrands } from "@/lib/db"
+import { createAdminClient } from "@/lib/supabase/admin"
+import type { Brand } from "@/lib/types"
 import { BrandGrid } from "@/components/brand-grid"
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+
+async function getActiveBrands(): Promise<Brand[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from("brands")
+    .select("id, name, slug, logo, active")
+    .eq("active", true)
+    .order("name", { ascending: true })
+
+  if (error) {
+    console.error("Error fetching active brands:", error)
+    return []
+  }
+  return data as Brand[]
+}
 
 export default async function HomePage() {
   const brands = await getActiveBrands()
@@ -31,15 +47,9 @@ export default async function HomePage() {
           {brands.length > 0 ? (
             <BrandGrid brands={brands} />
           ) : (
-            <div className="text-center py-16 bg-white rounded-lg shadow-sm">
-              <p className="text-gray-600 font-semibold">No active brands found.</p>
-              <p className="text-sm text-gray-500 mt-2">
-                Please go to the{" "}
-                <Link href="/admin/dashboard" className="text-blue-600 hover:underline">
-                  admin dashboard
-                </Link>{" "}
-                to activate brands.
-              </p>
+            <div className="text-center py-16">
+              <p className="text-gray-600">No active brands found.</p>
+              <p className="text-sm text-gray-500 mt-2">Please check the admin dashboard to activate brands.</p>
             </div>
           )}
         </div>
