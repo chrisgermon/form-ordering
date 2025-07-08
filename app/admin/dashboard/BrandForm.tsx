@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { useFormState, useFormStatus } from "react-dom"
+import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -12,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 
 function SubmitButton({ isUpdate }: { isUpdate: boolean }) {
   const { pending } = useFormStatus()
@@ -39,6 +41,7 @@ type BrandFormProps = {
 }
 
 export function BrandForm({ isOpen, setIsOpen, brand, uploadedFiles }: BrandFormProps) {
+  const router = useRouter()
   const initialState = { success: false, message: "", errors: null }
   const [state, formAction] = useFormState(createOrUpdateBrand, initialState)
 
@@ -46,10 +49,11 @@ export function BrandForm({ isOpen, setIsOpen, brand, uploadedFiles }: BrandForm
     if (state.success) {
       toast.success(state.message)
       setIsOpen(false)
+      router.refresh()
     } else if (state.message && !state.errors) {
       toast.error(state.message)
     }
-  }, [state, setIsOpen])
+  }, [state, setIsOpen, router])
 
   const arrayToString = (arr: string[] | undefined | null) => (Array.isArray(arr) ? arr.join(", ") : "")
 
@@ -64,24 +68,34 @@ export function BrandForm({ isOpen, setIsOpen, brand, uploadedFiles }: BrandForm
         </DialogHeader>
         <form action={formAction} className="grid gap-4 py-4">
           {brand && <input type="hidden" name="id" value={brand.id} />}
+
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="name" className="text-right">
               Name
             </Label>
             <Input id="name" name="name" defaultValue={brand?.name} className="col-span-3" />
           </div>
+
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="initials" className="text-right">
               Initials
             </Label>
             <Input id="initials" name="initials" defaultValue={brand?.initials} className="col-span-3" />
           </div>
+
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="slug" className="text-right">
               Slug
             </Label>
-            <Input id="slug" name="slug" defaultValue={brand?.slug} className="col-span-3" />
+            <Input
+              id="slug"
+              name="slug"
+              defaultValue={brand?.slug}
+              className="col-span-3"
+              placeholder="auto-generated-from-name"
+            />
           </div>
+
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="to_emails" className="text-right">
               To Emails
@@ -94,6 +108,7 @@ export function BrandForm({ isOpen, setIsOpen, brand, uploadedFiles }: BrandForm
               placeholder="email1@example.com, email2@example.com"
             />
           </div>
+
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="cc_emails" className="text-right">
               CC Emails
@@ -105,6 +120,7 @@ export function BrandForm({ isOpen, setIsOpen, brand, uploadedFiles }: BrandForm
               className="col-span-3"
             />
           </div>
+
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="bcc_emails" className="text-right">
               BCC Emails
@@ -116,6 +132,7 @@ export function BrandForm({ isOpen, setIsOpen, brand, uploadedFiles }: BrandForm
               className="col-span-3"
             />
           </div>
+
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="clinic_locations" className="text-right">
               Clinic Locations
@@ -128,6 +145,7 @@ export function BrandForm({ isOpen, setIsOpen, brand, uploadedFiles }: BrandForm
               placeholder="Location A, Location B"
             />
           </div>
+
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="logo_url" className="text-right">
               Logo
@@ -146,7 +164,20 @@ export function BrandForm({ isOpen, setIsOpen, brand, uploadedFiles }: BrandForm
               </SelectContent>
             </Select>
           </div>
-          <div className="flex justify-end mt-4">
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="active" className="text-right">
+              Active
+            </Label>
+            <div className="col-span-3">
+              <Switch id="active" name="active" defaultChecked={brand?.active ?? true} />
+            </div>
+          </div>
+
+          <div className="flex justify-end mt-4 gap-2">
+            <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+              Cancel
+            </Button>
             <SubmitButton isUpdate={!!brand} />
           </div>
         </form>

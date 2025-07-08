@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
-import * as cheerio from "cheerio"
-import type { ProductItem, Brand } from "@/lib/types"
 import { brandSchema } from "@/lib/schemas"
+import * as cheerio from "cheerio"
+import type { ProductItem } from "@/lib/types"
 
 const slugify = (text: string) => {
   if (!text) return ""
@@ -26,8 +26,6 @@ export async function importFromJotform(brandId: string, brandSlug: string, html
     const supabase = createAdminClient()
     const $ = cheerio.load(htmlCode)
 
-    // 1. Pre-process all descriptive text blocks into a map.
-    // Key: CODE, Value: { name, description, sample_link }
     const descriptionMap = new Map<string, { name: string; description: string | null; sample_link: string | null }>()
     $('li[data-type="control_text"]').each((_, element) => {
       const $el = $(element)
@@ -61,7 +59,6 @@ export async function importFromJotform(brandId: string, brandSlug: string, html
 
     const createdSections: { title: string; items: any[] }[] = []
 
-    // Find all section containers
     $("ul.form-section").each((index, sectionEl) => {
       const $sectionEl = $(sectionEl)
       let sectionTitle = `Imported Section ${index + 1}`
@@ -139,7 +136,6 @@ export async function importFromJotform(brandId: string, brandSlug: string, html
       return { success: false, message: "Could not find any form fields to import. Please check the Jotform code." }
     }
 
-    // Now, save to database
     let sortOrder = 999
     for (const section of createdSections) {
       const { data: newSection, error: sectionError } = await supabase
@@ -189,28 +185,32 @@ function stringToArray(value: FormDataEntryValue | null): string[] {
 
 export async function createOrUpdateBrand(prevState: any, formData: FormData) {
   const supabase = createAdminClient()
-  const id = formData.get("id") as string
+  const id = formData.get("id") as string | null
   const isUpdate = !!id
 
-  const parsed = brandSchema.safeParse({
+  const rawData = {
     name: formData.get("name"),
     initials: formData.get("initials"),
-    slug: formData.get("slug"),
+    slug: formData.get("slug") || slugify(formData.get("name") as string),
     to_emails: stringToArray(formData.get("to_emails")),
     cc_emails: stringToArray(formData.get("cc_emails")),
     bcc_emails: stringToArray(formData.get("bcc_emails")),
     clinic_locations: stringToArray(formData.get("clinic_locations")),
     logo_url: formData.get("logo_url") || null,
-    header_image_url: formData.get("header_image_url") || null,
-  })
+    active: formData.get("active") === "on",
+  }
+
+  const parsed = brandSchema.safeParse(rawData)
 
   if (!parsed.success) {
     return { success: false, message: "Invalid form data.", errors: parsed.error.flatten().fieldErrors }
   }
 
-  const { data: brandData, error } = isUpdate
-    ? await supabase.from("brands").update(parsed.data).eq("id", id).select().single()
-    : await supabase.from("brands").insert(parsed.data).select().single()
+  const query = isUpdate
+    ? supabase.from("brands").update(parsed.data).eq("id", id!)
+    : supabase.from("brands").insert(parsed.data)
+
+  const { error } = await query
 
   if (error) {
     console.error("Error saving brand:", error)
@@ -230,16 +230,5 @@ export async function deleteBrand(id: string) {
     return { success: false, message: `Failed to delete brand: ${error.message}` }
   }
 
-  revalidatePath("/admin/dashboard")
   return { success: true, message: "Brand deleted successfully." }
-}
-
-export async function getBrands(): Promise<Brand[]> {
-  const supabase = createAdminClient()
-  const { data, error } = await supabase.from("brands").select("*").order("name", { ascending: true })
-  if (error) {
-    console.error("Error fetching brands:", error)
-    return []
-  }
-  return data as Brand[]
 }

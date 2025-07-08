@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { MoreHorizontal, PlusCircle } from "lucide-react"
 import { toast } from "sonner"
 
@@ -21,11 +22,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { BrandForm } from "./BrandForm"
 
 type BrandManagementProps = {
-  brands: Brand[]
+  initialBrands: Brand[]
   uploadedFiles: UploadedFile[]
 }
 
-export function BrandManagement({ brands, uploadedFiles }: BrandManagementProps) {
+export function BrandManagement({ initialBrands, uploadedFiles }: BrandManagementProps) {
+  const router = useRouter()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
 
@@ -44,6 +46,7 @@ export function BrandManagement({ brands, uploadedFiles }: BrandManagementProps)
       const result = await deleteBrand(id)
       if (result.success) {
         toast.success(result.message)
+        router.refresh()
       } else {
         toast.error(result.message)
       }
@@ -71,18 +74,22 @@ export function BrandManagement({ brands, uploadedFiles }: BrandManagementProps)
                 <TableHead>Name</TableHead>
                 <TableHead>Initials</TableHead>
                 <TableHead>Slug</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {brands.length > 0 ? (
-                brands.map((brand) => (
+              {initialBrands && initialBrands.length > 0 ? (
+                initialBrands.map((brand) => (
                   <TableRow key={brand.id}>
                     <TableCell className="font-medium">{brand.name}</TableCell>
                     <TableCell>{brand.initials}</TableCell>
-                    <TableCell>{brand.slug}</TableCell>
+                    <TableCell>
+                      <code className="text-sm">/forms/{brand.slug}</code>
+                    </TableCell>
+                    <TableCell>{brand.active ? "Active" : "Inactive"}</TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -108,7 +115,7 @@ export function BrandManagement({ brands, uploadedFiles }: BrandManagementProps)
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center">
+                  <TableCell colSpan={5} className="h-24 text-center">
                     No brands found.
                   </TableCell>
                 </TableRow>
