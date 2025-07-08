@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useRef } from "react"
-import { useFormState } from "react-dom"
+import { useEffect } from "react"
+import { useFormState, useFormStatus } from "react-dom"
 import Link from "next/link"
-import { ArrowLeft, Save } from "lucide-react"
+import { ArrowLeft, Loader2 } from "lucide-react"
 import { useForm, FormProvider } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useToast } from "@/components/ui/use-toast"
+import { toast } from "sonner"
 import { saveForm } from "./actions"
 import EditorFileManager from "./file-manager"
 import { SectionsAndItems } from "./sections-and-items"
@@ -35,15 +35,23 @@ const brandFormSchema = z.object({
   product_sections: z.array(z.any()).optional(),
 })
 
+function SubmitButton() {
+  const { pending } = useFormStatus()
+  return (
+    <Button type="submit" disabled={pending}>
+      {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+      {pending ? "Saving..." : "Save Changes"}
+    </Button>
+  )
+}
+
 type FormEditorProps = {
   initialBrandData: BrandData
   uploadedFiles: UploadedFile[]
 }
 
 export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps) {
-  const { toast } = useToast()
   const [state, formAction] = useFormState(saveForm, { success: false, message: "" })
-  const formRef = useRef<HTMLFormElement>(null)
 
   const transformedInitialData = {
     ...initialBrandData,
@@ -66,25 +74,17 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
 
   useEffect(() => {
     if (state.message) {
-      toast({
-        title: state.success ? "Success" : "Error",
-        description: state.message,
-        variant: state.success ? "default" : "destructive",
-      })
+      toast[state.success ? "success" : "error"](state.message)
     }
-  }, [state, toast])
+  }, [state])
 
   const watchedSections = methods.watch("product_sections")
   const logoUrl = methods.watch("logo_url")
   const headerImageUrl = methods.watch("header_image_url")
 
-  const handleSaveClick = () => {
-    formRef.current?.requestSubmit()
-  }
-
   return (
     <FormProvider {...methods}>
-      <form ref={formRef} action={formAction} noValidate>
+      <form action={formAction} noValidate>
         <input type="hidden" {...methods.register("id")} />
         <input type="hidden" {...methods.register("slug")} />
         <input type="hidden" name="product_sections_json" value={JSON.stringify(watchedSections)} />
@@ -99,10 +99,7 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
             </Button>
             <h1 className="text-xl font-semibold">Editing: {initialBrandData.name}</h1>
           </div>
-          <Button type="button" onClick={handleSaveClick}>
-            <Save className="mr-2 h-4 w-4" />
-            Save Changes
-          </Button>
+          <SubmitButton />
         </header>
 
         <Tabs defaultValue="details" className="p-4">
