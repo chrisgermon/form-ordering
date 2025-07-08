@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { z } from "zod"
 import * as cheerio from "cheerio"
-import type { ProductItem } from "@/lib/types"
+import type { ProductItem, Brand } from "@/lib/types"
+import { brandSchema } from "@/lib/schemas"
 
 const slugify = (text: string) => {
   if (!text) return ""
@@ -180,61 +180,37 @@ export async function importFromJotform(brandId: string, brandSlug: string, html
   }
 }
 
-const brandFormSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().min(1, "Brand name is required."),
-  active: z.preprocess((val) => val === "on" || val === true, z.boolean()),
-  logo_url: z.string().optional().nullable(),
-  to_emails: z.string().optional(),
-  cc_emails: z.string().optional(),
-  bcc_emails: z.string().optional(),
-  clinic_locations: z.string().optional(),
-})
+function stringToArray(value: FormDataEntryValue | null): string[] {
+  if (typeof value !== "string" || value.length === 0) {
+    return []
+  }
+  return value.split(",").map((item) => item.trim())
+}
 
 export async function createOrUpdateBrand(prevState: any, formData: FormData) {
   const supabase = createAdminClient()
-  const validatedFields = brandFormSchema.safeParse(Object.fromEntries(formData.entries()))
+  const id = formData.get("id") as string
+  const isUpdate = !!id
 
-  if (!validatedFields.success) {
-    return {
-      success: false,
-      message: "Invalid form data.",
-      errors: validatedFields.error.flatten().fieldErrors,
-    }
+  const parsed = brandSchema.safeParse({
+    name: formData.get("name"),
+    initials: formData.get("initials"),
+    slug: formData.get("slug"),
+    to_emails: stringToArray(formData.get("to_emails")),
+    cc_emails: stringToArray(formData.get("cc_emails")),
+    bcc_emails: stringToArray(formData.get("bcc_emails")),
+    clinic_locations: stringToArray(formData.get("clinic_locations")),
+    logo_url: formData.get("logo_url") || null,
+    header_image_url: formData.get("header_image_url") || null,
+  })
+
+  if (!parsed.success) {
+    return { success: false, message: "Invalid form data.", errors: parsed.error.flatten().fieldErrors }
   }
 
-  const { id, ...brandData } = validatedFields.data
-
-  const stringToArray = (str: string | undefined) =>
-    str
-      ? str
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : []
-
-  let clinicLocationsData = []
-  try {
-    if (brandData.clinic_locations) {
-      clinicLocationsData = JSON.parse(brandData.clinic_locations)
-    }
-  } catch (e) {
-    return { success: false, message: "Clinic locations must be a valid JSON array." }
-  }
-
-  const processedData = {
-    ...brandData,
-    to_emails: stringToArray(brandData.to_emails),
-    cc_emails: stringToArray(brandData.cc_emails),
-    bcc_emails: stringToArray(brandData.bcc_emails),
-    clinic_locations: clinicLocationsData,
-  }
-
-  const query = id
-    ? supabase.from("brands").update(processedData).eq("id", id)
-    : supabase.from("brands").insert(processedData)
-
-  const { error } = await query.select().single()
+  const { data: brandData, error } = isUpdate
+    ? await supabase.from("brands").update(parsed.data).eq("id", id).select().single()
+    : await supabase.from("brands").insert(parsed.data).select().single()
 
   if (error) {
     console.error("Error saving brand:", error)
@@ -242,5 +218,28 @@ export async function createOrUpdateBrand(prevState: any, formData: FormData) {
   }
 
   revalidatePath("/admin/dashboard")
-  return { success: true, message: `Brand ${id ? "updated" : "created"} successfully.` }
+  return { success: true, message: `Brand ${isUpdate ? "updated" : "created"} successfully.` }
+}
+
+export async function deleteBrand(id: string) {
+  const supabase = createAdminClient()
+  const { error } = await supabase.from("brands").delete().eq("id", id)
+
+  if (error) {
+    console.error("Error deleting brand:", error)
+    return { success: false, message: `Failed to delete brand: ${error.message}` }
+  }
+
+  revalidatePath("/admin/dashboard")
+  return { success: true, message: "Brand deleted successfully." }
+}
+
+export async function getBrands(): Promise<Brand[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.from("brands").select("*").order("name", { ascending: true })
+  if (error) {
+    console.error("Error fetching brands:", error)
+    return []
+  }
+  return data as Brand[]
 }

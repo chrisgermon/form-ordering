@@ -5,7 +5,6 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import type { BrandData } from "@/lib/types"
 import { z } from "zod"
 
-// Define a schema for the data we expect from the form
 const brandFormSchema = z.object({
   id: z.string(),
   slug: z.string(),
@@ -22,7 +21,9 @@ const brandFormSchema = z.object({
   product_sections: z.array(z.any()).optional(),
 })
 
-export async function saveFormAction(formData: z.infer<typeof brandFormSchema>) {
+export async function saveFormAction(
+  formData: z.infer<typeof brandFormSchema>,
+): Promise<{ success: boolean; message: string }> {
   const supabase = createAdminClient()
 
   const validation = brandFormSchema.safeParse(formData)
@@ -83,7 +84,6 @@ export async function saveFormAction(formData: z.infer<typeof brandFormSchema>) 
   }
 }
 
-// The getBrand and getUploadedFiles functions remain unchanged.
 export async function getBrand(slug: string): Promise<BrandData | null> {
   const supabase = createAdminClient()
   const { data, error } = await supabase

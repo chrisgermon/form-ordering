@@ -57,8 +57,10 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
 
   const onSubmit = async (data: z.infer<typeof brandFormSchema>) => {
     setIsSubmitting(true)
+    toast.loading("Saving changes...")
     try {
       const result = await saveFormAction(data)
+      toast.dismiss()
       if (result.success) {
         toast.success(result.message)
       } else {
@@ -66,6 +68,7 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
       }
     } catch (error) {
       console.error("Submission error:", error)
+      toast.dismiss()
       toast.error("An unexpected error occurred while saving.")
     } finally {
       setIsSubmitting(false)
