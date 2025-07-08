@@ -29,7 +29,7 @@ export default async function HomePage() {
           </div>
 
           {brands.length > 0 ? (
-            <BrandGrid brands={brands.map((b) => ({ id: b.id, name: b.name, slug: b.slug, logo_url: b.logo_url }))} />
+            <BrandGrid brands={brands} />
           ) : (
             <div className="text-center py-16 bg-white rounded-lg shadow-sm">
               <p className="text-gray-600 font-semibold">No active brands found.</p>

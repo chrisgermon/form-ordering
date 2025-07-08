@@ -1,6 +1,5 @@
 import nodemailer from "nodemailer"
-import { format } from "date-fns"
-import type { OrderPayload, Brand, ClinicLocation, Submission } from "@/lib/types"
+import type { OrderPayload, Brand, ClinicLocation } from "@/lib/types"
 
 function formatClinicHtml(title: string, clinic: ClinicLocation | null) {
   if (!clinic) return ""
@@ -19,7 +18,7 @@ function formatClinicHtml(title: string, clinic: ClinicLocation | null) {
 
 function generateOrderEmailHtml(order: OrderPayload, brand: Brand, logoUrl: string | null): string {
   const { orderInfo, items } = order
-  const themeColor = "#2a3760"
+  const themeColor = "#2a3760" // Standardized theme color
 
   const logoHtml = logoUrl
     ? `<img src="${logoUrl}" alt="${brand.name} Logo" style="max-width: 200px; max-height: 70px; margin-bottom: 20px;" />`
@@ -80,56 +79,6 @@ function generateOrderEmailHtml(order: OrderPayload, brand: Brand, logoUrl: stri
 `
 }
 
-function generateCompletionEmailHtml(submission: Submission, brand: Brand, logoUrl: string | null): string {
-  const orderInfo = submission.order_data?.orderInfo
-  if (!orderInfo) {
-    return "<p>Error: Order data is missing.</p>"
-  }
-  const themeColor = "#2a3760"
-
-  const logoHtml = logoUrl
-    ? `<img src="${logoUrl}" alt="${brand.name} Logo" style="max-width: 200px; max-height: 70px; margin-bottom: 20px;" />`
-    : `<h1 style="color: ${themeColor}; font-size: 24px;">${brand.name}</h1>`
-
-  let dispatchDetailsHtml = ""
-  if (submission.dispatch_date || submission.tracking_link || submission.dispatch_notes) {
-    dispatchDetailsHtml = `
-      <h3 style="color: ${themeColor}; font-size: 20px; border-bottom: 2px solid ${themeColor}; padding-bottom: 5px; margin-top: 20px;">Dispatch Details</h3>
-      ${
-        submission.dispatch_date
-          ? `<p><strong>Date Dispatched:</strong> ${format(new Date(submission.dispatch_date), "dd MMM yyyy")}</p>`
-          : ""
-      }
-      ${
-        submission.tracking_link
-          ? `<p><strong>Tracking Link:</strong> <a href="${submission.tracking_link}">${submission.tracking_link}</a></p>`
-          : ""
-      }
-      ${
-        submission.dispatch_notes
-          ? `<div style="margin-top: 10px; padding: 15px; background-color: #f9f9f9; border-radius: 5px;">
-               <h4 style="margin-top: 0; color: ${themeColor};">Notes:</h4>
-               <p style="margin-bottom: 0;">${submission.dispatch_notes}</p>
-             </div>`
-          : ""
-      }
-    `
-  }
-
-  return `
-  <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
-    ${logoHtml}
-    <h2 style="color: ${themeColor}; font-size: 22px;">Your Order is Complete!</h2>
-    <p>Hello ${orderInfo.orderedBy},</p>
-    <p>We're pleased to inform you that your printing order (<strong>#${submission.order_number}</strong>) for <strong>${brand.name}</strong> has been completed and dispatched.</p>
-    
-    ${dispatchDetailsHtml}
-    
-    <p style="margin-top: 20px;">Thank you for your order!</p>
-  </div>
-`
-}
-
 export async function sendOrderEmail(order: OrderPayload, brand: Brand, pdfBuffer: Buffer, logoUrl: string | null) {
   const transporter = nodemailer.createTransport({
     host: "smtp.mailgun.org",
@@ -141,32 +90,11 @@ export async function sendOrderEmail(order: OrderPayload, brand: Brand, pdfBuffe
     },
   })
 
-  const to =
-    brand.to_emails
-      ?.split(",")
-      .map((e) => e.trim())
-      .filter(Boolean) || []
-  const cc =
-    brand.cc_emails
-      ?.split(",")
-      .map((e) => e.trim())
-      .filter(Boolean) || []
-  const bcc =
-    brand.bcc_emails
-      ?.split(",")
-      .map((e) => e.trim())
-      .filter(Boolean) || []
-
-  if (order.orderInfo.email) {
-    cc.push(order.orderInfo.email)
-  }
-
   const mailOptions = {
     from: `"${brand.name} Orders" <${process.env.FROM_EMAIL}>`,
-    to: to,
-    cc: cc,
-    bcc: bcc,
-    subject: brand.subject_line || `New Printing Order for ${brand.name} - #${order.orderInfo.orderNumber}`,
+    to: brand.emails.join(","),
+    cc: order.orderInfo.email, // CC the person who ordered
+    subject: `New Printing Order for ${brand.name} - #${order.orderInfo.orderNumber}`,
     html: generateOrderEmailHtml(order, brand, logoUrl),
     attachments: [
       {
@@ -183,40 +111,6 @@ export async function sendOrderEmail(order: OrderPayload, brand: Brand, pdfBuffe
     return { success: true, message: info.response }
   } catch (error) {
     console.error("Error sending email:", error)
-    const errorMessage = error instanceof Error ? error.message : "Unknown email error"
-    return { success: false, message: errorMessage }
-  }
-}
-
-export async function sendCompletionEmail(submission: Submission, brand: Brand, logoUrl: string | null) {
-  if (!submission.email) {
-    console.log("No recipient email found for this submission.")
-    return { success: true, message: "No recipient email, but action succeeded." }
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: "smtp.mailgun.org",
-    port: 587,
-    secure: false,
-    auth: {
-      user: process.env.MAILGUN_SMTP_USERNAME,
-      pass: process.env.MAILGUN_SMTP_PASSWORD,
-    },
-  })
-
-  const mailOptions = {
-    from: `"${brand.name} Orders" <${process.env.FROM_EMAIL}>`,
-    to: submission.email,
-    subject: `Your Printing Order #${submission.order_number} is Complete`,
-    html: generateCompletionEmailHtml(submission, brand, logoUrl),
-  }
-
-  try {
-    const info = await transporter.sendMail(mailOptions)
-    console.log("Completion email sent: " + info.response)
-    return { success: true, message: info.response }
-  } catch (error) {
-    console.error("Error sending completion email:", error)
     const errorMessage = error instanceof Error ? error.message : "Unknown email error"
     return { success: false, message: errorMessage }
   }

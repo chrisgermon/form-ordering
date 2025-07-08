@@ -1,255 +1,91 @@
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+import type { z } from "zod"
+import type { orderFormSchema } from "./schemas"
 
-export interface Database {
-  public: {
-    Tables: {
-      allowed_ips: {
-        Row: {
-          created_at: string
-          id: string
-          ip_address: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          ip_address: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          ip_address?: string
-        }
-        Relationships: []
-      }
-      brands: {
-        Row: {
-          active: boolean
-          bcc_emails: string[] | null
-          cc_emails: string[] | null
-          created_at: string
-          id: string
-          logo_url: string | null
-          name: string
-          slug: string
-          subject_line: string | null
-          to_emails: string[] | null
-        }
-        Insert: {
-          active?: boolean
-          bcc_emails?: string[] | null
-          cc_emails?: string[] | null
-          created_at?: string
-          id?: string
-          logo_url?: string | null
-          name: string
-          slug: string
-          subject_line?: string | null
-          to_emails?: string[] | null
-        }
-        Update: {
-          active?: boolean
-          bcc_emails?: string[] | null
-          cc_emails?: string[] | null
-          created_at?: string
-          id?: string
-          logo_url?: string | null
-          name?: string
-          slug?: string
-          subject_line?: string | null
-          to_emails?: string[] | null
-        }
-        Relationships: []
-      }
-      items: {
-        Row: {
-          created_at: string
-          id: string
-          name: string
-          order: number
-          section_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          name: string
-          order?: number
-          section_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          name?: string
-          order?: number
-          section_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "items_section_id_fkey"
-            columns: ["section_id"]
-            isOneToOne: false
-            referencedRelation: "sections"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      schema_migrations: {
-        Row: {
-          executed_at: string
-          id: number
-          script_name: string
-        }
-        Insert: {
-          executed_at?: string
-          id?: number
-          script_name: string
-        }
-        Update: {
-          executed_at?: string
-          id?: number
-          script_name?: string
-        }
-        Relationships: []
-      }
-      sections: {
-        Row: {
-          brand_id: string
-          created_at: string
-          id: string
-          name: string
-          order: number
-        }
-        Insert: {
-          brand_id: string
-          created_at?: string
-          id?: string
-          name: string
-          order?: number
-        }
-        Update: {
-          brand_id?: string
-          created_at?: string
-          id?: string
-          name?: string
-          order?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "sections_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      submissions: {
-        Row: {
-          brand_id: string
-          clinic_name: string | null
-          created_at: string
-          dispatch_date: string | null
-          dispatch_notes: string | null
-          form_data: Json | null
-          id: string
-          order_number: number
-          patient_dob: string | null
-          patient_email: string | null
-          patient_medicare: string | null
-          patient_name: string | null
-          patient_phone: string | null
-          pdf_url: string | null
-          referrer_email: string | null
-          referrer_name: string | null
-          referrer_provider_number: string | null
-          status: string
-          tracking_link: string | null
-          urgent: boolean
-        }
-        Insert: {
-          brand_id: string
-          clinic_name?: string | null
-          created_at?: string
-          dispatch_date?: string | null
-          dispatch_notes?: string | null
-          form_data?: Json | null
-          id?: string
-          order_number?: number
-          patient_dob?: string | null
-          patient_email?: string | null
-          patient_medicare?: string | null
-          patient_name?: string | null
-          patient_phone?: string | null
-          pdf_url?: string | null
-          referrer_email?: string | null
-          referrer_name?: string | null
-          referrer_provider_number?: string | null
-          status?: string
-          tracking_link?: string | null
-          urgent?: boolean
-        }
-        Update: {
-          brand_id?: string
-          clinic_name?: string | null
-          created_at?: string
-          dispatch_date?: string | null
-          dispatch_notes?: string | null
-          form_data?: Json | null
-          id?: string
-          order_number?: number
-          patient_dob?: string | null
-          patient_email?: string | null
-          patient_medicare?: string | null
-          patient_name?: string | null
-          patient_phone?: string | null
-          pdf_url?: string | null
-          referrer_email?: string | null
-          referrer_name?: string | null
-          referrer_provider_number?: string | null
-          status?: string
-          tracking_link?: string | null
-          urgent?: boolean
-        }
-        Relationships: [
-          {
-            foreignKeyName: "submissions_brand_id_fkey"
-            columns: ["brand_id"]
-            isOneToOne: false
-            referencedRelation: "brands"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      run_sql: {
-        Args: {
-          sql_query: string
-        }
-        Returns: undefined
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
+export interface ClinicLocation {
+  name: string
+  address: string
+  phone: string
+  email: string
 }
 
-export type Tables<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Row"]
-export type Enums<T extends keyof Database["public"]["Enums"]> = Database["public"]["Enums"][T]
-
-export type Brand = Database["public"]["Tables"]["brands"]["Row"]
-export type AllowedIp = Database["public"]["Tables"]["allowed_ips"]["Row"]
-export type Section = Database["public"]["Tables"]["sections"]["Row"] & {
-  items: FormItem[]
+export interface ProductItem {
+  id: string
+  section_id: string
+  brand_id: string
+  code: string
+  name: string
+  description: string | null
+  field_type: "checkbox_group" | "select" | "text" | "textarea" | "date"
+  options: string[] | null
+  placeholder: string | null
+  is_required: boolean
+  sample_link: string | null
+  sort_order: number
 }
-export type FormItem = Database["public"]["Tables"]["items"]["Row"]
 
-export type Submission = Omit<Database["public"]["Tables"]["submissions"]["Row"], "brands"> & {
-  brands: Brand | null
+export interface ProductSection {
+  id: string
+  brand_id: string
+  title: string
+  sort_order: number
+  product_items: ProductItem[]
+}
+
+// For lists and basic info
+export interface Brand {
+  id: string
+  name: string
+  slug: string
+  logo: string | null
+  emails: string[]
+  clinic_locations: ClinicLocation[]
+  active: boolean
+  order_sequence: number
+  order_prefix: string | null
+}
+
+// For the public form and the editor, includes all nested data
+export interface BrandData extends Brand {
+  product_sections: ProductSection[]
+}
+
+export interface OrderInfo {
+  orderNumber: string
+  orderedBy: string
+  email: string
+  billTo?: ClinicLocation
+  deliverTo?: ClinicLocation
+  notes?: string
+  date?: Date | string // Add this line
+}
+
+export interface OrderPayload {
+  brandId: string
+  orderInfo: OrderInfo
+  items: Record<string, any>
+}
+
+export type BrandType = Brand
+
+export interface UploadedFile {
+  id: string
+  pathname: string
+  original_name: string
+  url: string
+  uploaded_at: string
+  size: number
+  content_type: string | null
+}
+
+export interface Submission {
+  id: string
+  created_at: string
+  ordered_by: string
+  email: string
+  status: string | null
+  pdf_url: string | null
+  ip_address: string | null
+  order_data: z.infer<typeof orderFormSchema> | null
+  brands: { name: string } | null
+  order_number?: string
 }

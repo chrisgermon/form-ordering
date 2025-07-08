@@ -22,11 +22,9 @@ export async function generatePdf(order: OrderPayload, brand: Brand, logoUrl: st
   const { orderInfo, items } = order
   let yPos = 20
 
-  const resolvedLogoUrl = brand.logo_url ? brand.logo_url : null
-
-  if (resolvedLogoUrl) {
+  if (logoUrl) {
     try {
-      const logoResponse = await fetch(resolvedLogoUrl)
+      const logoResponse = await fetch(logoUrl)
       if (logoResponse.ok) {
         const logoBuffer = await logoResponse.arrayBuffer()
         const logoExtension = logoUrl.split(".").pop()?.toUpperCase() || "PNG"

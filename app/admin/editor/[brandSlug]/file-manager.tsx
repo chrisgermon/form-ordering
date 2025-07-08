@@ -1,54 +1,43 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import Image from "next/image"
 import { Upload, CheckCircle, Trash2 } from "lucide-react"
-import { useToast } from "@/components/ui/use-toast"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import type { UploadedFile } from "@/lib/types"
+import { useRouter } from "next/navigation"
+import { resolveAssetUrl } from "@/lib/utils"
 
-type EditorFileManagerProps = {
+interface EditorFileManagerProps {
   uploadedFiles: UploadedFile[]
-  logoUrl: string | null | undefined
-  headerImageUrl: string | null | undefined
+  logoUrl: string | null
+  headerImageUrl: string | null
   onSelectLogo: (pathname: string) => void
   onSelectHeader: (pathname: string) => void
-  brandId: string
 }
 
 export default function EditorFileManager({
-  uploadedFiles: initialFiles,
+  uploadedFiles,
   logoUrl,
   headerImageUrl,
   onSelectLogo,
   onSelectHeader,
-  brandId,
 }: EditorFileManagerProps) {
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>(initialFiles)
   const [isUploading, setIsUploading] = useState(false)
-  const { toast } = useToast()
+  const router = useRouter()
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
     setIsUploading(true)
+    toast.loading("Uploading file...")
     const formData = new FormData()
     formData.append("file", file)
-    formData.append("brandId", brandId)
 
     try {
       const response = await fetch("/api/admin/upload", {
@@ -56,104 +45,131 @@ export default function EditorFileManager({
         body: formData,
       })
 
+      const result = await response.json()
+      toast.dismiss()
+
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Upload failed")
+        throw new Error(result.error || "File upload failed")
       }
 
-      const newFile = await response.json()
-      setUploadedFiles((prev) => [newFile, ...prev])
-      toast({ title: "Success", description: "File uploaded successfully." })
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      })
+      toast.success("File uploaded successfully.")
+      router.refresh()
+    } catch (error) {
+      toast.dismiss()
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+      toast.error(errorMessage)
     } finally {
       setIsUploading(false)
     }
   }
 
-  const handleDeleteFile = async (pathname: string) => {
+  const handleDeleteFile = async (fileId: string) => {
+    if (!confirm("Are you sure you want to delete this file? This cannot be undone.")) return
+
+    toast.loading("Deleting file...")
     try {
-      const response = await fetch(`/api/admin/files?pathname=${encodeURIComponent(pathname)}`, {
+      const response = await fetch(`/api/admin/files?id=${fileId}`, {
         method: "DELETE",
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Delete failed")
-      }
-
-      setUploadedFiles((prev) => prev.filter((file) => file.pathname !== pathname))
-      toast({ title: "Success", description: "File deleted successfully." })
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      })
+      toast.dismiss()
+      if (!response.ok) throw new Error("Failed to delete file.")
+      toast.success("File deleted.")
+      router.refresh()
+    } catch (error) {
+      toast.dismiss()
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+      toast.error(errorMessage)
     }
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold">Brand Files</h3>
-        <Button asChild variant="outline">
-          <label htmlFor="file-upload" className="cursor-pointer">
-            <Upload className="mr-2 h-4 w-4" />
-            {isUploading ? "Uploading..." : "Upload File"}
-            <input id="file-upload" type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
-          </label>
-        </Button>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        {uploadedFiles.map((file) => (
-          <div key={file.id} className="relative group border rounded-lg overflow-hidden">
-            <Image
-              src={file.url || "/placeholder.svg"}
-              alt={file.pathname}
-              width={200}
-              height={200}
-              className="object-cover w-full h-32"
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Upload New File</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <Button asChild variant="outline" className="bg-transparent">
+              <label htmlFor="editor-file-upload" className="cursor-pointer">
+                <Upload className="mr-2 h-4 w-4" />
+                {isUploading ? "Uploading..." : "Choose File"}
+              </label>
+            </Button>
+            <Input
+              id="editor-file-upload"
+              type="file"
+              className="hidden"
+              onChange={handleFileUpload}
+              disabled={isUploading}
             />
-            <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity p-2">
-              <p className="text-white text-xs text-center break-all mb-2">{file.pathname.split("/").pop()}</p>
-              <div className="flex gap-1">
-                <Button size="sm" variant="secondary" onClick={() => onSelectLogo(file.pathname)}>
-                  Logo
-                  {logoUrl === file.pathname && <CheckCircle className="ml-1 h-3 w-3 text-green-400" />}
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => onSelectHeader(file.pathname)}>
-                  Header
-                  {headerImageUrl === file.pathname && <CheckCircle className="ml-1 h-3 w-3 text-green-400" />}
-                </Button>
-              </div>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button size="icon" variant="destructive" className="absolute top-1 right-1 h-6 w-6">
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete the file.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => handleDeleteFile(file.pathname)}>Delete</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
           </div>
-        ))}
-      </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Uploaded Files</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {uploadedFiles.length === 0 ? (
+            <p className="text-muted-foreground">No files uploaded yet.</p>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {uploadedFiles.map((file) => (
+                <Card key={file.id} className="overflow-hidden group">
+                  <div className="relative h-32 bg-gray-100 flex items-center justify-center">
+                    {file.content_type?.startsWith("image/") ? (
+                      <Image
+                        src={resolveAssetUrl(file.pathname) || "/placeholder.svg"}
+                        alt={file.original_name}
+                        width={128}
+                        height={128}
+                        className="object-contain h-full w-auto"
+                        crossOrigin="anonymous"
+                      />
+                    ) : (
+                      <p className="p-4 text-center text-sm text-muted-foreground">Non-image file</p>
+                    )}
+                  </div>
+                  <div className="p-2 text-sm">
+                    <p className="truncate font-medium" title={file.original_name}>
+                      {file.original_name}
+                    </p>
+                    <div className="flex flex-col gap-1 mt-2">
+                      <Button
+                        size="sm"
+                        variant={logoUrl === file.pathname ? "default" : "outline"}
+                        onClick={() => onSelectLogo(file.pathname)}
+                      >
+                        {logoUrl === file.pathname && <CheckCircle className="mr-2 h-4 w-4" />}
+                        Set as Logo
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={headerImageUrl === file.pathname ? "default" : "outline"}
+                        onClick={() => onSelectHeader(file.pathname)}
+                      >
+                        {headerImageUrl === file.pathname && <CheckCircle className="mr-2 h-4 w-4" />}
+                        Set as Header
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="mt-2"
+                        onClick={() => handleDeleteFile(file.id)}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

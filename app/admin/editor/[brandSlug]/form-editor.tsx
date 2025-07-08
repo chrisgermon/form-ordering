@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 import { useFormState } from "react-dom"
 import Link from "next/link"
 import { ArrowLeft, Save } from "lucide-react"
@@ -43,7 +43,6 @@ type FormEditorProps = {
 export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps) {
   const { toast } = useToast()
   const [state, formAction] = useFormState(saveForm, { success: false, message: "" })
-  const formRef = useRef<HTMLFormElement>(null)
 
   const methods = useForm<BrandData>({
     resolver: zodResolver(brandFormSchema),
@@ -63,13 +62,9 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
   const logoUrl = methods.watch("logo_url")
   const headerImageUrl = methods.watch("header_image_url")
 
-  const handleSaveClick = () => {
-    formRef.current?.requestSubmit()
-  }
-
   return (
     <FormProvider {...methods}>
-      <form ref={formRef} action={formAction}>
+      <form action={formAction}>
         <input type="hidden" {...methods.register("id")} />
         <input type="hidden" {...methods.register("slug")} />
 
@@ -83,7 +78,7 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
             </Button>
             <h1 className="text-xl font-semibold">Editing: {initialBrandData.name}</h1>
           </div>
-          <Button type="button" onClick={handleSaveClick}>
+          <Button type="submit">
             <Save className="mr-2 h-4 w-4" />
             Save Changes
           </Button>
@@ -149,7 +144,6 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
               headerImageUrl={headerImageUrl}
               onSelectLogo={(pathname) => methods.setValue("logo_url", pathname, { shouldDirty: true })}
               onSelectHeader={(pathname) => methods.setValue("header_image_url", pathname, { shouldDirty: true })}
-              brandId={initialBrandData.id}
             />
           </TabsContent>
         </Tabs>

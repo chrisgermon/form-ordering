@@ -13,11 +13,11 @@ import { useRouter } from "next/navigation"
 import { format } from "date-fns"
 import { resolveAssetUrl } from "@/lib/utils"
 
-interface FileManagerProps {
+interface DashboardFileManagerProps {
   initialFiles: UploadedFile[]
 }
 
-export function FileManager({ initialFiles }: FileManagerProps) {
+export default function DashboardFileManager({ initialFiles }: DashboardFileManagerProps) {
   const [isUploading, setIsUploading] = useState(false)
   const router = useRouter()
 
@@ -82,7 +82,7 @@ export function FileManager({ initialFiles }: FileManagerProps) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Upload New Global File</CardTitle>
+          <CardTitle>Upload New File</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-4">
@@ -99,11 +99,11 @@ export function FileManager({ initialFiles }: FileManagerProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Uploaded Global Files</CardTitle>
+          <CardTitle>Uploaded Files</CardTitle>
         </CardHeader>
         <CardContent>
           {initialFiles.length === 0 ? (
-            <p className="text-muted-foreground">No global files uploaded yet.</p>
+            <p className="text-muted-foreground">No files uploaded yet.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {initialFiles.map((file) => (

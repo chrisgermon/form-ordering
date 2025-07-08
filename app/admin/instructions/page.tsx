@@ -1,5 +1,7 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, AlertTriangle } from "lucide-react"
+import Image from "next/image"
 import Link from "next/link"
 
 export default function AdminInstructionsPage() {
@@ -8,9 +10,9 @@ export default function AdminInstructionsPage() {
       <div className="max-w-4xl mx-auto bg-white p-6 sm:p-8 rounded-lg shadow-md">
         <div className="mb-8">
           <Button asChild variant="outline">
-            <Link href="/admin/dashboard">
+            <Link href="/">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Dashboard
+              Back to Home
             </Link>
           </Button>
         </div>
@@ -30,49 +32,48 @@ export default function AdminInstructionsPage() {
             <Link href="/admin/dashboard" className="font-mono bg-gray-100 p-1 rounded">
               /admin/dashboard
             </Link>{" "}
-            on the website's URL (e.g., <code>https://forms.visionradiology.com.au/admin/dashboard</code>).
+            on the website's URL (e.g., <code>https://your-website.com/admin/dashboard</code>).
           </p>
 
           <h2 className="text-2xl font-semibold mt-8">Dashboard Overview</h2>
-          <p>The dashboard is organized into three main tabs that you will use for day-to-day operations:</p>
+          <p>The dashboard is organized into four main tabs:</p>
           <ol className="list-decimal list-inside space-y-2">
             <li>
-              <strong>Brands:</strong> Manage all radiology brands, their details, and their specific order forms.
+              <strong>Brands:</strong> Manage all the radiology brands, their details, and their specific order forms.
             </li>
             <li>
-              <strong>Submissions:</strong> View, filter, and manage all completed order form submissions.
+              <strong>Submissions:</strong> View a log of all completed order form submissions from users.
             </li>
             <li>
               <strong>Files:</strong> Upload and manage assets like brand logos and sample PDFs.
+            </li>
+            <li>
+              <strong>System Actions:</strong> Perform critical database setup and maintenance tasks.
             </li>
           </ol>
 
           <hr className="my-8" />
 
           <h2 className="text-2xl font-semibold mt-8">1. Brand Management</h2>
-          <p>
-            This tab is your central hub for managing all the brands in the system. It displays a list of all brands,
-            their status, and provides quick access to key actions.
-          </p>
+          <p>This is where you'll spend most of your time. This tab lists all the brands in the system.</p>
           <div className="my-4 p-2 border rounded-lg">
-            <img
+            <Image
               src="/images/admin-brands.png"
               alt="Admin dashboard showing the list of brands"
               width={1200}
               height={750}
               className="rounded-md"
-              style={{ maxWidth: "100%", height: "auto" }}
             />
           </div>
           <h3 className="text-xl font-semibold mt-6">Key Actions:</h3>
           <ul className="list-disc list-outside ml-6 space-y-2">
             <li>
-              <strong>Add a Brand:</strong> Click the <strong>Add Brand</strong> button to open a dialog where you can
-              enter a new brand's details.
+              <strong>Add a Brand:</strong> Click the <strong>Add Brand</strong> button. This opens a form where you can
+              enter the brand's name, upload a logo, set recipient emails for orders, and define clinic locations.
             </li>
             <li>
-              <strong>Edit a Brand:</strong> Click the <strong>Edit Brand</strong> button next to any brand to open a
-              dialog and update its details.
+              <strong>Edit a Brand:</strong> Click the <strong>Edit Brand</strong> button next to any brand. This opens
+              the same form, allowing you to update its details.
             </li>
             <li>
               <strong>Edit a Form:</strong> Click the <strong>Edit Form</strong> button to go to the visual
@@ -89,14 +90,14 @@ export default function AdminInstructionsPage() {
           </ul>
 
           <h3 className="text-xl font-semibold mt-6">Editing Brand Details</h3>
-          <p>When you add or edit a brand, you can configure the following in the pop-up dialog:</p>
+          <p>When you add or edit a brand, you can configure the following:</p>
           <ul className="list-disc list-outside ml-6 space-y-2">
             <li>
               <strong>Brand Name:</strong> The official name of the brand.
             </li>
             <li>
-              <strong>Logo & Header Image:</strong> Select a previously uploaded image file to act as the brand's logo
-              and header image on the order form.
+              <strong>Logo:</strong> Select a previously uploaded image file to act as the brand's logo on the order
+              form. You can also upload a new one directly from this screen.
             </li>
             <li>
               <strong>Recipient Emails:</strong> A list of email addresses that will receive the order notification and
@@ -104,7 +105,22 @@ export default function AdminInstructionsPage() {
             </li>
             <li>
               <strong>Clinic Locations:</strong> A list of all physical clinics for this brand. For each location, you
-              can specify its name, phone, address, and a specific email for that clinic.
+              can specify:
+              <ul className="list-['-_'] list-outside ml-6 mt-2 space-y-1">
+                <li>
+                  <strong>Location Name:</strong> The name of the clinic (e.g., "Main Street Clinic").
+                </li>
+                <li>
+                  <strong>Phone Number:</strong> The clinic's contact number.
+                </li>
+                <li>
+                  <strong>Address:</strong> The full physical address.
+                </li>
+                <li>
+                  <strong>Email:</strong> The specific email for that clinic. When a user selects this clinic in the
+                  "Deliver To" field on the order form, their email field will be auto-filled with this address.
+                </li>
+              </ul>
             </li>
             <li>
               <strong>Active Brand:</strong> An active brand will appear on the homepage and its form will be
@@ -120,13 +136,12 @@ export default function AdminInstructionsPage() {
             specific brand.
           </p>
           <div className="my-4 p-2 border rounded-lg">
-            <img
+            <Image
               src="/images/form-editor.png"
               alt="The drag-and-drop form editor interface"
               width={1200}
               height={750}
               className="rounded-md"
-              style={{ maxWidth: "100%", height: "auto" }}
             />
           </div>
           <h3 className="text-xl font-semibold mt-6">Key Concepts:</h3>
@@ -167,88 +182,101 @@ export default function AdminInstructionsPage() {
 
           <hr className="my-8" />
 
-          <h2 className="text-2xl font-semibold mt-8">3. Submissions Management</h2>
+          <h2 className="text-2xl font-semibold mt-8">3. Submissions</h2>
           <p>
-            This tab provides a powerful, interactive table for viewing and managing every order that has been
-            successfully submitted.
+            This tab provides a read-only log of every order that has been successfully submitted through the forms. You
+            can see who ordered, when, for which brand, and whether the notification email was sent successfully.
           </p>
-          <h3 className="text-xl font-semibold mt-6">Filtering and Searching:</h3>
           <ul className="list-disc list-outside ml-6 space-y-2">
             <li>
-              <strong>Global Search:</strong> Use the search bar at the top-left to instantly filter the table across
-              all columns (e.g., by order number, name, or brand).
-            </li>
-            <li>
-              <strong>Filter by Brand:</strong> Use the dropdown menu to show submissions for a specific brand.
-            </li>
-            <li>
-              <strong>Filter by Status:</strong> Filter orders by their status: "Sent," "Failed," or "Completed."
-            </li>
-            <li>
-              <strong>Filter by Date:</strong> Use the date range picker to view submissions from a specific period.
-            </li>
-          </ul>
-
-          <h3 className="text-xl font-semibold mt-6">Table Interaction:</h3>
-          <ul className="list-disc list-outside ml-6 space-y-2">
-            <li>
-              <strong>Sorting:</strong> Click on any column header (like "Order #", "Brand", or "Date") to sort the data
-              in ascending or descending order.
-            </li>
-            <li>
-              <strong>Pagination:</strong> Use the controls at the bottom of the table to navigate through pages of
-              submissions. You can change the number of rows displayed per page (10, 20, 50, or 100) and jump directly
-              to the first or last page.
-            </li>
-            <li>
-              <strong>Refresh Data:</strong> Click the <strong>Refresh</strong> button to fetch the latest submissions
-              without reloading the page.
-            </li>
-            <li>
-              <strong>Export to CSV:</strong> Click the <strong>Export CSV</strong> button to download the currently
-              filtered and sorted data as a CSV file.
-            </li>
-          </ul>
-
-          <h3 className="text-xl font-semibold mt-6">Row Actions:</h3>
-          <ul className="list-disc list-outside ml-6 space-y-2">
-            <li>
-              <strong>View Details:</strong> Opens a dialog with a complete summary of the order, including submitter
-              details, addresses, and all ordered items.
-            </li>
-            <li>
-              <strong>View PDF:</strong> Opens the exact PDF that was generated and emailed for that order in a new tab.
-            </li>
-            <li>
-              <strong>Mark as Complete:</strong> For orders that are not yet completed, this button updates their
-              status. This is useful for tracking which orders have been fully processed.
+              <strong>View PDF:</strong> Click the <strong>View PDF</strong> button to see the exact PDF that was
+              generated and emailed for that order.
             </li>
           </ul>
 
           <hr className="my-8" />
 
-          <h2 className="text-2xl font-semibold mt-8">4. File Management</h2>
-          <p>This is your central library for all uploaded assets, such as brand logos and header images.</p>
+          <h2 className="text-2xl font-semibold mt-8">4. Files</h2>
+          <p>This is your central library for all uploaded assets.</p>
           <ul className="list-disc list-outside ml-6 space-y-2">
             <li>
-              <strong>Upload Files:</strong> Click <strong>Choose File</strong> to select and upload new images or other
-              files.
+              <strong>Upload Files:</strong> Click <strong>Upload File(s)</strong> to add new logos or sample PDFs.
             </li>
             <li>
-              <strong>File Actions:</strong> For each file, you can:
-              <ul className="list-['-_'] list-outside ml-6 mt-2 space-y-1">
+              <strong>Auto-assign PDF Links:</strong> A powerful time-saver. This tool scans all your uploaded files. If
+              a file's name starts with an item's <strong>Code</strong> (e.g., file <code>A4-REF.pdf</code> and item
+              with code <code>A4-REF</code>), it will automatically link that PDF as the item's sample link.
+            </li>
+            <li>
+              <strong>File Actions:</strong> For each file, you can view, download, copy its URL, or delete it.
+            </li>
+          </ul>
+
+          <hr className="my-8" />
+
+          <h2 className="text-2xl font-semibold mt-8">5. System Actions</h2>
+          <p>
+            This tab contains critical, one-time, or periodic maintenance tasks.{" "}
+            <strong>It is very important to understand what these do.</strong>
+          </p>
+          <div className="my-4 p-2 border rounded-lg">
+            <Image
+              src="/images/system-actions.png"
+              alt="The System Actions tab with several database management buttons"
+              width={1200}
+              height={750}
+              className="rounded-md"
+            />
+          </div>
+          <h3 className="text-xl font-semibold mt-6">Recommended Initial Setup Workflow</h3>
+          <p>If you are setting up the system for the first time, follow these steps in order:</p>
+          <ol className="list-decimal list-inside space-y-4">
+            <li>
+              <strong>Initialize Database:</strong>
+              <ul className="list-['-_'] list-outside ml-6 mt-2 space-y-1 text-gray-700">
                 <li>
-                  <strong>Copy URL:</strong> Copies the direct link to the file to your clipboard.
+                  <strong>What it does:</strong> <strong>Deletes all existing data</strong> and creates 5 blank brands.
                 </li>
                 <li>
-                  <strong>View:</strong> Opens the file in a new tab.
+                  <strong>When to use it:</strong> Only on a completely fresh install or if you want to start over from
+                  scratch.
+                </li>
+              </ul>
+              <Alert variant="destructive" className="mt-2">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Warning</AlertTitle>
+                <AlertDescription>
+                  This action is destructive and cannot be undone. It will wipe all brands, forms, and submissions.
+                </AlertDescription>
+              </Alert>
+            </li>
+            <li>
+              <strong>Import Clinic Data:</strong>
+              <ul className="list-['-_'] list-outside ml-6 mt-2 space-y-1 text-gray-700">
+                <li>
+                  <strong>What it does:</strong> Fetches the latest data from the master CSV file and updates all brands
+                  with their correct logos, recipient emails, and full clinic location details.
                 </li>
                 <li>
-                  <strong>Delete:</strong> Permanently removes the file from the system.
+                  <strong>When to use it:</strong> After initializing the database, and any time the central CSV file
+                  with clinic information is updated.
                 </li>
               </ul>
             </li>
-          </ul>
+            <li>
+              <strong>Force Schema Reload:</strong>
+              <ul className="list-['-_'] list-outside ml-6 mt-2 space-y-1 text-gray-700">
+                <li>
+                  <strong>What it does:</strong> Clears a temporary cache in the database.
+                </li>
+                <li>
+                  <strong>When to use it:</strong> If you've just run an import or made a change and the data doesn't
+                  seem to be showing up correctly on the live forms, running this can often fix the issue. It's a safe
+                  action to perform.
+                </li>
+              </ul>
+            </li>
+          </ol>
         </article>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { createAdminClient as adminClient } from "./admin"
 
 export function createClient() {
   const cookieStore = cookies()
@@ -14,7 +15,8 @@ export function createClient() {
           cookieStore.set({ name, value, ...options })
         } catch (error) {
           // The `set` method was called from a Server Component.
-          // This can be ignored if you have middleware refreshing user sessions.
+          // This can be ignored if you have middleware refreshing
+          // user sessions.
         }
       },
       remove(name: string, options: CookieOptions) {
@@ -22,9 +24,17 @@ export function createClient() {
           cookieStore.set({ name, value: "", ...options })
         } catch (error) {
           // The `delete` method was called from a Server Component.
-          // This can be ignored if you have middleware refreshing user sessions.
+          // This can be ignored if you have middleware refreshing
+          // user sessions.
         }
       },
     },
   })
 }
+
+// Also export under the old name to fix dependencies in other files.
+export const createServerSupabaseClient = createClient
+
+// Re-export the admin client to fix the persistent deployment error.
+// This makes the import valid for the file that is incorrectly referencing it.
+export const createAdminClient = adminClient

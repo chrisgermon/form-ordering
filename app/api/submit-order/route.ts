@@ -1,119 +1,128 @@
-import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { type NextRequest, NextResponse } from "next/server"
 import { apiOrderSchema } from "@/lib/schemas"
-import { generatePdf } from "@/lib/pdf"
 import { sendOrderEmail } from "@/lib/email"
-import { put } from "@vercel/blob"
-import type { Brand, OrderPayload } from "@/lib/types"
-import { resolveAssetUrl } from "@/lib/utils"
+import { generatePdf } from "@/lib/pdf"
+import { getBrandBySlug } from "@/lib/db"
+import type { OrderPayload } from "@/lib/types"
+import { z } from "zod"
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   const supabase = createAdminClient()
-  const ip = request.ip ?? "unknown"
+  const body = await req.json()
+
+  const { brandSlug, ...orderData } = body
+  if (!brandSlug) {
+    return NextResponse.json({ error: "Brand slug is missing" }, { status: 400 })
+  }
 
   try {
-    const body = await request.json()
-    const validation = apiOrderSchema.safeParse(body)
-
-    if (!validation.success) {
-      return NextResponse.json({ error: "Invalid order data", details: validation.error.flatten() }, { status: 400 })
+    const brand = await getBrandBySlug(brandSlug)
+    if (!brand) {
+      return NextResponse.json({ error: "Brand not found" }, { status: 404 })
     }
 
-    const orderData = validation.data
+    const validation = apiOrderSchema.safeParse(orderData)
+    if (!validation.success) {
+      console.error("Validation errors:", validation.error.errors)
+      return NextResponse.json({ error: "Invalid data", details: validation.error.errors }, { status: 400 })
+    }
 
-    // 1. Get brand details
-    const { data: brand, error: brandError } = await supabase
-      .from("brands")
-      .select("*")
-      .eq("id", orderData.brandId)
+    const validatedOrderData = validation.data
+
+    // Fetch the latest order number for the brand and increment it
+    const { data: lastOrder, error: lastOrderError } = await supabase
+      .from("submissions")
+      .select("order_number")
+      .eq("brand_id", brand.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .single()
 
-    if (brandError || !brand) {
-      throw new Error(`Brand with ID ${orderData.brandId} not found.`)
+    if (lastOrderError && lastOrderError.code !== "PGRST116") {
+      // PGRST116: "The result contains 0 rows" which is fine for the first order
+      console.error("Error fetching last order number:", lastOrderError)
+      throw new Error("Could not fetch last order number.")
     }
 
-    // 2. Get next order number
-    const { data: orderNumberData, error: rpcError } = await supabase.rpc("get_next_order_number", {
-      brand_id_param: brand.id,
+    let newOrderNumberInt = 1
+    if (lastOrder && lastOrder.order_number) {
+      const lastNumStr = lastOrder.order_number.split("-").pop()
+      if (lastNumStr) {
+        const parsedNum = Number.parseInt(lastNumStr, 10)
+        if (!isNaN(parsedNum)) {
+          newOrderNumberInt = parsedNum + 1
+        }
+      }
+    }
+
+    const orderPrefix = brand.order_prefix || brand.slug.toUpperCase()
+    const orderNumber = `${orderPrefix}-${String(newOrderNumberInt).padStart(4, "0")}`
+
+    // This is the object that will be stored in the `order_data` column.
+    const submissionData = {
+      ...validatedOrderData,
+      orderNumber: orderNumber,
+    }
+
+    // Insert into database, populating all relevant columns
+    const { error: dbError } = await supabase.from("submissions").insert({
+      brand_id: brand.id,
+      order_data: submissionData as any,
+      ordered_by: validatedOrderData.orderedBy,
+      email: validatedOrderData.email,
+      order_number: orderNumber,
+      ip_address: req.ip,
+      bill_to: validatedOrderData.billTo,
+      deliver_to: validatedOrderData.deliverTo,
     })
 
-    if (rpcError) {
-      console.error("Error getting next order number:", rpcError)
-      throw new Error("Could not generate order number.")
+    if (dbError) {
+      console.error("Error saving submission to database:", dbError)
+      return NextResponse.json({ error: "Error saving submission", details: dbError }, { status: 500 })
     }
-    const orderNumber = orderNumberData
 
-    const payload: OrderPayload = {
+    // This payload is structured for the PDF and email functions
+    const payloadForPdfAndEmail: OrderPayload = {
       brandId: brand.id,
       orderInfo: {
+        orderedBy: validatedOrderData.orderedBy,
+        email: validatedOrderData.email,
+        billTo: validatedOrderData.billTo,
+        deliverTo: validatedOrderData.deliverTo,
+        notes: validatedOrderData.notes,
         orderNumber: orderNumber,
-        orderedBy: orderData.orderedBy,
-        email: orderData.email,
-        billTo: orderData.billTo,
-        deliverTo: orderData.deliverTo,
-        date: orderData.date,
-        notes: orderData.notes,
+        date: validatedOrderData.date,
       },
-      items: orderData.items || {},
+      items: validatedOrderData.items,
     }
 
-    // 3. Generate PDF
-    const logoUrl = brand.logo ? resolveAssetUrl(brand.logo) : null
-    const pdfBuffer = await generatePdf(payload, brand as Brand, logoUrl)
-
-    // 4. Upload PDF to Vercel Blob
-    const pdfPath = `orders/${brand.slug}/${orderNumber}.pdf`
-    const { url: pdfUrl } = await put(pdfPath, pdfBuffer, {
-      access: "public",
-      contentType: "application/pdf",
-    })
-
-    // 5. Send email
-    const emailResult = await sendOrderEmail(payload, brand as Brand, pdfBuffer, logoUrl)
-
-    // 6. Save submission to database
-    const { data: submission, error: submissionError } = await supabase
-      .from("submissions")
-      .insert({
-        brand_id: brand.id,
-        ordered_by: payload.orderInfo.orderedBy,
-        email: payload.orderInfo.email,
-        order_data: payload as any, // Store the whole payload
-        pdf_url: pdfUrl,
-        status: emailResult.success ? "sent" : "failed",
-        email_response: emailResult.message,
-        ip_address: ip,
-        order_number: orderNumber,
-      })
-      .select()
-      .single()
-
-    if (submissionError) {
-      console.error("Error saving submission:", submissionError)
-      // Don't throw here, as the email might have been sent. Log it.
+    // Get logo URL for PDF generation
+    let logoUrl: string | null = null
+    if (brand.logo) {
+      const { data: fileData } = await supabase.from("uploaded_files").select("url").eq("pathname", brand.logo).single()
+      if (fileData) {
+        logoUrl = fileData.url
+      }
     }
+
+    const pdfBuffer = await generatePdf(payloadForPdfAndEmail, brand, logoUrl)
+
+    // Send email
+    const emailResult = await sendOrderEmail(payloadForPdfAndEmail, brand, pdfBuffer, logoUrl)
 
     if (!emailResult.success) {
-      // If email failed, it's still a server-side issue, but we should report it.
-      return NextResponse.json(
-        {
-          error: "Order submitted but failed to send email notification.",
-          details: emailResult.message,
-          submissionId: submission?.id,
-        },
-        { status: 500 },
-      )
+      console.error("Failed to send email:", emailResult.message)
+      // Don't block the response, but log the error
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "Order submitted successfully!",
-      orderNumber: orderNumber,
-      submissionId: submission?.id,
-    })
+    return NextResponse.json({ message: "Order submitted successfully", orderNumber: orderNumber })
   } catch (error) {
     console.error("Error processing order:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: "Validation Error", details: error.issues }, { status: 400 })
+    }
     return NextResponse.json({ error: "Failed to process order", details: errorMessage }, { status: 500 })
   }
 }
