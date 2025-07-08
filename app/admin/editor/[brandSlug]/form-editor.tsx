@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect } from "react"
-import { useFormState, useFormStatus } from "react-dom"
+import { useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { useForm, FormProvider } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { toast } from "sonner"
 
 import type { BrandData, UploadedFile } from "@/lib/types"
 import { Button } from "@/components/ui/button"
@@ -14,8 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { toast } from "sonner"
-import { saveForm } from "./actions"
+import { saveFormAction } from "./actions"
 import EditorFileManager from "./file-manager"
 import { SectionsAndItems } from "./sections-and-items"
 
@@ -35,60 +34,50 @@ const brandFormSchema = z.object({
   product_sections: z.array(z.any()).optional(),
 })
 
-function SubmitButton() {
-  const { pending } = useFormStatus()
-  return (
-    <Button type="submit" disabled={pending}>
-      {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-      {pending ? "Saving..." : "Save Changes"}
-    </Button>
-  )
-}
-
 type FormEditorProps = {
   initialBrandData: BrandData
   uploadedFiles: UploadedFile[]
 }
 
 export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps) {
-  const [state, formAction] = useFormState(saveForm, { success: false, message: "" })
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const transformedInitialData = {
     ...initialBrandData,
-    to_emails: Array.isArray(initialBrandData.to_emails)
-      ? initialBrandData.to_emails.join(", ")
-      : initialBrandData.to_emails || "",
-    cc_emails: Array.isArray(initialBrandData.cc_emails)
-      ? initialBrandData.cc_emails.join(", ")
-      : initialBrandData.cc_emails || "",
-    bcc_emails: Array.isArray(initialBrandData.bcc_emails)
-      ? initialBrandData.bcc_emails.join(", ")
-      : initialBrandData.bcc_emails || "",
+    to_emails: Array.isArray(initialBrandData.to_emails) ? initialBrandData.to_emails.join(", ") : "",
+    cc_emails: Array.isArray(initialBrandData.cc_emails) ? initialBrandData.cc_emails.join(", ") : "",
+    bcc_emails: Array.isArray(initialBrandData.bcc_emails) ? initialBrandData.bcc_emails.join(", ") : "",
     product_sections: initialBrandData.product_sections || [],
   }
 
-  const methods = useForm<BrandData>({
+  const methods = useForm<z.infer<typeof brandFormSchema>>({
     resolver: zodResolver(brandFormSchema),
     defaultValues: transformedInitialData,
   })
 
-  useEffect(() => {
-    if (state.message) {
-      toast[state.success ? "success" : "error"](state.message)
+  const onSubmit = async (data: z.infer<typeof brandFormSchema>) => {
+    setIsSubmitting(true)
+    try {
+      const result = await saveFormAction(data)
+      if (result.success) {
+        toast.success(result.message)
+      } else {
+        toast.error(result.message)
+      }
+    } catch (error) {
+      console.error("Submission error:", error)
+      toast.error("An unexpected error occurred while saving.")
+    } finally {
+      setIsSubmitting(false)
     }
-  }, [state])
+  }
 
-  const watchedSections = methods.watch("product_sections")
   const logoUrl = methods.watch("logo_url")
   const headerImageUrl = methods.watch("header_image_url")
 
   return (
     <FormProvider {...methods}>
-      <form action={formAction} noValidate>
-        <input type="hidden" {...methods.register("id")} />
-        <input type="hidden" {...methods.register("slug")} />
-        <input type="hidden" name="product_sections_json" value={JSON.stringify(watchedSections)} />
-
+      <form onSubmit={methods.handleSubmit(onSubmit)} noValidate>
         <header className="bg-gray-100 dark:bg-gray-800 p-4 flex items-center justify-between sticky top-0 z-10 border-b">
           <div className="flex items-center gap-4">
             <Button variant="outline" size="icon" asChild>
@@ -99,7 +88,10 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
             </Button>
             <h1 className="text-xl font-semibold">Editing: {initialBrandData.name}</h1>
           </div>
-          <SubmitButton />
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isSubmitting ? "Saving..." : "Save Changes"}
+          </Button>
         </header>
 
         <Tabs defaultValue="details" className="p-4">
