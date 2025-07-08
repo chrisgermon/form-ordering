@@ -3,7 +3,7 @@ import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Plus, Edit, Eye, Trash2 } from "lucide-react"
+import { Plus, Edit, Eye, Trash2, Settings } from "lucide-react"
 import { toast } from "sonner"
 
 import type { Brand, UploadedFile } from "@/lib/types"
@@ -38,36 +38,10 @@ export function BrandManagement({ initialBrands, uploadedFiles }: BrandManagemen
     setSelectedBrand(null)
   }
 
-  const handleFormSave = async (formData: any) => {
-    const isUpdating = !!formData.id
-    const url = isUpdating ? `/api/admin/brands` : "/api/admin/brands"
-    const method = isUpdating ? "PUT" : "POST"
-
-    toast.loading(isUpdating ? "Updating brand..." : "Creating brand...")
-
-    try {
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      })
-
-      const result = await response.json()
-      toast.dismiss()
-
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to save brand.")
-      }
-
-      toast.success(`Brand ${isUpdating ? "updated" : "created"} successfully.`)
-      setIsFormOpen(false)
-      setSelectedBrand(null)
-      router.refresh()
-    } catch (error) {
-      toast.dismiss()
-      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-      toast.error(errorMessage)
-    }
+  const handleFormSuccess = () => {
+    setIsFormOpen(false)
+    setSelectedBrand(null)
+    router.refresh()
   }
 
   const handleDeleteBrand = async (brandId: string) => {
@@ -77,7 +51,10 @@ export function BrandManagement({ initialBrands, uploadedFiles }: BrandManagemen
     try {
       const response = await fetch(`/api/admin/brands?id=${brandId}`, { method: "DELETE" })
       toast.dismiss()
-      if (!response.ok) throw new Error("Failed to delete brand.")
+      if (!response.ok) {
+        const result = await response.json()
+        throw new Error(result.error || "Failed to delete brand.")
+      }
       toast.success("Brand deleted.")
       router.refresh()
     } catch (error) {
@@ -121,7 +98,7 @@ export function BrandManagement({ initialBrands, uploadedFiles }: BrandManagemen
               </CardContent>
               <div className="p-2 border-t bg-gray-50 grid grid-cols-2 gap-1">
                 <Button variant="outline" size="sm" onClick={() => handleEditBrand(brand)}>
-                  <Edit className="mr-1 h-3 w-3" /> Edit
+                  <Settings className="mr-1 h-3 w-3" /> Settings
                 </Button>
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/admin/editor/${brand.slug}`}>
@@ -151,13 +128,13 @@ export function BrandManagement({ initialBrands, uploadedFiles }: BrandManagemen
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[625px]">
           <DialogHeader>
-            <DialogTitle>{selectedBrand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
+            <DialogTitle>{selectedBrand ? "Edit Brand Settings" : "Add New Brand"}</DialogTitle>
           </DialogHeader>
           <BrandForm
             brand={selectedBrand}
             uploadedFiles={uploadedFiles}
-            onSave={handleFormSave}
             onCancel={handleFormCancel}
+            onSuccess={handleFormSuccess}
             onLogoUpload={async () => router.refresh()}
           />
         </DialogContent>
