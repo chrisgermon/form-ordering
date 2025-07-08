@@ -32,7 +32,7 @@ const brandFormSchema = z.object({
   form_subtitle: z.string().optional(),
   logo_url: z.string().optional().nullable(),
   header_image_url: z.string().optional().nullable(),
-  product_sections: z.any(), // This will now be managed by react-hook-form
+  product_sections: z.array(z.any()).optional(),
 })
 
 type FormEditorProps = {
@@ -58,7 +58,7 @@ export function FormEditor({ initialBrandData, uploadedFiles }: FormEditorProps)
     product_sections: initialBrandData.product_sections || [],
   }
 
-  const methods = useForm({
+  const methods = useForm<BrandData>({
     resolver: zodResolver(brandFormSchema),
     defaultValues: transformedInitialData,
   })
