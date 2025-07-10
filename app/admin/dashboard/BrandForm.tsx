@@ -1,4 +1,5 @@
 "use client"
+/* eslint react/no-unescaped-entities: off */
 
 import type React from "react"
 import { useState } from "react"
@@ -9,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { X, Upload, AlertTriangle } from "lucide-react"
 import { resolveAssetUrl } from "@/lib/utils"
+import Image from "next/image"
 import type { Brand, UploadedFile, ClinicLocation } from "@/lib/types"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
@@ -206,9 +208,11 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
         </div>
         {formData.logo && (
           <div className="mt-4 p-2 border rounded-md inline-block">
-            <img
+            <Image
               src={resolveAssetUrl(formData.logo) || "/placeholder.svg"}
               alt="Brand logo preview"
+              width={64}
+              height={64}
               className="h-16 w-auto object-contain"
               crossOrigin="anonymous"
             />

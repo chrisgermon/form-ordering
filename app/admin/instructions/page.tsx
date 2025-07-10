@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft, AlertTriangle } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
+/* eslint react/no-unescaped-entities: off */
 
 export default function AdminInstructionsPage() {
   return (
