@@ -35,7 +35,13 @@ import {
 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { initializeDatabase, autoAssignPdfs, runSchemaV5Update, forceSchemaReload } from "./actions"
+import {
+  initializeDatabase,
+  autoAssignPdfs,
+  runSchemaV5Update,
+  forceSchemaReload,
+  runBrandSchemaCorrection,
+} from "./actions"
 import { BrandForm } from "./BrandForm"
 import { resolveAssetUrl } from "@/lib/utils"
 import type { ClinicLocation } from "@/lib/types"
@@ -90,6 +96,7 @@ export default function AdminDashboard() {
   const [fileTypeFilter, setFileTypeFilter] = useState("all")
   const [isUpdatingSchema, setIsUpdatingSchema] = useState(false)
   const [isReloadingSchema, setIsReloadingSchema] = useState(false)
+  const [isCorrectingSchema, setIsCorrectingSchema] = useState(false)
 
   useEffect(() => {
     loadAllData()
@@ -107,12 +114,24 @@ export default function AdminDashboard() {
   }
 
   const loadBrands = async () => {
-    const brandsResponse = await fetch("/api/admin/brands")
-    if (brandsResponse.ok) {
-      const brandsData = await brandsResponse.json()
-      setBrands(brandsData || [])
-    } else {
-      setMessage("Failed to load brands.")
+    try {
+      const brandsResponse = await fetch("/api/admin/brands")
+      if (brandsResponse.ok) {
+        const brandsData = await brandsResponse.json()
+        setBrands(brandsData || [])
+      } else {
+        const errorData = await brandsResponse.json()
+        if (errorData.error && errorData.error.includes("does not exist")) {
+          setMessage(
+            "Schema Error: The 'brands' table seems to be out of sync. Please go to the 'System Actions' tab and run the 'Correct Brands Schema' script.",
+          )
+        } else {
+          setMessage("Failed to load brands.")
+        }
+        setBrands([])
+      }
+    } catch (e) {
+      setMessage("Failed to load brands due to a network or server error.")
       setBrands([])
     }
   }
@@ -349,6 +368,28 @@ export default function AdminDashboard() {
       setMessage("An unexpected error occurred while reloading the schema.")
     } finally {
       setIsReloadingSchema(false)
+    }
+  }
+
+  const handleBrandSchemaCorrection = async () => {
+    if (
+      !confirm(
+        "This will attempt to fix common issues with the 'brands' table schema, like incorrect column names. Continue?",
+      )
+    )
+      return
+    setIsCorrectingSchema(true)
+    setMessage("Correcting brands table schema...")
+    try {
+      const result = await runBrandSchemaCorrection()
+      setMessage(result.message)
+      if (result.success) {
+        await loadAllData()
+      }
+    } catch (error) {
+      setMessage("An unexpected error occurred during schema correction.")
+    } finally {
+      setIsCorrectingSchema(false)
     }
   }
 
@@ -700,6 +741,27 @@ export default function AdminDashboard() {
                 <p className="text-sm text-muted-foreground">Use these actions for database maintenance and setup.</p>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Card className="p-4 flex flex-col justify-between border-blue-500 border-2">
+                  <div>
+                    <h3 className="font-semibold text-blue-700">Correct Brands Schema</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Run this first if you see errors about missing 'emails' or 'clinic_locations' columns. This fixes
+                      the table and reloads the schema cache.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleBrandSchemaCorrection}
+                    disabled={isCorrectingSchema}
+                    className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {isCorrectingSchema ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Database className="mr-2 h-4 w-4" />
+                    )}
+                    Fix Brands Table
+                  </Button>
+                </Card>
                 <Card className="p-4 flex flex-col justify-between">
                   <div>
                     <h3 className="font-semibold">Force Schema Reload</h3>

@@ -259,3 +259,17 @@ export async function forceSchemaReload() {
     return { success: false, message: `Failed to reload schema: ${error.message}` }
   }
 }
+
+// At the end of the file, add the new server action.
+export async function runBrandSchemaCorrection() {
+  try {
+    await executeSqlFile("scripts/correct-brands-schema.sql")
+    return {
+      success: true,
+      message: "Brands table schema corrected and cache reloaded successfully! The page should now work correctly.",
+    }
+  } catch (error: any) {
+    console.error("Error correcting brands schema:", error)
+    return { success: false, message: `Failed to correct schema: ${error.message}` }
+  }
+}
