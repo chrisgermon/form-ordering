@@ -67,9 +67,10 @@ export default function AdminDashboard() {
     const brandsResponse = await fetch("/api/admin/brands")
     if (brandsResponse.ok) {
       const brandsData = await brandsResponse.json()
-      setBrands(brandsData)
+      setBrands(brandsData || [])
     } else {
       setMessage("Failed to load brands.")
+      setBrands([])
     }
   }
 
@@ -77,9 +78,10 @@ export default function AdminDashboard() {
     const filesResponse = await fetch("/api/admin/files")
     if (filesResponse.ok) {
       const filesData = await filesResponse.json()
-      setUploadedFiles(filesData)
+      setUploadedFiles(filesData || [])
     } else {
       setMessage("Failed to load uploaded files.")
+      setUploadedFiles([])
     }
   }
 
@@ -87,9 +89,10 @@ export default function AdminDashboard() {
     const response = await fetch("/api/admin/submissions")
     if (response.ok) {
       const data = await response.json()
-      setSubmissions(data)
+      setSubmissions(data || [])
     } else {
       setMessage("Failed to load submissions.")
+      setSubmissions([])
     }
   }
 
