@@ -38,6 +38,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { initializeDatabase, autoAssignPdfs, runSchemaV5Update } from "./actions"
 import { BrandForm } from "./BrandForm"
 import { resolveAssetUrl } from "@/lib/utils"
+import type { ClinicLocation } from "@/lib/types"
 
 interface Brand {
   id: string
@@ -46,7 +47,7 @@ interface Brand {
   logo: string
   active: boolean
   emails: string[]
-  clinic_locations: string[]
+  clinic_locations: ClinicLocation[] // Changed from string[]
 }
 
 interface UploadedFile {
