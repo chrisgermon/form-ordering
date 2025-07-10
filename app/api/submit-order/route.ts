@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createAdminClient } from "@/utils/supabase/server"
 import { sendOrderEmail } from "@/lib/email"
 import type { OrderPayload, Brand, ClinicLocation } from "@/lib/types"
 import { jsPDF } from "jspdf"
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     const ip = request.ip ?? request.headers.get("x-forwarded-for") ?? "Unknown"
     const flatBody = await request.json()
 
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const { data: brand, error: brandError } = await supabase
       .from("brands")
       .select("id, name, emails, logo")

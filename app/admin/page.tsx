@@ -35,7 +35,7 @@ import {
 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { initializeDatabase, autoAssignPdfs, runSchemaV5Update } from "./actions"
+import { initializeDatabase, autoAssignPdfs, runSchemaV5Update, forceSchemaReload } from "./actions"
 import { BrandForm } from "./BrandForm"
 import { resolveAssetUrl } from "@/lib/utils"
 import type { ClinicLocation } from "@/lib/types"
@@ -89,6 +89,7 @@ export default function AdminDashboard() {
   })
   const [fileTypeFilter, setFileTypeFilter] = useState("all")
   const [isUpdatingSchema, setIsUpdatingSchema] = useState(false)
+  const [isReloadingSchema, setIsReloadingSchema] = useState(false)
 
   useEffect(() => {
     loadAllData()
@@ -329,6 +330,25 @@ export default function AdminDashboard() {
       setMessage("An unexpected error occurred during the schema update.")
     } finally {
       setIsUpdatingSchema(false)
+    }
+  }
+
+  const handleForceSchemaReload = async () => {
+    if (
+      !confirm(
+        "This will force the API to reload its database schema. This can resolve issues where new columns are not found. Continue?",
+      )
+    )
+      return
+    setIsReloadingSchema(true)
+    setMessage("Reloading schema cache...")
+    try {
+      const result = await forceSchemaReload()
+      setMessage(result.message)
+    } catch (error) {
+      setMessage("An unexpected error occurred while reloading the schema.")
+    } finally {
+      setIsReloadingSchema(false)
     }
   }
 
@@ -680,6 +700,28 @@ export default function AdminDashboard() {
                 <p className="text-sm text-muted-foreground">Use these actions for database maintenance and setup.</p>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Card className="p-4 flex flex-col justify-between">
+                  <div>
+                    <h3 className="font-semibold">Force Schema Reload</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      If you see errors like "column not found" after a migration, run this to refresh the API's schema
+                      cache.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleForceSchemaReload}
+                    disabled={isReloadingSchema}
+                    variant="outline"
+                    className="mt-4 bg-transparent"
+                  >
+                    {isReloadingSchema ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Reload Schema
+                  </Button>
+                </Card>
                 <Card className="p-4 flex flex-col justify-between">
                   <div>
                     <h3 className="font-semibold">Update Schema for Relative URLs</h3>

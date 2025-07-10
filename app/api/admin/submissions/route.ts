@@ -1,10 +1,10 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createAdminClient } from "@/utils/supabase/server"
 import { NextResponse } from "next/server"
 
 export const revalidate = 0
 
 export async function GET() {
-  const supabase = createServerSupabaseClient()
+  const supabase = createAdminClient()
   try {
     const { data, error } = await supabase
       .from("submissions")

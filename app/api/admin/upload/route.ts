@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createAdminClient } from "@/utils/supabase/server"
 import { put } from "@vercel/blob"
 
 export async function POST(request: NextRequest) {
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Save file info to database
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const { data: uploadedFile, error } = await supabase
       .from("uploaded_files")
       .insert({

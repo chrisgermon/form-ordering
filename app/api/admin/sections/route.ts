@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createAdminClient } from "@/utils/supabase/server"
 
 export async function GET() {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
 
     const { data: sections, error } = await supabase
       .from("product_sections")
@@ -24,7 +24,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const body = await request.json()
 
     const { data: maxSortOrderData, error: maxSortError } = await supabase
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const body = await request.json()
 
     const { data: section, error } = await supabase
@@ -87,7 +87,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 

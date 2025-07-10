@@ -1,11 +1,11 @@
 "use server"
 
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createAdminClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 import type { Brand, UploadedFile } from "./types"
 
 export async function getBrand(slug: string): Promise<Brand | null> {
-  const supabase = createServerSupabaseClient()
+  const supabase = createAdminClient()
   const { data: brand, error: brandError } = await supabase
     .from("brands")
     .select("id, name, slug, logo, emails, clinic_locations, active")
@@ -51,7 +51,7 @@ export async function getBrand(slug: string): Promise<Brand | null> {
 }
 
 export async function getUploadedFiles(): Promise<UploadedFile[]> {
-  const supabase = createServerSupabaseClient()
+  const supabase = createAdminClient()
   const { data, error } = await supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false })
   if (error) {
     console.error("Error fetching uploaded files:", error)
@@ -62,7 +62,7 @@ export async function getUploadedFiles(): Promise<UploadedFile[]> {
 
 export async function updateSectionOrder(brandSlug: string, orderedSectionIds: string[]) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const updates = orderedSectionIds.map((id, index) =>
       supabase.from("product_sections").update({ sort_order: index }).eq("id", id),
     )
@@ -83,7 +83,7 @@ export async function updateSectionOrder(brandSlug: string, orderedSectionIds: s
 
 export async function updateItemOrder(brandSlug: string, orderedItemIds: string[]) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const updates = orderedItemIds.map((id, index) =>
       supabase.from("product_items").update({ sort_order: index }).eq("id", id),
     )

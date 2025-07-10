@@ -1,6 +1,6 @@
 "use server"
 
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createAdminClient } from "@/utils/supabase/server"
 import initializeDatabaseFunction from "@/lib/seed-database"
 import { promises as fs } from "fs"
 import path from "path"
@@ -9,7 +9,7 @@ import * as cheerio from "cheerio"
 import type { ProductItem } from "./editor/[brandSlug]/types"
 
 async function executeSqlFile(filePath: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = createAdminClient()
   const sql = await fs.readFile(path.join(process.cwd(), filePath), "utf8")
   const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
   if (error) throw error
@@ -37,7 +37,7 @@ export async function initializeDatabase() {
 }
 
 export async function autoAssignPdfs() {
-  const supabase = createServerSupabaseClient()
+  const supabase = createAdminClient()
   try {
     const { data: files, error: filesError } = await supabase.from("uploaded_files").select("original_name, url")
     if (filesError) throw filesError
@@ -80,7 +80,7 @@ export async function importFromJotform(brandId: string, brandSlug: string, html
   }
 
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const $ = cheerio.load(htmlCode)
 
     // 1. Pre-process all descriptive text blocks into a map.
@@ -245,5 +245,17 @@ export async function runSchemaV5Update() {
   } catch (error: any) {
     console.error("Error running schema v5 update:", error)
     return { success: false, message: `Failed to update schema: ${error.message}` }
+  }
+}
+
+// At the end of the file, add the new server action to force a schema reload.
+
+export async function forceSchemaReload() {
+  try {
+    await executeSqlFile("scripts/force-schema-reload.sql")
+    return { success: true, message: "Schema cache reloaded successfully! Please try your previous action again." }
+  } catch (error: any) {
+    console.error("Error forcing schema reload:", error)
+    return { success: false, message: `Failed to reload schema: ${error.message}` }
   }
 }

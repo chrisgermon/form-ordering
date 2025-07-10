@@ -1,9 +1,9 @@
-import { createServerSupabaseClient } from "./supabase"
+import { createAdminClient } from "@/utils/supabase/server"
 
 // This function initializes the database with a clean slate of brands.
 // It first wipes all existing data to prevent conflicts.
 export default async function initializeDatabase() {
-  const supabase = createServerSupabaseClient()
+  const supabase = createAdminClient()
 
   console.log("--- Starting Database Initialization ---")
 

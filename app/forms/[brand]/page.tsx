@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createAdminClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
 import { OrderForm } from "@/components/order-form"
 import type { BrandData } from "@/lib/types"
@@ -6,7 +6,7 @@ import type { BrandData } from "@/lib/types"
 export const revalidate = 0 // Revalidate data on every request
 
 async function getBrandData(slug: string): Promise<BrandData | null> {
-  const supabase = createServerSupabaseClient()
+  const supabase = createAdminClient()
 
   // Step 1: Fetch the brand by slug, ensuring it's active
   const { data: brand, error: brandError } = await supabase

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createAdminClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 
 function revalidateEditorPaths(brandSlug: string) {
@@ -9,7 +9,7 @@ function revalidateEditorPaths(brandSlug: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const body = await request.json()
 
     const { data: brandData } = await supabase.from("brands").select("slug").eq("id", body.brandId).single()
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const body = await request.json()
 
     const { data: itemData } = await supabase.from("product_items").select("brands(slug)").eq("id", body.id).single()
@@ -97,7 +97,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 
