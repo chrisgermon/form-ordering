@@ -8,7 +8,7 @@ export const revalidate = 0 // Revalidate data on every request
 async function getBrandData(slug: string): Promise<Brand | null> {
   const supabase = createServerSupabaseClient()
 
-  const { data: brand, error } = await supabase
+  const { data, error } = await supabase
     .from("brands")
     .select(
       `
@@ -25,14 +25,19 @@ async function getBrandData(slug: string): Promise<Brand | null> {
     .eq("active", true)
     .order("sort_order", { foreignTable: "product_sections", ascending: true })
     .order("sort_order", { foreignTable: "product_sections.product_items", ascending: true })
-    .single()
+    .limit(1) // Use limit(1) instead of single() to avoid throwing an error
 
-  if (error || !brand) {
+  if (error) {
     console.error(`Error fetching brand data for slug '${slug}':`, error)
     return null
   }
 
-  return brand as Brand
+  // If no data is returned, it's a 404
+  if (!data || data.length === 0) {
+    return null
+  }
+
+  return data[0] as Brand
 }
 
 // This is a dynamic route handler

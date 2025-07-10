@@ -302,50 +302,51 @@ export default function AdminDashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {brands.map((brand) => (
-                        <TableRow key={brand.id}>
-                          <TableCell>
-                            <img
-                              src={brand.logo || "/placeholder.svg?height=40&width=100&query=No+Logo"}
-                              alt={`${brand.name} Logo`}
-                              className="h-10 w-auto object-contain bg-gray-100 p-1 rounded"
-                            />
-                          </TableCell>
-                          <TableCell className="font-medium">{brand.name}</TableCell>
-                          <TableCell>
-                            <Badge variant={brand.active ? "default" : "secondary"}>
-                              {brand.active ? "Active" : "Inactive"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex gap-2 justify-end">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setEditingBrand(brand)
-                                  setShowBrandDialog(true)
-                                }}
-                              >
-                                <Edit className="mr-2 h-4 w-4" /> Edit Brand
-                              </Button>
-                              <Button size="sm" asChild>
-                                <Link href={`/admin/editor/${brand.slug}`}>
-                                  <Edit className="mr-2 h-4 w-4" /> Edit Form
-                                </Link>
-                              </Button>
-                              <Button size="sm" variant="outline" asChild>
-                                <Link href={`/forms/${brand.slug}`} target="_blank">
-                                  <Eye className="mr-2 h-4 w-4" /> View Form
-                                </Link>
-                              </Button>
-                              <Button size="sm" variant="destructive" onClick={() => deleteBrand(brand.id)}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {Array.isArray(brands) &&
+                        brands.map((brand) => (
+                          <TableRow key={brand.id}>
+                            <TableCell>
+                              <img
+                                src={brand.logo || "/placeholder.svg?height=40&width=100&query=No+Logo"}
+                                alt={`${brand.name} Logo`}
+                                className="h-10 w-auto object-contain bg-gray-100 p-1 rounded"
+                              />
+                            </TableCell>
+                            <TableCell className="font-medium">{brand.name}</TableCell>
+                            <TableCell>
+                              <Badge variant={brand.active ? "default" : "secondary"}>
+                                {brand.active ? "Active" : "Inactive"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex gap-2 justify-end">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingBrand(brand)
+                                    setShowBrandDialog(true)
+                                  }}
+                                >
+                                  <Edit className="mr-2 h-4 w-4" /> Edit Brand
+                                </Button>
+                                <Button size="sm" asChild>
+                                  <Link href={`/admin/editor/${brand.slug}`}>
+                                    <Edit className="mr-2 h-4 w-4" /> Edit Form
+                                  </Link>
+                                </Button>
+                                <Button size="sm" variant="outline" asChild>
+                                  <Link href={`/forms/${brand.slug}`} target="_blank">
+                                    <Eye className="mr-2 h-4 w-4" /> View Form
+                                  </Link>
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => deleteBrand(brand.id)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
                     </TableBody>
                   </Table>
                 )}
@@ -377,44 +378,45 @@ export default function AdminDashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {submissions.map((submission) => (
-                        <TableRow key={submission.id}>
-                          <TableCell className="font-medium">{submission.brand_name}</TableCell>
-                          <TableCell>
-                            <div>{submission.ordered_by}</div>
-                            <div className="text-xs text-muted-foreground">{submission.email}</div>
-                          </TableCell>
-                          <TableCell>
-                            {new Date(submission.created_at).toLocaleDateString("en-AU", {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                            })}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                submission.status === "sent"
-                                  ? "default"
-                                  : submission.status === "failed"
-                                    ? "destructive"
-                                    : "secondary"
-                              }
-                              className="capitalize"
-                            >
-                              {submission.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">{submission.ip_address}</TableCell>
-                          <TableCell className="text-right">
-                            <Button size="sm" variant="outline" asChild>
-                              <a href={submission.pdf_url} target="_blank" rel="noopener noreferrer">
-                                <Download className="mr-2 h-4 w-4" /> View PDF
-                              </a>
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {Array.isArray(submissions) &&
+                        submissions.map((submission) => (
+                          <TableRow key={submission.id}>
+                            <TableCell className="font-medium">{submission.brand_name}</TableCell>
+                            <TableCell>
+                              <div>{submission.ordered_by}</div>
+                              <div className="text-xs text-muted-foreground">{submission.email}</div>
+                            </TableCell>
+                            <TableCell>
+                              {new Date(submission.created_at).toLocaleDateString("en-AU", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  submission.status === "sent"
+                                    ? "default"
+                                    : submission.status === "failed"
+                                      ? "destructive"
+                                      : "secondary"
+                                }
+                                className="capitalize"
+                              >
+                                {submission.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">{submission.ip_address}</TableCell>
+                            <TableCell className="text-right">
+                              <Button size="sm" variant="outline" asChild>
+                                <a href={submission.pdf_url} target="_blank" rel="noopener noreferrer">
+                                  <Download className="mr-2 h-4 w-4" /> View PDF
+                                </a>
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
                     </TableBody>
                   </Table>
                 )}
@@ -455,38 +457,39 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {uploadedFiles.map((file) => (
-                    <Card key={file.id} className="p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-semibold truncate">{file.original_name}</h3>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" asChild>
-                            <a href={file.url} target="_blank" rel="noopener noreferrer">
-                              <Eye className="mr-2 h-4 w-4" />
-                            </a>
-                          </Button>
-                          <Button size="sm" variant="outline" asChild>
-                            <a href={file.url} download={file.original_name}>
-                              <Download className="h-4 w-4" />
-                            </a>
-                          </Button>
-                          <Button size="sm" variant="destructive" onClick={() => deleteFile(file.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                  {Array.isArray(uploadedFiles) &&
+                    uploadedFiles.map((file) => (
+                      <Card key={file.id} className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="font-semibold truncate">{file.original_name}</h3>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" asChild>
+                              <a href={file.url} target="_blank" rel="noopener noreferrer">
+                                <Eye className="mr-2 h-4 w-4" />
+                              </a>
+                            </Button>
+                            <Button size="sm" variant="outline" asChild>
+                              <a href={file.url} download={file.original_name}>
+                                <Download className="h-4 w-4" />
+                              </a>
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => deleteFile(file.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                      <p className="text-sm text-gray-600">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                      <p className="text-xs text-gray-500">{new Date(file.uploaded_at).toLocaleDateString()}</p>
-                      <div className="mt-2">
-                        <Input
-                          value={file.url}
-                          readOnly
-                          className="text-xs"
-                          onClick={(e) => e.currentTarget.select()}
-                        />
-                      </div>
-                    </Card>
-                  ))}
+                        <p className="text-sm text-gray-600">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                        <p className="text-xs text-gray-500">{new Date(file.uploaded_at).toLocaleDateString()}</p>
+                        <div className="mt-2">
+                          <Input
+                            value={file.url}
+                            readOnly
+                            className="text-xs"
+                            onClick={(e) => e.currentTarget.select()}
+                          />
+                        </div>
+                      </Card>
+                    ))}
                 </div>
               </CardContent>
             </Card>
@@ -587,11 +590,12 @@ function BrandForm({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">No logo</SelectItem>
-            {uploadedFiles.map((file) => (
-              <SelectItem key={file.id} value={file.url}>
-                {file.original_name}
-              </SelectItem>
-            ))}
+            {Array.isArray(uploadedFiles) &&
+              uploadedFiles.map((file) => (
+                <SelectItem key={file.id} value={file.url}>
+                  {file.original_name}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
         <Input

@@ -12,8 +12,8 @@ interface PageProps {
 export default async function EditorPage({ params }: PageProps) {
   const supabase = createServerSupabaseClient()
 
-  // Fetch the brand data with nested sections and items in a single query
-  const { data: brandData, error: brandError } = await supabase
+  // Fetch the brand data with nested sections and items
+  const { data, error: brandError } = await supabase
     .from("brands")
     .select(
       `
@@ -29,12 +29,18 @@ export default async function EditorPage({ params }: PageProps) {
     .eq("slug", params.brandSlug)
     .order("sort_order", { foreignTable: "product_sections", ascending: true })
     .order("sort_order", { foreignTable: "product_sections.product_items", ascending: true })
-    .single()
+    .limit(1) // Use limit(1) instead of single()
 
-  if (brandError || !brandData) {
+  if (brandError) {
     console.error("Error fetching brand data:", brandError)
     notFound()
   }
+
+  if (!data || data.length === 0) {
+    notFound()
+  }
+
+  const brandData = data[0]
 
   // Fetch uploaded files
   const { data: uploadedFiles, error: filesError } = await supabase
