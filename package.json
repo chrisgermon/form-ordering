@@ -29,7 +29,6 @@
     "lucide-react": "^0.454.0",
     "next": "14.2.16",
     "nodemailer": "latest",
-    "puppeteer": "latest",
     "react": "^18",
     "react-day-picker": "latest",
     "react-dom": "^18",

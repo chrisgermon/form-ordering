@@ -15,28 +15,22 @@ export const revalidate = 0 // Revalidate data on every request
 async function getBrands(): Promise<Brand[]> {
   const supabase = createServerSupabaseClient()
 
-  // The error "column brands.logo does not exist" indicates a mismatch
-  // between the code and the database schema.
-  //
-  // This code is modified to prevent the crash on this page by not requesting
-  // the 'logo' column.
-  //
-  // WARNING: This is a partial fix. The logos will not display on the homepage.
-  // The correct long-term solution is to update the database schema by running
-  // the latest SQL script provided.
+  // This query now correctly fetches all required columns, including 'logo'.
+  // This will work once the database schema is updated with the provided SQL script.
   const { data: brands, error } = await supabase
     .from("brands")
-    .select("id, name, slug") // Temporarily removed 'logo' to prevent crash
+    .select("id, name, slug, logo")
     .eq("active", true)
     .order("name")
 
   if (error) {
     console.error("Error fetching brands:", error)
+    // This error will occur if the database schema is not up-to-date.
+    // Please run the `000-initial-schema.sql` script.
     return []
   }
 
-  // The BrandGrid component expects a `logo` property, so we add it back as null.
-  return brands?.map((brand) => ({ ...brand, logo: null })) || []
+  return brands || []
 }
 
 export default async function HomePage() {

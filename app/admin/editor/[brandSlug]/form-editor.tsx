@@ -33,7 +33,7 @@ import { Alert } from "@/components/ui/alert"
 import { ArrowLeft, Edit, Plus, Trash2, GripVertical, Heading2, X } from "lucide-react"
 
 import { updateSectionOrder, updateItemOrder } from "./actions"
-import type { Brand, ProductSection, ProductItem, UploadedFile } from "./types"
+import type { Brand, ProductSection, ProductItem, UploadedFile } from "@/lib/types"
 
 // Toolbox Component
 function Toolbox({ onAddSectionClick }: { onAddSectionClick: () => void }) {
@@ -496,7 +496,7 @@ function ItemDialog({
           </div>
           <div>
             <Label htmlFor="description">Description</Label>
-            <Textarea id="description" value={formData.description} onChange={handleChange} />
+            <Textarea id="description" value={formData.description || ""} onChange={handleChange} />
           </div>
           <div>
             <Label>Quantities</Label>
@@ -521,7 +521,7 @@ function ItemDialog({
           <div>
             <Label htmlFor="sample_link">Sample Link (URL)</Label>
             <Select
-              value={formData.sample_link}
+              value={formData.sample_link || ""}
               onValueChange={(value) => setFormData({ ...formData, sample_link: value === "none" ? "" : value })}
             >
               <SelectTrigger>
@@ -540,7 +540,7 @@ function ItemDialog({
               id="sample_link"
               className="mt-2"
               placeholder="Or paste custom URL here"
-              value={formData.sample_link}
+              value={formData.sample_link || ""}
               onChange={handleChange}
             />
           </div>

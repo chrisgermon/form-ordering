@@ -1,7 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase"
 import { FormEditor } from "./form-editor"
 import { notFound } from "next/navigation"
-import type { Brand, UploadedFile } from "./types"
+import type { Brand, UploadedFile } from "@/lib/types"
 
 interface PageProps {
   params: {
@@ -46,9 +46,6 @@ export default async function EditorPage({ params }: PageProps) {
     console.error("Error fetching uploaded files:", filesError)
     // We can still render the page, but file selection will be empty.
   }
-
-  // The data is already sorted by the query, so no need for client-side sorting.
-  // The structure of brandData should now match the `Brand` type.
 
   return <FormEditor initialBrandData={brandData as Brand} uploadedFiles={(uploadedFiles as UploadedFile[]) || []} />
 }

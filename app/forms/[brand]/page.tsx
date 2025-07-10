@@ -1,11 +1,11 @@
 import { createServerSupabaseClient } from "@/lib/supabase"
 import { notFound } from "next/navigation"
 import { OrderForm } from "@/components/order-form"
-import type { BrandData } from "@/lib/types"
+import type { Brand } from "@/lib/types"
 
 export const revalidate = 0 // Revalidate data on every request
 
-async function getBrandData(slug: string): Promise<BrandData | null> {
+async function getBrandData(slug: string): Promise<Brand | null> {
   const supabase = createServerSupabaseClient()
 
   const { data: brand, error } = await supabase
@@ -14,9 +14,9 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
       `
       id, name, slug, logo, primary_color, email,
       product_sections (
-        id, title, sort_order,
+        id, title, sort_order, brand_id,
         product_items (
-          id, code, name, description, quantities, sample_link, sort_order
+          id, code, name, description, quantities, sample_link, sort_order, section_id, brand_id
         )
       )
     `,
@@ -32,7 +32,7 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     return null
   }
 
-  return brand as BrandData
+  return brand as Brand
 }
 
 // This is a dynamic route handler
