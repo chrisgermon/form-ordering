@@ -11,7 +11,6 @@ import { generateObject } from "ai"
 import { xai } from "@ai-sdk/xai"
 import { z } from "zod"
 import type { ClinicLocation } from "@/lib/types"
-import { URL } from "url"
 import { nanoid } from "nanoid"
 import { put } from "@vercel/blob"
 
