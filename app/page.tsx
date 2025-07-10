@@ -1,25 +1,32 @@
 import Link from "next/link"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createServerSupabaseClient } from "@/lib/supabase"
 import { BrandGrid } from "@/components/brand-grid"
-import type { BrandType, ClinicLocation } from "@/lib/types"
+
+// Define the type for a brand on the homepage, matching what BrandGrid expects.
+interface Brand {
+  id: string
+  name: string
+  slug: string
+  logo: string | null
+}
 
 export const revalidate = 0 // Revalidate data on every request
 
-// Helper to check if clinic data is in an old format (e.g., array of strings)
-const isLegacyClinicData = (locations: any): locations is string[] => {
-  if (!Array.isArray(locations) || locations.length === 0) {
-    return false
-  }
-  // Check if the first element is a string, which indicates the old format.
-  return typeof locations[0] === "string"
-}
+async function getBrands(): Promise<Brand[]> {
+  const supabase = createServerSupabaseClient()
 
-async function getBrands(): Promise<BrandType[]> {
-  const supabase = createAdminClient()
-
+  // The error "column brands.logo does not exist" indicates a mismatch
+  // between the code and the database schema.
+  //
+  // This code is modified to prevent the crash on this page by not requesting
+  // the 'logo' column.
+  //
+  // WARNING: This is a partial fix. The logos will not display on the homepage.
+  // The correct long-term solution is to update the database schema by running
+  // the latest SQL script provided.
   const { data: brands, error } = await supabase
     .from("brands")
-    .select("id, name, slug, logo, emails, clinic_locations, active")
+    .select("id, name, slug") // Temporarily removed 'logo' to prevent crash
     .eq("active", true)
     .order("name")
 
@@ -28,34 +35,8 @@ async function getBrands(): Promise<BrandType[]> {
     return []
   }
 
-  if (!brands) {
-    return []
-  }
-
-  // Post-process the data to handle legacy formats and ensure type safety.
-  const processedBrands = brands.map((brand) => {
-    let processedLocations: ClinicLocation[] = []
-    if (isLegacyClinicData(brand.clinic_locations)) {
-      // If it's an array of strings, convert it to the new object format.
-      processedLocations = (brand.clinic_locations as string[]).map((name: string) => ({
-        name,
-        address: "",
-        phone: "",
-        email: "",
-      }))
-    } else {
-      // It's already in the correct format or it's an empty array.
-      processedLocations = brand.clinic_locations || []
-    }
-
-    return {
-      ...brand,
-      clinic_locations: processedLocations,
-      emails: brand.emails || [], // Ensure emails is always an array.
-    }
-  })
-
-  return processedBrands as BrandType[]
+  // The BrandGrid component expects a `logo` property, so we add it back as null.
+  return brands?.map((brand) => ({ ...brand, logo: null })) || []
 }
 
 export default async function HomePage() {
@@ -71,7 +52,7 @@ export default async function HomePage() {
               Select your brand to access the customised printing order form for your radiology practice.
             </p>
           </div>
-          <BrandGrid brands={brands.slice(0, 6)} />
+          <BrandGrid brands={brands} />
         </div>
       </main>
 
@@ -94,11 +75,8 @@ export default async function HomePage() {
                 />
               </a>
             </div>
-            <div className="text-center flex items-center gap-6">
-              <Link href="/admin/instructions" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-                Admin Instructions
-              </Link>
-              <Link href="/admin/dashboard" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+            <div className="text-center">
+              <Link href="/admin" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
                 Admin Portal
               </Link>
             </div>

@@ -15,12 +15,9 @@ const work_sans = Work_Sans({
 })
 
 export const metadata: Metadata = {
-  title: "VRG Form Ordering System",
-  description: "Printing order forms for the Vision Radiology Group.",
-  icons: {
-    icon: "/favicon.png",
-  },
-    generator: 'v0.dev'
+  title: "v0 App",
+  description: "Created with v0",
+  generator: "v0.dev",
 }
 
 export default function RootLayout({

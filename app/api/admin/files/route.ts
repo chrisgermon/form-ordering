@@ -1,34 +1,27 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createServerSupabaseClient } from "@/lib/supabase"
 
 export async function GET() {
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
 
-    // Explicitly select columns to avoid errors if the schema is out of sync.
-    // The error "column uploaded_files.created_at does not exist" indicates
-    // that a query was trying to access a column that is not in the table.
     const { data: files, error } = await supabase
       .from("uploaded_files")
-      .select("id, pathname, original_name, url, uploaded_at, size, content_type")
+      .select("*")
       .order("uploaded_at", { ascending: false })
 
-    if (error) {
-      // Re-throw the error to be caught by the catch block
-      throw error
-    }
+    if (error) throw error
 
     return NextResponse.json(files)
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error fetching files:", error)
-    // Return the actual database error message for better debugging
-    return NextResponse.json({ error: `Failed to fetch files: ${error.message}` }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch files" }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 
@@ -41,8 +34,8 @@ export async function DELETE(request: NextRequest) {
     if (error) throw error
 
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error deleting file:", error)
-    return NextResponse.json({ error: `Failed to delete file: ${error.message}` }, { status: 500 })
+    return NextResponse.json({ error: "Failed to delete file" }, { status: 500 })
   }
 }
