@@ -732,52 +732,32 @@ export default function AdminDashboard() {
               <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Card className="p-4 flex flex-col justify-between border-red-500 border-2">
                   <div>
-                    <h3 className="font-semibold text-red-700">Fix "primary_color" Error</h3>
+                    <h3 className="font-semibold text-red-700">1. Fix Common Schema Errors</h3>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Run this if you get an error about a missing 'primary_color' column when saving a brand. This is
-                      the most common cause of update failures.
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handlePrimaryColorFix}
-                    disabled={isFixingColor}
-                    className="mt-4 bg-red-600 hover:bg-red-700 text-white"
-                  >
-                    {isFixingColor ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Database className="mr-2 h-4 w-4" />
-                    )}
-                    Run Schema Fix
-                  </Button>
-                </Card>
-                <Card className="p-4 flex flex-col justify-between border-blue-500 border-2">
-                  <div>
-                    <h3 className="font-semibold text-blue-700">Correct Brands Schema</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Run this first if you see errors about missing 'emails' or 'clinic_locations' columns. This fixes
-                      the table and reloads the schema cache.
+                      Run this first if you see errors or missing features on the live site. It fixes common column
+                      issues (like in the 'brands' table) and forces the API to reload its schema. This is the most
+                      common solution for production discrepancies.
                     </p>
                   </div>
                   <Button
                     onClick={handleBrandSchemaCorrection}
                     disabled={isCorrectingSchema}
-                    className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                    className="mt-4 bg-red-600 hover:bg-red-700 text-white"
                   >
                     {isCorrectingSchema ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Database className="mr-2 h-4 w-4" />
                     )}
-                    Fix Brands Table
+                    Run Full Schema Correction
                   </Button>
                 </Card>
                 <Card className="p-4 flex flex-col justify-between">
                   <div>
-                    <h3 className="font-semibold">Force Schema Reload</h3>
+                    <h3 className="font-semibold">2. Force Schema Reload</h3>
                     <p className="text-sm text-muted-foreground mt-1">
-                      If you see errors like "column not found" after a migration, run this to refresh the API's schema
-                      cache.
+                      If the fix above doesn't work, this is a more direct way to tell the API to refresh its cache. Use
+                      this if you've manually changed the DB and don't see the changes.
                     </p>
                   </div>
                   <Button
@@ -796,30 +776,10 @@ export default function AdminDashboard() {
                 </Card>
                 <Card className="p-4 flex flex-col justify-between">
                   <div>
-                    <h3 className="font-semibold">Update Schema for Relative URLs</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Adds the 'pathname' column required for serving files from your domain. Run this once.
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handleSchemaV5Update}
-                    disabled={isUpdatingSchema}
-                    variant="outline"
-                    className="mt-4 bg-transparent"
-                  >
-                    {isUpdatingSchema ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Database className="mr-2 h-4 w-4" />
-                    )}
-                    Run Schema Update (v5)
-                  </Button>
-                </Card>
-                <Card className="p-4 flex flex-col justify-between">
-                  <div>
                     <h3 className="font-semibold">Initialize Database</h3>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Wipes all data and creates 5 blank brands. Use this for a fresh start.
+                      Wipes all data and creates 5 blank brands. Use this for a fresh start.{" "}
+                      <strong className="text-destructive">This is a destructive action.</strong>
                     </p>
                   </div>
                   <Button
