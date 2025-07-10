@@ -1,11 +1,5 @@
 {
-  "installCommand": "pnpm install --no-frozen-lockfile",
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/next"
-    }
-  ],
+  "installCommand": "rm -f pnpm-lock.yaml && pnpm install --no-frozen-lockfile",
   "headers": [
     {
       "source": "/(.*)",
