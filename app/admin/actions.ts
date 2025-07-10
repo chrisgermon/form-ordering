@@ -1,9 +1,67 @@
 "use server"
 
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createServerSupabaseClient } from "@/lib/supabase"
+import initializeDatabaseFunction from "@/lib/seed-database"
+import { promises as fs } from "fs"
+import path from "path"
 import { revalidatePath } from "next/cache"
 import * as cheerio from "cheerio"
-import type { ProductItem } from "@/lib/types" // Changed import path
+import type { ProductItem } from "./editor/[brandSlug]/types"
+
+async function executeSqlFile(filePath: string) {
+  const supabase = createServerSupabaseClient()
+  const sql = await fs.readFile(path.join(process.cwd(), filePath), "utf8")
+  const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
+  if (error) throw error
+}
+
+export async function createAdminTables() {
+  try {
+    await executeSqlFile("scripts/create-admin-tables.sql")
+    return { success: true, message: "Admin tables created successfully!" }
+  } catch (error: any) {
+    console.error("Error creating admin tables:", error)
+    return { success: false, message: `Failed to create admin tables: ${error.message}` }
+  }
+}
+
+export async function initializeDatabase() {
+  try {
+    await initializeDatabaseFunction()
+    revalidatePath("/admin")
+    return { success: true, message: "Database initialized successfully with 5 brands!" }
+  } catch (error: any) {
+    console.error("Error initializing database:", error)
+    return { success: false, message: `Failed to initialize database: ${error.message}` }
+  }
+}
+
+export async function autoAssignPdfs() {
+  const supabase = createServerSupabaseClient()
+  try {
+    const { data: files, error: filesError } = await supabase.from("uploaded_files").select("original_name, url")
+    if (filesError) throw filesError
+
+    const { data: items, error: itemsError } = await supabase
+      .from("product_items")
+      .select("id, code")
+      .is("sample_link", null)
+    if (itemsError) throw itemsError
+
+    let assignments = 0
+    for (const item of items) {
+      const matchingFile = files.find((file) => file.original_name.toUpperCase().startsWith(item.code.toUpperCase()))
+      if (matchingFile) {
+        await supabase.from("product_items").update({ sample_link: matchingFile.url }).eq("id", item.id)
+        assignments++
+      }
+    }
+    revalidatePath("/admin")
+    return { success: true, message: `Auto-assigned ${assignments} PDF links.` }
+  } catch (error: any) {
+    return { success: false, message: `Failed to auto-assign PDFs: ${error.message}` }
+  }
+}
 
 const slugify = (text: string) => {
   if (!text) return ""
@@ -22,7 +80,7 @@ export async function importFromJotform(brandId: string, brandSlug: string, html
   }
 
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
     const $ = cheerio.load(htmlCode)
 
     // 1. Pre-process all descriptive text blocks into a map.
@@ -176,5 +234,16 @@ export async function importFromJotform(brandId: string, brandSlug: string, html
     console.error("Jotform import error:", error)
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during import."
     return { success: false, message: `Import failed: ${errorMessage}` }
+  }
+}
+
+// Add this new function at the end of the file
+export async function runSchemaV5Update() {
+  try {
+    await executeSqlFile("scripts/update-schema-v5.sql")
+    return { success: true, message: "Schema updated successfully for relative URLs!" }
+  } catch (error: any) {
+    console.error("Error running schema v5 update:", error)
+    return { success: false, message: `Failed to update schema: ${error.message}` }
   }
 }

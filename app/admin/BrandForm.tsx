@@ -1,16 +1,36 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { X, Upload, AlertTriangle } from "lucide-react"
+import { X, Upload } from "lucide-react"
 import { resolveAssetUrl } from "@/lib/utils"
-import type { Brand, UploadedFile, ClinicLocation } from "@/lib/types"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import type { ClinicLocation } from "@/lib/types"
+
+interface Brand {
+  id: string
+  name: string
+  slug: string
+  logo: string
+  active: boolean
+  emails: string[]
+  clinic_locations: ClinicLocation[]
+}
+
+interface UploadedFile {
+  id: string
+  filename: string
+  original_name: string
+  url: string
+  pathname: string
+  uploaded_at: string
+  size: number
+  content_type: string | null
+}
 
 interface BrandFormProps {
   brand: Brand | null
@@ -20,46 +40,38 @@ interface BrandFormProps {
   onLogoUpload: () => Promise<void>
 }
 
-const newLocation = (): ClinicLocation => ({ name: "", address: "", phone: "", email: "" })
-
-// Helper to check if clinic data is in the old string[] format
-const isLegacyClinicData = (locations: any): locations is string[] => {
-  return (
-    Array.isArray(locations) &&
-    locations.length > 0 &&
-    (typeof locations[0] === "string" || !locations[0].hasOwnProperty("email"))
-  )
-}
+const newLocation = (): ClinicLocation => ({ name: "", address: "", phone: "" })
 
 export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload }: BrandFormProps) {
-  const getInitialState = () => {
-    if (brand) {
-      const locations = isLegacyClinicData(brand.clinic_locations)
-        ? brand.clinic_locations.map((name) => ({ name, address: "", phone: "", email: "" }))
-        : brand.clinic_locations || []
+  const [formData, setFormData] = useState({
+    name: "",
+    logo: "",
+    active: true,
+    emails: [""],
+    clinicLocations: [newLocation()],
+  })
+  const [isUploading, setIsUploading] = useState(false)
 
-      return {
+  useEffect(() => {
+    if (brand) {
+      setFormData({
         name: brand.name || "",
         logo: brand.logo || "",
         active: brand.active,
         emails: brand.emails?.length > 0 ? brand.emails : [""],
-        clinicLocations: locations?.length > 0 ? locations : [newLocation()],
-        order_prefix: brand.order_prefix || "",
-      }
+        clinicLocations: brand.clinic_locations?.length > 0 ? brand.clinic_locations : [newLocation()],
+      })
+    } else {
+      // Reset for new brand
+      setFormData({
+        name: "",
+        logo: "",
+        active: true,
+        emails: [""],
+        clinicLocations: [newLocation()],
+      })
     }
-    // For a new brand
-    return {
-      name: "",
-      logo: "",
-      active: true,
-      emails: [""],
-      clinicLocations: [newLocation()],
-      order_prefix: "",
-    }
-  }
-
-  const [formData, setFormData] = useState(getInitialState)
-  const [isUploading, setIsUploading] = useState(false)
+  }, [brand])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value, type } = e.target
@@ -140,30 +152,10 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-      {brand && isLegacyClinicData(brand.clinic_locations) && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Outdated Data Format</AlertTitle>
-          <AlertDescription>
-            The clinic locations for this brand are stored in an old format. Please re-run the 'Import Clinics' script
-            from the System Actions tab to fix this.
-          </AlertDescription>
-        </Alert>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <Label htmlFor="name">Brand Name</Label>
           <Input id="name" value={formData.name} onChange={handleChange} required />
-        </div>
-        <div>
-          <Label htmlFor="order_prefix">Order Prefix</Label>
-          <Input
-            id="order_prefix"
-            value={formData.order_prefix || ""}
-            onChange={handleChange}
-            placeholder="e.g., PRN-FR"
-          />
         </div>
       </div>
 
@@ -171,7 +163,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
         <Label>Logo</Label>
         <div className="flex items-center gap-4">
           <Select
-            value={formData.logo || ""}
+            value={formData.logo}
             onValueChange={(value) => setFormData((p) => ({ ...p, logo: value === "none" ? "" : value }))}
           >
             <SelectTrigger>
@@ -210,7 +202,6 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
               src={resolveAssetUrl(formData.logo) || "/placeholder.svg"}
               alt="Brand logo preview"
               className="h-16 w-auto object-contain"
-              crossOrigin="anonymous"
             />
           </div>
         )}
@@ -276,18 +267,6 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
                   placeholder="e.g., 123 Main St, Sydney NSW 2000"
                   value={location.address}
                   onChange={(e) => handleLocationChange(e, index, "address")}
-                />
-              </div>
-              <div>
-                <Label htmlFor={`loc-email-${index}`} className="text-xs">
-                  Email
-                </Label>
-                <Input
-                  id={`loc-email-${index}`}
-                  type="email"
-                  placeholder="e.g., clinic@example.com"
-                  value={location.email || ""}
-                  onChange={(e) => handleLocationChange(e, index, "email")}
                 />
               </div>
               <Button

@@ -1,7 +1,5 @@
-export const revalidate = 0
-
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createServerSupabaseClient } from "@/lib/supabase"
 
 const slugify = (text: string) => {
   if (!text) return ""
@@ -16,11 +14,11 @@ const slugify = (text: string) => {
 
 export async function GET() {
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
 
     const { data: brands, error } = await supabase
       .from("brands")
-      .select("id, name, slug, logo, emails, clinic_locations, active, order_prefix")
+      .select("id, name, slug, logo, emails, clinic_locations, active")
       .order("name")
 
     if (error) throw error
@@ -34,7 +32,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
     const body = await request.json()
 
     if (!body.name) {
@@ -52,9 +50,8 @@ export async function POST(request: NextRequest) {
         emails: body.emails || [],
         clinic_locations: body.clinicLocations || [],
         active: body.active,
-        order_prefix: body.order_prefix,
       })
-      .select("id, name, slug, logo, emails, clinic_locations, active, order_prefix")
+      .select("id, name, slug, logo, emails, clinic_locations, active")
       .single()
 
     if (error) {
@@ -77,7 +74,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
     const body = await request.json()
 
     if (!body.id || !body.name) {
@@ -95,10 +92,9 @@ export async function PUT(request: NextRequest) {
         emails: body.emails || [],
         clinic_locations: body.clinicLocations || [],
         active: body.active,
-        order_prefix: body.order_prefix,
       })
       .eq("id", body.id)
-      .select("id, name, slug, logo, emails, clinic_locations, active, order_prefix")
+      .select("id, name, slug, logo, emails, clinic_locations, active")
       .single()
 
     if (error) {
@@ -121,7 +117,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 

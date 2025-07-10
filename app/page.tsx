@@ -1,68 +1,84 @@
-import { getActiveBrands } from "@/lib/db"
-import { BrandGrid } from "@/components/brand-grid"
-import Image from "next/image"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertTriangle } from "lucide-react"
-import type { Brand } from "@/lib/types"
+import { createServerSupabaseClient } from "@/lib/supabase"
+import { BrandGrid } from "@/components/brand-grid"
+import type { BrandType } from "@/lib/types"
 
-export default async function HomePage() {
-  let brands: Brand[] = []
-  let error: string | null = null
+interface FormData {
+  orderedBy: string
+  email: string
+  billTo: string
+  deliverTo: string
+  date: Date | undefined
+  items: Record<string, { selected: boolean; quantity: string; customQuantity?: number }>
+}
 
-  try {
-    brands = await getActiveBrands()
-  } catch (e) {
-    error = e instanceof Error ? e.message : "An unknown error occurred."
+interface ProductItem {
+  code: string
+  name: string
+  description: string
+  quantities: string[]
+  sampleLink?: string
+}
+
+export const revalidate = 0 // Revalidate data on every request
+
+async function getBrands(): Promise<BrandType[]> {
+  const supabase = createServerSupabaseClient()
+
+  const { data: brands, error } = await supabase.from("brands").select("*").eq("active", true).order("name")
+
+  if (error) {
+    console.error("Error fetching brands:", error)
+    return []
   }
 
-  return (
-    <main className="min-h-screen bg-gray-50">
-      <div className="p-4 sm:p-8">
-        <div className="max-w-7xl mx-auto">
-          <header className="flex justify-between items-center py-4 mb-8">
-            <div className="flex items-center gap-4">
-              <Image src="/favicon.png" alt="VRG Logo" width={40} height={40} />
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Printing Order System</h1>
-            </div>
-            <Button asChild variant="outline">
-              <Link href="/admin/dashboard">Admin Dashboard</Link>
-            </Button>
-          </header>
+  return brands || []
+}
 
+export default async function HomePage() {
+  const brands = await getBrands()
+
+  return (
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      <main className="flex-grow">
+        <div className="container mx-auto px-4 py-12">
           <div className="text-center mb-12">
-            <h2 className="text-xl sm:text-2xl font-semibold text-gray-700 mb-2">Select a Brand to Begin</h2>
-            <p className="text-gray-500 max-w-2xl mx-auto">
-              Choose one of the brands below to access their dedicated printing order form.
+            <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">Printed Form Ordering</h1>
+            <p className="mt-4 text-lg leading-8 text-gray-600">
+              Select your brand to access the customised printing order form for your radiology practice.
             </p>
           </div>
-
-          {error ? (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Error Loading Brands</AlertTitle>
-              <AlertDescription>
-                Could not load brand information. Please check the system configuration and database connection.
-                <p className="mt-2 text-xs font-mono bg-red-100 p-2 rounded">Details: {error}</p>
-              </AlertDescription>
-            </Alert>
-          ) : brands.length > 0 ? (
-            <BrandGrid brands={brands} />
-          ) : (
-            <div className="text-center py-16 bg-white rounded-lg shadow-sm">
-              <p className="text-gray-600 font-semibold">No active brands found.</p>
-              <p className="text-sm text-gray-500 mt-2">
-                Please go to the{" "}
-                <Link href="/admin/dashboard" className="text-blue-600 hover:underline">
-                  admin dashboard
-                </Link>{" "}
-                to activate brands.
-              </p>
-            </div>
-          )}
+          <BrandGrid brands={brands.slice(0, 6)} />
         </div>
-      </div>
-    </main>
+      </main>
+
+      <footer className="bg-white border-t border-gray-200 mt-auto">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-gray-600 text-sm">Platform Created by</span>
+              <a
+                href="https://crowdit.com.au"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              >
+                <img
+                  src="https://rkzg1azdhvqaqoqa.public.blob.vercel-storage.com/admin-uploads/1751267287132-CrowdIT-Logo%401x.png"
+                  alt="Crowd IT Logo"
+                  className="h-8 w-auto object-contain"
+                  crossOrigin="anonymous"
+                />
+              </a>
+            </div>
+            <div className="text-center">
+              <Link href="/admin" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                Admin Portal
+              </Link>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
   )
 }

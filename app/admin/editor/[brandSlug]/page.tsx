@@ -1,9 +1,14 @@
-import { getBrand, getUploadedFiles } from "./actions"
 import { FormEditor } from "./form-editor"
 import { notFound } from "next/navigation"
-import { Toaster } from "@/components/ui/sonner"
+import { getBrand, getUploadedFiles } from "./actions"
 
-export default async function FormEditorPage({ params }: { params: { brandSlug: string } }) {
+interface PageProps {
+  params: {
+    brandSlug: string
+  }
+}
+
+export default async function BrandEditorPage({ params }: PageProps) {
   const brandData = await getBrand(params.brandSlug)
   const uploadedFiles = await getUploadedFiles()
 
@@ -11,10 +16,5 @@ export default async function FormEditorPage({ params }: { params: { brandSlug: 
     notFound()
   }
 
-  return (
-    <>
-      <FormEditor initialBrandData={brandData} uploadedFiles={uploadedFiles} />
-      <Toaster />
-    </>
-  )
+  return <FormEditor initialBrandData={brandData} uploadedFiles={uploadedFiles} />
 }

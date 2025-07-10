@@ -1,24 +1,37 @@
-import type { SupabaseClient } from "@supabase/supabase-js"
+import { createServerSupabaseClient } from "./supabase"
 
-export async function seedDatabase(supabase: SupabaseClient) {
-  console.log("--- Starting Database Seeding ---")
+// This function initializes the database with a clean slate of brands.
+// It first wipes all existing data to prevent conflicts.
+export default async function initializeDatabase() {
+  const supabase = createServerSupabaseClient()
 
-  const { data: existingBrands, error: checkError } = await supabase.from("brands").select("id").limit(1)
+  console.log("--- Starting Database Initialization ---")
 
-  if (checkError) {
-    console.error("Error checking for existing brands:", checkError)
-    throw checkError
-  }
+  // 1. Clear all existing data in the correct order to respect foreign keys
+  console.log("Step 1: Clearing existing data...")
+  await supabase.from("product_items").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+  await supabase.from("product_sections").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+  await supabase.from("brands").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+  console.log("✅ Data cleared.")
 
-  if (existingBrands.length > 0) {
-    console.log("Database already contains brands. Skipping seed.")
-    return
-  }
-
-  console.log("Seeding database with initial brands...")
+  // 2. Insert the 5 specified brands with default empty/null values.
+  // You can edit these details later in the Admin Dashboard.
+  console.log("Step 2: Creating the 5 core brands...")
   const brandsToCreate = [
-    { name: "Vision Radiology", slug: "vision-radiology", active: true, emails: [], clinic_locations: [] },
-    { name: "Light Radiology", slug: "light-radiology", active: true, emails: [], clinic_locations: [] },
+    {
+      name: "Vision Radiology",
+      slug: "vision-radiology",
+      active: true,
+      emails: [],
+      clinic_locations: [],
+    },
+    {
+      name: "Light Radiology",
+      slug: "light-radiology",
+      active: true,
+      emails: [],
+      clinic_locations: [],
+    },
     {
       name: "Quantum Medical Imaging",
       slug: "quantum-medical-imaging",
@@ -26,17 +39,29 @@ export async function seedDatabase(supabase: SupabaseClient) {
       emails: [],
       clinic_locations: [],
     },
-    { name: "Focus Radiology", slug: "focus-radiology", active: true, emails: [], clinic_locations: [] },
-    { name: "Pulse Radiology", slug: "pulse-radiology", active: true, emails: [], clinic_locations: [] },
+    {
+      name: "Focus Radiology",
+      slug: "focus-radiology",
+      active: true,
+      emails: [],
+      clinic_locations: [],
+    },
+    {
+      name: "Pulse Radiology",
+      slug: "pulse-radiology",
+      active: true,
+      emails: [],
+      clinic_locations: [],
+    },
   ]
 
   const { error } = await supabase.from("brands").insert(brandsToCreate)
 
   if (error) {
-    console.error("Error seeding database:", error)
-    throw error
+    console.error("❌ Error creating brands:", error)
+    throw new Error(`Brand creation failed: ${error.message}`)
   }
 
-  console.log("✅ Database seeded successfully.")
-  console.log("--- Database Seeding Complete ---")
+  console.log("✅ 5 brands created successfully.")
+  console.log("--- Database Initialization Complete ---")
 }

@@ -17,10 +17,9 @@ export async function GET() {
         status,
         pdf_url,
         ip_address,
-        order_data,
         brands (
-          id,
-          name
+          name,
+          primary_color
         )
       `,
       )

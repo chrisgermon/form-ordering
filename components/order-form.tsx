@@ -1,30 +1,65 @@
 "use client"
 
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
+import { useState, useMemo } from "react"
+import Image from "next/image"
+import { useForm, Controller, useWatch } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Loader2, Send, CheckCircle, XCircle, ChevronDown, ArrowLeft, Search, X } from "lucide-react"
-import { resolveAssetUrl } from "@/lib/utils"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ChevronDown, ArrowLeft, Search, X } from "lucide-react"
+import { format } from "date-fns"
+import { cn, resolveAssetUrl } from "@/lib/utils"
 import type { BrandData, ProductItem } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
-import { DatePicker } from "@/components/ui/date-picker"
-import Image from "next/image"
-import { Controller, useForm, useWatch } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useState, useMemo } from "react"
-import { getClientSideOrderSchema } from "@/lib/schemas"
+
+const createFormSchema = (brandData: BrandData) => {
+  const baseSchema = z.object({
+    orderedBy: z.string().min(1, "Ordered by is required."),
+    email: z.string().email("A valid email address is required."),
+    billTo: z.string().min(1, "Bill to clinic is required."),
+    deliverTo: z.string().min(1, "Deliver to clinic is required."),
+    date: z.date({ required_error: "A date is required." }),
+    items: z.record(z.any()).optional(),
+  })
+
+  return baseSchema.superRefine((data, ctx) => {
+    let hasItems = false
+    brandData.product_sections.forEach((section) => {
+      section.product_items.forEach((item) => {
+        const value = data.items?.[item.id]
+        if (value && value.quantity !== "") {
+          hasItems = true
+        }
+
+        if (item.is_required) {
+          if (!value || value.quantity === "") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [`items.${item.id}`],
+              message: `${item.name} is required.`,
+            })
+          }
+        }
+      })
+    })
+
+    if (!hasItems) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["items"],
+        message: "Please select at least one item to order.",
+      })
+    }
+  })
+}
 
 const FormField = ({
   item,
@@ -138,12 +173,23 @@ const FormField = ({
             name={`${fieldName}.quantity`}
             control={control}
             render={({ field }) => (
-              <DatePicker
-                value={field.value}
-                onChange={field.onChange}
-                className="bg-gray-100 border-gray-300"
-                placeholder="DD-MM-YYYY"
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal bg-gray-100 border-gray-300",
+                      !field.value && "text-muted-foreground",
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {field.value ? format(field.value, "dd-MM-yyyy") : <span>DD-MM-YYYY</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                </PopoverContent>
+              </Popover>
             )}
           />
         )
@@ -184,148 +230,44 @@ const FormField = ({
 function SelectionSidebar({
   selectedItems,
   onRemoveItem,
-  formId,
 }: {
   selectedItems: any
   onRemoveItem: (itemId: string) => void
-  formId: string
 }) {
   const items = Object.entries(selectedItems || {}).filter(([_, value]: [string, any]) => value && value.quantity)
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col h-[calc(100vh-4rem)]">
+    <div className="bg-white rounded-xl shadow-lg p-6">
       <h3 className="text-xl font-semibold text-[#2a3760] mb-4">Current Selection</h3>
-      <div className="flex-grow overflow-y-auto pr-2">
-        {items.length === 0 ? (
-          <p className="text-gray-500 text-sm">No items selected yet.</p>
-        ) : (
-          <ul className="space-y-3">
-            {items.map(([id, item]: [string, any]) => (
-              <li key={id} className="border-b pb-3 last:border-b-0">
-                <div className="flex justify-between items-start gap-2">
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-800 leading-tight">{item.name}</p>
-                    <p className="text-xs text-gray-500">CODE: {item.code}</p>
-                    <p className="text-sm font-bold text-[#1aa7df] mt-1">
-                      Qty: {item.quantity === "other" ? item.customQuantity : item.quantity}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-gray-500 hover:text-red-500 shrink-0"
-                    onClick={() => onRemoveItem(id)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+      {items.length === 0 ? (
+        <p className="text-gray-500 text-sm">No items selected yet.</p>
+      ) : (
+        <ul className="space-y-3 max-h-[60vh] overflow-y-auto">
+          {items.map(([id, item]: [string, any]) => (
+            <li key={id} className="border-b pb-3 last:border-b-0">
+              <div className="flex justify-between items-start gap-2">
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-800 leading-tight">{item.name}</p>
+                  <p className="text-xs text-gray-500">CODE: {item.code}</p>
+                  <p className="text-sm font-bold text-[#1aa7df] mt-1">
+                    Qty: {item.quantity === "other" ? item.customQuantity : item.quantity}
+                  </p>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      <div className="mt-auto pt-6 border-t">
-        <Button
-          type="submit"
-          form={formId}
-          disabled={items.length === 0}
-          className="w-full bg-[#2a3760] hover:bg-[#2a3760]/90 text-white font-semibold py-3 text-base disabled:bg-gray-400 disabled:cursor-not-allowed"
-        >
-          <Send className="mr-2 h-4 w-4" />
-          Submit Order
-        </Button>
-      </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-gray-500 hover:text-red-500 shrink-0"
+                  onClick={() => onRemoveItem(id)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
-}
-
-function ConfirmationDialog({
-  isOpen,
-  onClose,
-  onConfirm,
-  data,
-  isSubmitting,
-}: {
-  isOpen: boolean
-  onClose: () => void
-  onConfirm: () => void
-  data: any | null
-  isSubmitting: boolean
-}) {
-  if (!data) return null
-
-  const orderItems = Object.values(data.items || {}).filter((item: any) => item && item.quantity)
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[525px]">
-        <DialogHeader>
-          <DialogTitle>Confirm Your Order</DialogTitle>
-          <DialogDescription>Please review your order details below before submitting.</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="space-y-2">
-            <h4 className="font-semibold text-gray-800">Delivery Details</h4>
-            <div className="p-3 bg-gray-50 rounded-md border border-gray-200 text-sm">
-              <p>
-                <span className="font-medium">Deliver To:</span> {data.deliverTo?.name || "N/A"}
-              </p>
-              <p>
-                <span className="font-medium">Confirmation Email:</span> {data.email}
-              </p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <h4 className="font-semibold text-gray-800">Order Contents</h4>
-            <div className="p-3 bg-gray-50 rounded-md border border-gray-200 max-h-60 overflow-y-auto">
-              {orderItems.length > 0 ? (
-                <ul className="space-y-2">
-                  {orderItems.map((item: any) => (
-                    <li key={item.code} className="flex justify-between text-sm">
-                      <span>{item.name}</span>
-                      <span className="font-bold">
-                        {item.quantity === "other" ? item.customQuantity : item.quantity}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-gray-500">No items in this order.</p>
-              )}
-            </div>
-          </div>
-          {data.notes && (
-            <div className="space-y-2">
-              <h4 className="font-semibold text-gray-800">Notes</h4>
-              <div className="p-3 bg-gray-50 rounded-md border border-gray-200 text-sm">
-                <p>{data.notes}</p>
-              </div>
-            </div>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          <Button onClick={onConfirm} disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              "Confirm & Submit"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// Helper to check if clinic data is in the old string[] format
-const isLegacyClinicData = (locations: any): locations is string[] => {
-  return Array.isArray(locations) && locations.length > 0 && typeof locations[0] === "string"
 }
 
 export function OrderForm({ brandData }: { brandData: BrandData }) {
@@ -333,10 +275,8 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
   const [submissionStatus, setSubmissionStatus] = useState<"success" | "error" | null>(null)
   const [submissionMessage, setSubmissionMessage] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
-  const [isConfirming, setIsConfirming] = useState(false)
-  const [confirmationData, setConfirmationData] = useState<any | null>(null)
 
-  const formSchema = useMemo(() => getClientSideOrderSchema(brandData), [brandData])
+  const formSchema = useMemo(() => createFormSchema(brandData), [brandData])
 
   const {
     register,
@@ -348,7 +288,6 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
     formState: { errors },
   } = useForm({
     resolver: zodResolver(formSchema),
-    mode: "onChange",
     defaultValues: {
       orderedBy: "",
       email: "",
@@ -356,56 +295,34 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
       deliverTo: "",
       items: {},
       date: new Date(),
-      notes: "",
     },
   })
 
-  const onInvalid = (errors: any) => {
-    console.error("Form validation errors:", errors)
-    setSubmissionStatus("error")
-    setSubmissionMessage("Please review the form and fix any errors highlighted in red.")
-  }
-
   const watchedItems = useWatch({ control, name: "items" })
 
-  const clinicLocations = useMemo(() => {
-    if (isLegacyClinicData(brandData.clinic_locations)) {
-      return brandData.clinic_locations.map((name) => ({ name, address: "", phone: "", email: "" }))
-    }
-    return brandData.clinic_locations || []
-  }, [brandData.clinic_locations])
+  const clinicLocations = brandData.clinic_locations || []
 
-  const handleFormSubmit = (data: any) => {
+  const onSubmit = async (data: any) => {
+    setIsSubmitting(true)
+    setSubmissionStatus(null)
+
     const selectedBillTo = clinicLocations.find((loc) => loc.name === data.billTo)
     const selectedDeliverTo = clinicLocations.find((loc) => loc.name === data.deliverTo)
 
     const payload = {
-      brandId: brandData.id,
-      brandSlug: brandData.slug,
-      orderedBy: data.orderedBy,
-      email: data.email,
+      ...data,
       billTo: selectedBillTo,
       deliverTo: selectedDeliverTo,
-      date: data.date,
-      items: data.items,
-      notes: data.notes,
+      brandId: brandData.id,
+      brandName: brandData.name,
+      recipientEmails: brandData.emails,
     }
-
-    setConfirmationData(payload)
-    setIsConfirming(true)
-  }
-
-  const handleConfirmSubmit = async () => {
-    if (!confirmationData) return
-
-    setIsSubmitting(true)
-    setSubmissionStatus(null)
 
     try {
       const response = await fetch("/api/submit-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(confirmationData),
+        body: JSON.stringify(payload),
       })
 
       const result = await response.json()
@@ -414,17 +331,14 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
         setSubmissionStatus("success")
         setSubmissionMessage("Your order has been submitted successfully!")
         reset()
-        setIsConfirming(false)
       } else {
-        throw new Error(result.details || result.error || "An unknown error occurred.")
+        throw new Error(result.message || "An unknown error occurred.")
       }
     } catch (error) {
       setSubmissionStatus("error")
       setSubmissionMessage(error instanceof Error ? error.message : "Failed to submit order.")
-      setIsConfirming(false)
     } finally {
       setIsSubmitting(false)
-      setConfirmationData(null)
     }
   }
 
@@ -473,7 +387,6 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                   height={98}
                   className="mx-auto object-contain"
                   priority
-                  crossOrigin="anonymous"
                 />
               )}
             </div>
@@ -483,7 +396,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                 <h1 className="text-2xl font-semibold">Printing Order Form</h1>
               </div>
 
-              <form onSubmit={handleSubmit(handleFormSubmit, onInvalid)} className="p-6 sm:p-8" id="order-form">
+              <form onSubmit={handleSubmit(onSubmit)} className="p-6 sm:p-8">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 mb-8">
                   <div className="space-y-1">
                     <label htmlFor="orderedBy" className="text-sm font-medium text-gray-800">
@@ -555,21 +468,26 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                       name="date"
                       control={control}
                       render={({ field }) => (
-                        <DatePicker
-                          value={field.value}
-                          onChange={field.onChange}
-                          className="bg-gray-100 border-gray-300"
-                          placeholder="DD-MM-YYYY"
-                        />
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full justify-start text-left font-normal bg-gray-100 border-gray-300",
+                                !field.value && "text-muted-foreground",
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {field.value ? format(field.value, "dd-MM-yyyy") : <span>DD-MM-YYYY</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                          </PopoverContent>
+                        </Popover>
                       )}
                     />
                     {errors.date && <p className="text-xs text-red-600">{errors.date.message}</p>}
-                  </div>
-                  <div className="space-y-1 sm:col-span-2">
-                    <label htmlFor="notes" className="text-sm font-medium text-gray-800">
-                      Notes:
-                    </label>
-                    <Textarea id="notes" {...register("notes")} className="bg-gray-100 border-gray-300" />
                   </div>
                 </div>
 
@@ -610,27 +528,39 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                     </Collapsible>
                   ))}
                 </div>
-                <div className="mt-8">
-                  {submissionStatus === "error" && (
-                    <Alert variant="destructive">
-                      <XCircle className="h-4 w-4" />
-                      <AlertDescription>{submissionMessage}</AlertDescription>
-                    </Alert>
-                  )}
-                  {submissionStatus === "success" && !isConfirming && (
-                    <Alert variant="default" className="border-green-500 text-green-700">
+                {errors.items && !Object.keys(errors.items).some((k) => k !== "root") && (
+                  <p className="text-sm text-red-600 mt-4 text-center">{errors.items.message}</p>
+                )}
+
+                {submissionStatus && (
+                  <Alert
+                    className={cn(
+                      "mt-8",
+                      submissionStatus === "success"
+                        ? "border-green-500 text-green-700"
+                        : "border-red-500 text-red-700",
+                    )}
+                  >
+                    {submissionStatus === "success" ? (
                       <CheckCircle className="h-4 w-4" />
-                      <AlertDescription>{submissionMessage}</AlertDescription>
-                    </Alert>
-                  )}
-                </div>
+                    ) : (
+                      <XCircle className="h-4 w-4" />
+                    )}
+                    <AlertDescription>{submissionMessage}</AlertDescription>
+                  </Alert>
+                )}
 
                 <div className="flex justify-center mt-8 pt-6">
                   <Button
                     type="submit"
+                    disabled={isSubmitting}
                     className="bg-[#2a3760] hover:bg-[#2a3760]/90 text-white font-semibold px-12 py-6 text-base"
                   >
-                    <Send className="mr-2 h-4 w-4" />
+                    {isSubmitting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="mr-2 h-4 w-4" />
+                    )}
                     Submit
                   </Button>
                 </div>
@@ -639,17 +569,10 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
           </div>
 
           <aside className="hidden lg:block sticky top-8">
-            <SelectionSidebar selectedItems={watchedItems} onRemoveItem={handleRemoveItem} formId="order-form" />
+            <SelectionSidebar selectedItems={watchedItems} onRemoveItem={handleRemoveItem} />
           </aside>
         </div>
       </div>
-      <ConfirmationDialog
-        isOpen={isConfirming}
-        onClose={() => setIsConfirming(false)}
-        onConfirm={handleConfirmSubmit}
-        data={confirmationData}
-        isSubmitting={isSubmitting}
-      />
     </div>
   )
 }
