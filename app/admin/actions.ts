@@ -7,6 +7,10 @@ import path from "path"
 import { revalidatePath } from "next/cache"
 import * as cheerio from "cheerio"
 import type { ProductItem } from "./editor/[brandSlug]/types"
+import { generateObject } from "ai"
+import { xai } from "@ai-sdk/xai"
+import { z } from "zod"
+import type { ClinicLocation } from "@/lib/types"
 
 async function executeSqlFile(filePath: string) {
   const supabase = createAdminClient()
@@ -237,7 +241,6 @@ export async function importFromJotform(brandId: string, brandSlug: string, html
   }
 }
 
-// Add this new function at the end of the file
 export async function runSchemaV5Update() {
   try {
     await executeSqlFile("scripts/update-schema-v5.sql")
@@ -247,8 +250,6 @@ export async function runSchemaV5Update() {
     return { success: false, message: `Failed to update schema: ${error.message}` }
   }
 }
-
-// At the end of the file, add the new server action to force a schema reload.
 
 export async function forceSchemaReload() {
   try {
@@ -260,7 +261,6 @@ export async function forceSchemaReload() {
   }
 }
 
-// At the end of the file, add the new server action.
 export async function runBrandSchemaCorrection() {
   try {
     await executeSqlFile("scripts/correct-brands-schema.sql")
@@ -271,5 +271,46 @@ export async function runBrandSchemaCorrection() {
   } catch (error: any) {
     console.error("Error correcting brands schema:", error)
     return { success: false, message: `Failed to correct schema: ${error.message}` }
+  }
+}
+
+export async function fetchClinicLocationsFromUrl(
+  url: string,
+): Promise<{ success: boolean; locations?: ClinicLocation[]; error?: string }> {
+  if (!process.env.XAI_API_KEY) {
+    return { success: false, error: "AI service is not configured on the server." }
+  }
+
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      return { success: false, error: `Failed to fetch URL. Status: ${response.status}` }
+    }
+    const html = await response.text()
+    const $ = cheerio.load(html)
+    // Remove script, style, nav, header, footer to reduce noise and tokens
+    $("script, style, nav, header, footer").remove()
+    const bodyText = $("body").text()
+    const cleanText = bodyText.replace(/\s\s+/g, " ").trim()
+
+    const result = await generateObject({
+      model: xai("grok-3"),
+      schema: z.object({
+        locations: z.array(
+          z.object({
+            name: z.string().describe("The full name of the clinic or location."),
+            address: z.string().describe("The full street address of the location."),
+            phone: z.string().describe("The primary phone number for the location."),
+          }),
+        ),
+      }),
+      prompt: `Analyze the following text from a website and extract all clinic or office locations. For each location, provide its name, full address, and phone number. If a piece of information is not available, leave it as an empty string. Website text: "${cleanText}"`,
+    })
+
+    return { success: true, locations: result.object.locations }
+  } catch (error) {
+    console.error("Error fetching locations with AI:", error)
+    const message = error instanceof Error ? error.message : "An unknown error occurred."
+    return { success: false, error: `AI processing failed: ${message}` }
   }
 }

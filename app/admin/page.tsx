@@ -1,6 +1,4 @@
 "use client"
-
-import type React from "react"
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -22,7 +20,6 @@ import {
   Trash2,
   Edit,
   Plus,
-  Upload,
   Eye,
   Download,
   Loader2,
@@ -53,7 +50,7 @@ interface Brand {
   logo: string
   active: boolean
   emails: string[]
-  clinic_locations: ClinicLocation[] // Changed from string[]
+  clinic_locations: ClinicLocation[]
 }
 
 interface UploadedFile {
@@ -64,6 +61,8 @@ interface UploadedFile {
   uploaded_at: string
   size: number
   content_type: string | null
+  brand_id: string | null
+  brands: { name: string } | null
 }
 
 type SortableFileKeys = keyof UploadedFile | "size"
@@ -94,6 +93,7 @@ export default function AdminDashboard() {
     direction: "descending",
   })
   const [fileTypeFilter, setFileTypeFilter] = useState("all")
+  const [brandFilter, setBrandFilter] = useState("all")
   const [isUpdatingSchema, setIsUpdatingSchema] = useState(false)
   const [isReloadingSchema, setIsReloadingSchema] = useState(false)
   const [isCorrectingSchema, setIsCorrectingSchema] = useState(false)
@@ -225,39 +225,6 @@ export default function AdminDashboard() {
     }
   }
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files || files.length === 0) return
-
-    setMessage(`Uploading ${files.length} file(s)...`)
-
-    const uploadPromises = Array.from(files).map((file) => {
-      const formData = new FormData()
-      formData.append("file", file)
-      return fetch("/api/admin/upload", {
-        method: "POST",
-        body: formData,
-      })
-    })
-
-    try {
-      const responses = await Promise.all(uploadPromises)
-      const successfulUploads = responses.filter((res) => res.ok).length
-      let resultMessage = `${successfulUploads} of ${files.length} files uploaded successfully.`
-      const failedUploads = responses.length - successfulUploads
-      if (failedUploads > 0) {
-        resultMessage += ` ${failedUploads} files failed to upload.`
-      }
-      setMessage(resultMessage)
-      if (successfulUploads > 0) {
-        await loadUploadedFiles()
-      }
-    } catch (error) {
-      setMessage("An error occurred during the bulk upload process.")
-      console.error("Bulk upload error:", error)
-    }
-  }
-
   const handleAutoAssign = async () => {
     if (!confirm("This will assign PDFs to items based on filename matching the item code. Continue?")) return
     setIsAssigning(true)
@@ -309,6 +276,14 @@ export default function AdminDashboard() {
       filtered = filtered.filter((file) => file.content_type === fileTypeFilter)
     }
 
+    if (brandFilter !== "all") {
+      if (brandFilter === "global") {
+        filtered = filtered.filter((file) => file.brand_id === null)
+      } else {
+        filtered = filtered.filter((file) => file.brand_id === brandFilter)
+      }
+    }
+
     filtered.sort((a, b) => {
       const aValue = a[sortConfig.key as keyof UploadedFile]
       const bValue = b[sortConfig.key as keyof UploadedFile]
@@ -321,7 +296,7 @@ export default function AdminDashboard() {
     })
 
     return filtered
-  }, [uploadedFiles, searchTerm, sortConfig, fileTypeFilter])
+  }, [uploadedFiles, searchTerm, sortConfig, fileTypeFilter, brandFilter])
 
   const requestSort = (key: SortableFileKeys) => {
     let direction: "ascending" | "descending" = "ascending"
@@ -607,22 +582,6 @@ export default function AdminDashboard() {
                     )}
                     Auto-assign PDF Links
                   </Button>
-                  <div className="relative">
-                    <Button asChild>
-                      <label htmlFor="file-upload" className="cursor-pointer">
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload File(s)
-                      </label>
-                    </Button>
-                    <Input
-                      id="file-upload"
-                      type="file"
-                      multiple
-                      accept=".pdf,.png,.jpg,.jpeg,.svg"
-                      onChange={handleFileUpload}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
-                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -633,6 +592,20 @@ export default function AdminDashboard() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="max-w-sm"
                   />
+                  <Select value={brandFilter} onValueChange={setBrandFilter}>
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue placeholder="Filter by brand" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Brands</SelectItem>
+                      <SelectItem value="global">Global (No Brand)</SelectItem>
+                      {(brands || []).map((brand) => (
+                        <SelectItem key={brand.id} value={brand.id}>
+                          {brand.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Select value={fileTypeFilter} onValueChange={setFileTypeFilter}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Filter by type" />
@@ -656,12 +629,7 @@ export default function AdminDashboard() {
                             <ArrowUpDown className="ml-2 h-4 w-4" />
                           </Button>
                         </TableHead>
-                        <TableHead>
-                          <Button variant="ghost" onClick={() => requestSort("content_type")}>
-                            Type
-                            <ArrowUpDown className="ml-2 h-4 w-4" />
-                          </Button>
-                        </TableHead>
+                        <TableHead>Brand</TableHead>
                         <TableHead>
                           <Button variant="ghost" onClick={() => requestSort("size")}>
                             Size
@@ -683,7 +651,7 @@ export default function AdminDashboard() {
                           <TableRow key={file.id}>
                             <TableCell className="font-medium">{file.original_name}</TableCell>
                             <TableCell>
-                              <Badge variant="outline">{file.content_type || "Unknown"}</Badge>
+                              <Badge variant="secondary">{file.brands?.name || "Global"}</Badge>
                             </TableCell>
                             <TableCell>{formatBytes(file.size)}</TableCell>
                             <TableCell>{new Date(file.uploaded_at).toLocaleDateString()}</TableCell>

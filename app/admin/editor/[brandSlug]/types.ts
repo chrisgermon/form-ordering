@@ -47,4 +47,5 @@ export interface UploadedFile {
   uploaded_at: string
   size: number
   content_type: string | null
+  brand_id: string | null
 }

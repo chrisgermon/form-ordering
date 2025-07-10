@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { X, Upload } from "lucide-react"
+import { X, Upload, Sparkles, Loader2 } from "lucide-react"
 import { resolveAssetUrl } from "@/lib/utils"
 import type { ClinicLocation } from "@/lib/types"
+import { fetchClinicLocationsFromUrl } from "./actions"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface Brand {
   id: string
@@ -51,6 +53,9 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     clinicLocations: [newLocation()],
   })
   const [isUploading, setIsUploading] = useState(false)
+  const [isFetchingLocations, setIsFetchingLocations] = useState(false)
+  const [fetchUrl, setFetchUrl] = useState("")
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   useEffect(() => {
     if (brand) {
@@ -136,6 +141,34 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
       console.error("Error uploading logo:", error)
     } finally {
       setIsUploading(false)
+    }
+  }
+
+  const handleFetchLocations = async () => {
+    if (!fetchUrl) {
+      setFetchError("Please enter a URL.")
+      return
+    }
+    setIsFetchingLocations(true)
+    setFetchError(null)
+    try {
+      const result = await fetchClinicLocationsFromUrl(fetchUrl)
+      if (result.success && result.locations) {
+        if (
+          formData.clinicLocations.some((l) => l.name) &&
+          !confirm("This will replace the current clinic locations. Are you sure?")
+        ) {
+          setIsFetchingLocations(false)
+          return
+        }
+        setFormData((prev) => ({ ...prev, clinicLocations: result.locations as ClinicLocation[] }))
+      } else {
+        setFetchError(result.error || "Failed to fetch locations.")
+      }
+    } catch (error) {
+      setFetchError("An unexpected error occurred.")
+    } finally {
+      setIsFetchingLocations(false)
     }
   }
 
@@ -231,7 +264,32 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
 
       <div>
         <Label>Clinic Locations</Label>
-        <div className="space-y-4">
+        <div className="p-4 border rounded-md bg-gray-50/50 space-y-3">
+          <Label>Auto-fetch from URL</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              type="url"
+              placeholder="https://example.com/locations"
+              value={fetchUrl}
+              onChange={(e) => setFetchUrl(e.target.value)}
+            />
+            <Button type="button" onClick={handleFetchLocations} disabled={isFetchingLocations}>
+              {isFetchingLocations ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              Fetch
+            </Button>
+          </div>
+          {fetchError && (
+            <Alert variant="destructive">
+              <AlertDescription>{fetchError}</AlertDescription>
+            </Alert>
+          )}
+        </div>
+
+        <div className="space-y-4 mt-4">
           {formData.clinicLocations.map((location, index) => (
             <div key={index} className="p-4 border rounded-md space-y-3 relative">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

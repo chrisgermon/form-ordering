@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -583,6 +583,11 @@ function ItemDialog({
   const [options, setOptions] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
 
+  const brandSpecificFiles = useMemo(
+    () => uploadedFiles.filter((file) => file.brand_id === brandId || file.brand_id === null),
+    [uploadedFiles, brandId],
+  )
+
   React.useEffect(() => {
     if (open) {
       setFormData({
@@ -629,7 +634,7 @@ function ItemDialog({
     uploadFormData.append("file", file)
 
     try {
-      const response = await fetch("/api/admin/upload", {
+      const response = await fetch(`/api/admin/upload?brandId=${brandId}`, {
         method: "POST",
         body: uploadFormData,
       })
@@ -734,7 +739,7 @@ function ItemDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No file / Custom URL</SelectItem>
-                  {uploadedFiles.map((file) => (
+                  {brandSpecificFiles.map((file) => (
                     <SelectItem key={file.id} value={file.pathname}>
                       {file.original_name}
                     </SelectItem>

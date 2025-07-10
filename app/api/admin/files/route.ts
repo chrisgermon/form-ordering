@@ -7,7 +7,7 @@ export async function GET() {
 
     const { data: files, error } = await supabase
       .from("uploaded_files")
-      .select("*")
+      .select("*, brands(name)")
       .order("uploaded_at", { ascending: false })
 
     if (error) throw error
