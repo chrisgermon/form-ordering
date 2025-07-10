@@ -4,7 +4,6 @@ id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
 name TEXT NOT NULL,
 slug TEXT UNIQUE NOT NULL,
 logo TEXT,
-primary_color TEXT DEFAULT 'blue-600',
 emails JSONB NOT NULL DEFAULT '[]'::jsonb,
 clinic_locations JSONB NOT NULL DEFAULT '[]'::jsonb,
 active BOOLEAN DEFAULT true,
@@ -58,23 +57,23 @@ CREATE INDEX IF NOT EXISTS idx_uploaded_files_filename ON uploaded_files(filenam
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
+NEW.updated_at = NOW();
+RETURN NEW;
 END;
 $$ language 'plpgsql';
 
 -- Create triggers for updated_at
 CREATE TRIGGER update_brands_updated_at 
-  BEFORE UPDATE ON brands 
-  FOR EACH ROW 
-  EXECUTE FUNCTION update_updated_at_column();
+BEFORE UPDATE ON brands 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_product_sections_updated_at 
-  BEFORE UPDATE ON product_sections 
-  FOR EACH ROW 
-  EXECUTE FUNCTION update_updated_at_column();
+BEFORE UPDATE ON product_sections 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_product_items_updated_at 
-  BEFORE UPDATE ON product_items 
-  FOR EACH ROW 
-  EXECUTE FUNCTION update_updated_at_column();
+BEFORE UPDATE ON product_items 
+FOR EACH ROW 
+EXECUTE FUNCTION update_updated_at_column();
