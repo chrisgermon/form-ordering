@@ -1,35 +1,39 @@
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
+
+export const revalidate = 0
 
 export async function GET() {
+  const supabase = createServerSupabaseClient()
   try {
-    const supabase = createServerSupabaseClient()
-
-    const { data: submissions, error } = await supabase
+    const { data, error } = await supabase
       .from("submissions")
       .select(
         `
-        *,
+        id,
+        created_at,
+        ordered_by,
+        email,
+        status,
+        pdf_url,
+        ip_address,
+        order_data,
         brands (
+          id,
           name
         )
       `,
       )
       .order("created_at", { ascending: false })
 
-    if (error) throw error
+    if (error) {
+      console.error("Error fetching submissions:", error)
+      throw new Error(error.message)
+    }
 
-    // The Supabase query returns brand as an object { name: '...' } or null.
-    // We'll flatten it for easier use on the client.
-    const formattedSubmissions = submissions.map((s: any) => ({
-      ...s,
-      brand_name: s.brands?.name || "Unknown Brand",
-      brands: undefined, // remove the nested object
-    }))
-
-    return NextResponse.json(formattedSubmissions)
+    return NextResponse.json(data)
   } catch (error) {
-    console.error("Error fetching submissions:", error)
-    return NextResponse.json({ error: "Failed to fetch submissions" }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return NextResponse.json({ error: "Failed to fetch submissions", details: errorMessage }, { status: 500 })
   }
 }

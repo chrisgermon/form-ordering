@@ -1,0 +1,2 @@
+ALTER TABLE submissions ALTER COLUMN bill_to DROP NOT NULL;
+ALTER TABLE submissions ALTER COLUMN deliver_to DROP NOT NULL;

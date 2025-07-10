@@ -1,168 +1,128 @@
+import { createAdminClient } from "@/lib/supabase/admin"
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
-import { put } from "@vercel/blob"
-import { jsPDF } from "jspdf"
-import { sendEmail, generateOrderEmailTemplate } from "@/lib/email"
+import { apiOrderSchema } from "@/lib/schemas"
+import { sendOrderEmail } from "@/lib/email"
+import { generatePdf } from "@/lib/pdf"
+import { getBrandBySlug } from "@/lib/db"
+import type { OrderPayload } from "@/lib/types"
+import { z } from "zod"
 
-async function sendOrderEmail(
-  to: string,
-  subject: string,
-  formData: any,
-  brandName: string,
-  pdfBuffer: Buffer,
-  originalSubmitterEmail?: string,
-) {
-  const selectedItems = Object.values(formData.items || {}).map((item: any) => ({
-    code: item.code,
-    name: item.name,
-    quantity: item.quantity === "other" ? `${item.customQuantity} (custom)` : item.quantity,
-    description: item.description || "",
-  }))
+export async function POST(req: NextRequest) {
+  const supabase = createAdminClient()
+  const body = await req.json()
 
-  const emailHtml = generateOrderEmailTemplate(brandName, formData, selectedItems)
-
-  return await sendEmail({
-    to,
-    cc: originalSubmitterEmail,
-    subject,
-    html: emailHtml,
-    attachments: [
-      {
-        filename: `${brandName.toLowerCase().replace(/\s+/g, "-")}-order.pdf`,
-        content: pdfBuffer,
-        contentType: "application/pdf",
-      },
-    ],
-  })
-}
-
-function generatePDF(formData: any, brandName: string) {
-  const doc = new jsPDF()
-
-  doc.setFont("helvetica")
-  doc.setFontSize(24)
-  doc.setTextColor(42, 55, 96)
-  doc.text(brandName, 105, 30, { align: "center" })
-  doc.setFontSize(20)
-  doc.text("Printing Order Form", 105, 45, { align: "center" })
-
-  doc.setFontSize(10)
-  doc.setTextColor(0, 0, 0)
-  let yPos = 65
-  doc.rect(15, yPos - 5, 180, 25)
-  doc.text(`Ordered By: ${formData.orderedBy}`, 20, yPos)
-  doc.text(`Email: ${formData.email}`, 20, yPos + 5)
-  doc.text(`Bill to Clinic: ${formData.billTo}`, 20, yPos + 10)
-  doc.text(`Deliver to Clinic: ${formData.deliverTo}`, 20, yPos + 15)
-  doc.text(
-    `Date: ${formData.date ? new Date(formData.date).toLocaleDateString("en-AU") : "Not specified"}`,
-    20,
-    yPos + 20,
-  )
-
-  yPos += 35
-  doc.setFontSize(8)
-  doc.setTextColor(100, 100, 100)
-  doc.text(`Please check stock levels for all, then complete and send to: ${formData.brandEmail}`, 105, yPos, {
-    align: "center",
-  })
-
-  yPos += 15
-
-  const selectedItems = Object.values(formData.items || {}) as any[]
-
-  if (selectedItems.length > 0) {
-    doc.setFontSize(12)
-    doc.setTextColor(42, 55, 96)
-    doc.text("Selected Items:", 20, yPos)
-    yPos += 10
-
-    selectedItems.forEach((item) => {
-      if (yPos > 270) {
-        doc.addPage()
-        yPos = 20
-      }
-      const quantity = item.quantity === "other" ? `${item.customQuantity} (custom)` : item.quantity
-      doc.setFontSize(10)
-      doc.setTextColor(0, 0, 0)
-      doc.text(`- ${item.name} (Code: ${item.code}): ${quantity}`, 30, yPos)
-      yPos += 7
-    })
+  const { brandSlug, ...orderData } = body
+  if (!brandSlug) {
+    return NextResponse.json({ error: "Brand slug is missing" }, { status: 400 })
   }
 
-  return doc.output("arraybuffer")
-}
-
-export async function POST(request: NextRequest) {
   try {
-    const ip = request.ip ?? request.headers.get("x-forwarded-for") ?? "Unknown"
-    const formData = await request.json()
-    const { brandId, brandName, brandEmail } = formData
-
-    if (!brandId || !brandName || !brandEmail) {
-      return NextResponse.json({ success: false, message: "Brand information is missing." }, { status: 400 })
+    const brand = await getBrandBySlug(brandSlug)
+    if (!brand) {
+      return NextResponse.json({ error: "Brand not found" }, { status: 404 })
     }
 
-    const supabase = createServerSupabaseClient()
-    const pdfBuffer = generatePDF(formData, brandName)
+    const validation = apiOrderSchema.safeParse(orderData)
+    if (!validation.success) {
+      console.error("Validation errors:", validation.error.errors)
+      return NextResponse.json({ error: "Invalid data", details: validation.error.errors }, { status: 400 })
+    }
 
-    const filename = `${brandId}-order-${Date.now()}.pdf`
-    const blob = await put(filename, pdfBuffer, {
-      access: "public",
-      contentType: "application/pdf",
-    })
+    const validatedOrderData = validation.data
 
-    const { data: submission, error: dbError } = await supabase
+    // Fetch the latest order number for the brand and increment it
+    const { data: lastOrder, error: lastOrderError } = await supabase
       .from("submissions")
-      .insert({
-        brand_id: brandId,
-        ordered_by: formData.orderedBy,
-        email: formData.email,
-        bill_to: formData.billTo,
-        deliver_to: formData.deliverTo,
-        order_date: formData.date || null,
-        items: formData.items || {},
-        pdf_url: blob.url,
-        ip_address: ip,
-        status: "pending",
-      })
-      .select()
+      .select("order_number")
+      .eq("brand_id", brand.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .single()
 
-    if (dbError) {
-      console.error("Database error:", dbError)
-      throw new Error("Failed to save submission to database")
+    if (lastOrderError && lastOrderError.code !== "PGRST116") {
+      // PGRST116: "The result contains 0 rows" which is fine for the first order
+      console.error("Error fetching last order number:", lastOrderError)
+      throw new Error("Could not fetch last order number.")
     }
 
-    const emailResult = await sendOrderEmail(
-      brandEmail,
-      `New Printing Order - ${brandName} - ${formData.orderedBy}`,
-      formData,
-      brandName,
-      Buffer.from(pdfBuffer),
-      formData.email,
-    )
+    let newOrderNumberInt = 1
+    if (lastOrder && lastOrder.order_number) {
+      const lastNumStr = lastOrder.order_number.split("-").pop()
+      if (lastNumStr) {
+        const parsedNum = Number.parseInt(lastNumStr, 10)
+        if (!isNaN(parsedNum)) {
+          newOrderNumberInt = parsedNum + 1
+        }
+      }
+    }
 
-    const finalStatus = emailResult.success ? "sent" : "failed"
-    await supabase.from("submissions").update({ status: finalStatus }).eq("id", submission.id)
+    const orderPrefix = brand.order_prefix || brand.slug.toUpperCase()
+    const orderNumber = `${orderPrefix}-${String(newOrderNumberInt).padStart(4, "0")}`
 
-    return NextResponse.json({
-      success: true,
-      message: emailResult.success
-        ? "Order submitted and email sent successfully!"
-        : `Order submitted but email failed: ${emailResult.error}`,
-      submissionId: submission.id,
-      pdfUrl: blob.url,
+    // This is the object that will be stored in the `order_data` column.
+    const submissionData = {
+      ...validatedOrderData,
+      orderNumber: orderNumber,
+    }
+
+    // Insert into database, populating all relevant columns
+    const { error: dbError } = await supabase.from("submissions").insert({
+      brand_id: brand.id,
+      order_data: submissionData as any,
+      ordered_by: validatedOrderData.orderedBy,
+      email: validatedOrderData.email,
+      order_number: orderNumber,
+      ip_address: req.ip,
+      bill_to: validatedOrderData.billTo,
+      deliver_to: validatedOrderData.deliverTo,
     })
+
+    if (dbError) {
+      console.error("Error saving submission to database:", dbError)
+      return NextResponse.json({ error: "Error saving submission", details: dbError }, { status: 500 })
+    }
+
+    // This payload is structured for the PDF and email functions
+    const payloadForPdfAndEmail: OrderPayload = {
+      brandId: brand.id,
+      orderInfo: {
+        orderedBy: validatedOrderData.orderedBy,
+        email: validatedOrderData.email,
+        billTo: validatedOrderData.billTo,
+        deliverTo: validatedOrderData.deliverTo,
+        notes: validatedOrderData.notes,
+        orderNumber: orderNumber,
+        date: validatedOrderData.date,
+      },
+      items: validatedOrderData.items,
+    }
+
+    // Get logo URL for PDF generation
+    let logoUrl: string | null = null
+    if (brand.logo) {
+      const { data: fileData } = await supabase.from("uploaded_files").select("url").eq("pathname", brand.logo).single()
+      if (fileData) {
+        logoUrl = fileData.url
+      }
+    }
+
+    const pdfBuffer = await generatePdf(payloadForPdfAndEmail, brand, logoUrl)
+
+    // Send email
+    const emailResult = await sendOrderEmail(payloadForPdfAndEmail, brand, pdfBuffer, logoUrl)
+
+    if (!emailResult.success) {
+      console.error("Failed to send email:", emailResult.message)
+      // Don't block the response, but log the error
+    }
+
+    return NextResponse.json({ message: "Order submitted successfully", orderNumber: orderNumber })
   } catch (error) {
     console.error("Error processing order:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return NextResponse.json(
-      {
-        success: false,
-        message: `Failed to process order: ${errorMessage}`,
-      },
-      { status: 500 },
-    )
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: "Validation Error", details: error.issues }, { status: 400 })
+    }
+    return NextResponse.json({ error: "Failed to process order", details: errorMessage }, { status: 500 })
   }
 }

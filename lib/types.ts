@@ -1,58 +1,91 @@
-// This file is the single source of truth for all data structures.
+import type { z } from "zod"
+import type { orderFormSchema } from "./schemas"
+
+export interface ClinicLocation {
+  name: string
+  address: string
+  phone: string
+  email: string
+}
 
 export interface ProductItem {
   id: string
+  section_id: string
+  brand_id: string
   code: string
   name: string
   description: string | null
-  quantities: string[]
+  field_type: "checkbox_group" | "select" | "text" | "textarea" | "date"
+  options: string[] | null
+  placeholder: string | null
+  is_required: boolean
   sample_link: string | null
   sort_order: number
-  section_id: string
-  brand_id: string
 }
 
 export interface ProductSection {
   id: string
+  brand_id: string
   title: string
   sort_order: number
-  brand_id: string
   product_items: ProductItem[]
 }
 
+// For lists and basic info
 export interface Brand {
   id: string
   name: string
   slug: string
   logo: string | null
-  primary_color: string
-  email: string
+  emails: string[]
+  clinic_locations: ClinicLocation[]
   active: boolean
+  order_sequence: number
+  order_prefix: string | null
+}
+
+// For the public form and the editor, includes all nested data
+export interface BrandData extends Brand {
   product_sections: ProductSection[]
 }
 
+export interface OrderInfo {
+  orderNumber: string
+  orderedBy: string
+  email: string
+  billTo?: ClinicLocation
+  deliverTo?: ClinicLocation
+  notes?: string
+  date?: Date | string // Add this line
+}
+
+export interface OrderPayload {
+  brandId: string
+  orderInfo: OrderInfo
+  items: Record<string, any>
+}
+
+export type BrandType = Brand
+
 export interface UploadedFile {
   id: string
-  filename: string
+  pathname: string
   original_name: string
   url: string
   uploaded_at: string
   size: number
+  content_type: string | null
 }
 
 export interface Submission {
   id: string
-  brand_id: string
+  created_at: string
   ordered_by: string
   email: string
-  bill_to: string
-  deliver_to: string
-  order_date: string | null
-  items: Record<string, any>
+  status: string | null
   pdf_url: string | null
-  status: "pending" | "sent" | "failed"
-  created_at: string
-  updated_at: string
-  brand_name?: string // Joined from brands table
-  ip_address?: string
+  ip_address: string | null
+  order_data: z.infer<typeof orderFormSchema> | null
+  brands: { name: string } | null
+  order_number?: string
 }
