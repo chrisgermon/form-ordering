@@ -14,7 +14,7 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     .select("id, name, slug, logo, emails, clinic_locations, active")
     .eq("slug", slug)
     .eq("active", true)
-    .single()
+    .maybeSingle()
 
   // If no active brand is found, or there's an error, return null
   if (brandError || !brand) {

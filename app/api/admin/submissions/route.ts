@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
 import { NextResponse } from "next/server"
 
 export const revalidate = 0
