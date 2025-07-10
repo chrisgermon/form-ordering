@@ -33,6 +33,7 @@
     "fs": "latest",
     "jspdf": "latest",
     "lucide-react": "^0.454.0",
+    "nanoid": "latest",
     "next": "15.2.4",
     "nodemailer": "latest",
     "path": "latest",

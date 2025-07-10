@@ -12,6 +12,8 @@ import { xai } from "@ai-sdk/xai"
 import { z } from "zod"
 import type { ClinicLocation } from "@/lib/types"
 import { URL } from "url"
+import { nanoid } from "nanoid"
+import { put } from "@vercel/blob"
 
 async function executeSqlFile(filePath: string) {
   const supabase = createAdminClient()
@@ -245,6 +247,49 @@ export async function importFromJotform(brandId: string, brandSlug: string, html
   }
 }
 
+export async function uploadLogoFromUrl(
+  logoUrl: string,
+  brandId: string | null,
+): Promise<{ success: boolean; file?: any; error?: string }> {
+  try {
+    const response = await fetch(logoUrl)
+    if (!response.ok) {
+      return { success: false, error: `Failed to fetch logo from ${logoUrl}` }
+    }
+    const fileBuffer = await response.arrayBuffer()
+    const contentType = response.headers.get("content-type") || "application/octet-stream"
+    const originalName = path.basename(new URL(logoUrl).pathname) || `logo-${nanoid(5)}`
+
+    const filename = `admin-uploads/${Date.now()}-${originalName}`
+    const blob = await put(filename, fileBuffer, {
+      access: "public",
+      contentType: contentType,
+    })
+
+    const supabase = createAdminClient()
+    const { data: uploadedFile, error } = await supabase
+      .from("uploaded_files")
+      .insert({
+        filename: filename,
+        original_name: `fetched-${originalName}`,
+        url: blob.url,
+        pathname: blob.pathname,
+        size: blob.size,
+        content_type: blob.contentType,
+        brand_id: brandId,
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return { success: true, file: uploadedFile }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return { success: false, error: `Failed to upload logo from URL: ${message}` }
+  }
+}
+
 export async function runSchemaV5Update() {
   try {
     await executeSqlFile("scripts/update-schema-v5.sql")
@@ -280,7 +325,8 @@ export async function runBrandSchemaCorrection() {
 
 export async function fetchBrandDataFromUrl(
   url: string,
-): Promise<{ success: boolean; locations?: ClinicLocation[]; logoUrl?: string; error?: string }> {
+  brandId: string | null,
+): Promise<{ success: boolean; locations?: ClinicLocation[]; logoPathname?: string; error?: string }> {
   if (!process.env.XAI_API_KEY) {
     return { success: false, error: "AI service is not configured on the server." }
   }
@@ -315,12 +361,20 @@ export async function fetchBrandDataFromUrl(
       }
     }
 
+    let logoPathname: string | undefined
+    if (logoUrl) {
+      const uploadResult = await uploadLogoFromUrl(logoUrl, brandId)
+      if (uploadResult.success && uploadResult.file) {
+        logoPathname = uploadResult.file.pathname
+      }
+    }
+
     // --- Clinic Location Fetching Logic ---
     $("script, style, nav, header, footer").remove()
     const bodyText = $("body").text()
     const cleanText = bodyText.replace(/\s\s+/g, " ").trim()
 
-    const result = await generateObject({
+    const { object: locationsObject } = await generateObject({
       model: xai("grok-3"),
       schema: z.object({
         locations: z.array(
@@ -334,10 +388,23 @@ export async function fetchBrandDataFromUrl(
       prompt: `Analyze the following text from a website and extract all clinic or office locations. For each location, provide its name, full address, and phone number. If a piece of information is not available, leave it as an empty string. Website text: "${cleanText}"`,
     })
 
-    return { success: true, locations: result.object.locations, logoUrl }
+    return { success: true, locations: locationsObject.locations, logoPathname }
   } catch (error) {
     console.error("Error fetching brand data with AI:", error)
     const message = error instanceof Error ? error.message : "An unknown error occurred."
     return { success: false, error: `AI processing failed: ${message}` }
+  }
+}
+
+export async function runPrimaryColorFix() {
+  try {
+    await executeSqlFile("scripts/fix-primary-color-issue.sql")
+    return {
+      success: true,
+      message: "Schema fixed and cache reloaded. The 'primary_color' error should now be resolved.",
+    }
+  } catch (error: any) {
+    console.error("Error running primary color fix:", error)
+    return { success: false, message: `Failed to run fix: ${error.message}` }
   }
 }

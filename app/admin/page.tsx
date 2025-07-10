@@ -38,6 +38,7 @@ import {
   runSchemaV5Update,
   forceSchemaReload,
   runBrandSchemaCorrection,
+  runPrimaryColorFix,
 } from "./actions"
 import { BrandForm } from "./BrandForm"
 import { resolveAssetUrl } from "@/lib/utils"
@@ -97,6 +98,7 @@ export default function AdminDashboard() {
   const [isUpdatingSchema, setIsUpdatingSchema] = useState(false)
   const [isReloadingSchema, setIsReloadingSchema] = useState(false)
   const [isCorrectingSchema, setIsCorrectingSchema] = useState(false)
+  const [isFixingColor, setIsFixingColor] = useState(false)
 
   useEffect(() => {
     loadAllData()
@@ -365,6 +367,25 @@ export default function AdminDashboard() {
       setMessage("An unexpected error occurred during schema correction.")
     } finally {
       setIsCorrectingSchema(false)
+    }
+  }
+
+  const handlePrimaryColorFix = async () => {
+    if (
+      !confirm(
+        "This will remove the legacy 'primary_color' column and refresh the API schema. This should fix update errors. Continue?",
+      )
+    )
+      return
+    setIsFixingColor(true)
+    setMessage("Running schema fix for primary_color...")
+    try {
+      const result = await runPrimaryColorFix()
+      setMessage(result.message)
+    } catch (error) {
+      setMessage("An unexpected error occurred during the schema fix.")
+    } finally {
+      setIsFixingColor(false)
     }
   }
 
@@ -709,6 +730,27 @@ export default function AdminDashboard() {
                 <p className="text-sm text-muted-foreground">Use these actions for database maintenance and setup.</p>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Card className="p-4 flex flex-col justify-between border-red-500 border-2">
+                  <div>
+                    <h3 className="font-semibold text-red-700">Fix "primary_color" Error</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Run this if you get an error about a missing 'primary_color' column when saving a brand. This is
+                      the most common cause of update failures.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handlePrimaryColorFix}
+                    disabled={isFixingColor}
+                    className="mt-4 bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {isFixingColor ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Database className="mr-2 h-4 w-4" />
+                    )}
+                    Run Schema Fix
+                  </Button>
+                </Card>
                 <Card className="p-4 flex flex-col justify-between border-blue-500 border-2">
                   <div>
                     <h3 className="font-semibold text-blue-700">Correct Brands Schema</h3>

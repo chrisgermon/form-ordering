@@ -154,7 +154,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     setIsFetchingData(true)
     setFetchError(null)
     try {
-      const result = await fetchBrandDataFromUrl(fetchUrl)
+      const result = await fetchBrandDataFromUrl(fetchUrl, brand?.id || null)
       if (result.success) {
         if (
           (formData.clinicLocations.some((l) => l.name) || formData.logo) &&
@@ -163,11 +163,13 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
           setIsFetchingData(false)
           return
         }
-        if (result.locations) {
+        if (result.locations && result.locations.length > 0) {
           setFormData((prev) => ({ ...prev, clinicLocations: result.locations as ClinicLocation[] }))
         }
-        if (result.logoUrl) {
-          setFormData((prev) => ({ ...prev, logo: result.logoUrl! }))
+        if (result.logoPathname) {
+          setFormData((prev) => ({ ...prev, logo: result.logoPathname! }))
+          // Refresh the file list so the new logo appears in the dropdown
+          await onLogoUpload()
         }
       } else {
         setFetchError(result.error || "Failed to fetch data.")
