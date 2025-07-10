@@ -48,7 +48,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 
 import { updateSectionOrder, updateItemOrder } from "./actions"
-import { importFromJotform } from "../../actions"
+import { importForm } from "../../actions"
 import type { Brand, ProductSection, ProductItem, UploadedFile } from "./types"
 
 const fieldTypes = [
@@ -82,7 +82,7 @@ function Toolbox({ onAddSectionClick }: { onAddSectionClick: () => void }) {
 }
 
 // Jotform Import Dialog
-function JotformImportDialog({
+function ImportFormDialog({
   open,
   onOpenChange,
   brandId,
@@ -96,19 +96,21 @@ function JotformImportDialog({
   onImport: () => void
 }) {
   const [htmlCode, setHtmlCode] = useState("")
+  const [url, setUrl] = useState("")
   const [isImporting, setIsImporting] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   const handleImport = async () => {
     setIsImporting(true)
     setMessage(null)
-    const result = await importFromJotform(brandId, brandSlug, htmlCode)
+    const result = await importForm(brandId, brandSlug, { htmlCode, url })
     if (result.success) {
       setMessage({ type: "success", text: result.message })
       onImport()
       setTimeout(() => {
         onOpenChange(false)
         setHtmlCode("")
+        setUrl("")
       }, 2000)
     } else {
       setMessage({ type: "error", text: result.message })
@@ -123,6 +125,7 @@ function JotformImportDialog({
         onOpenChange(isOpen)
         if (!isOpen) {
           setHtmlCode("")
+          setUrl("")
           setMessage(null)
           setIsImporting(false)
         }
@@ -130,16 +133,32 @@ function JotformImportDialog({
     >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Import from Jotform</DialogTitle>
-          <DialogDescription>Paste the full HTML source code of your Jotform to import its fields.</DialogDescription>
+          <DialogTitle>Import Form with AI</DialogTitle>
+          <DialogDescription>
+            Provide a URL or paste HTML source code. Grok will analyze the content and build the form for you.
+          </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4">
-          <Textarea
-            placeholder="Paste Jotform HTML source code here..."
-            className="min-h-[300px] font-mono text-xs"
-            value={htmlCode}
-            onChange={(e) => setHtmlCode(e.target.value)}
-          />
+          <div>
+            <Label htmlFor="import-url">Import from URL</Label>
+            <Input
+              id="import-url"
+              placeholder="https://example.com/contact-form"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+          </div>
+          <div className="text-center text-sm text-muted-foreground">OR</div>
+          <div>
+            <Label htmlFor="import-html">Paste HTML Source Code</Label>
+            <Textarea
+              id="import-html"
+              placeholder="Paste form HTML source code here..."
+              className="min-h-[250px] font-mono text-xs"
+              value={htmlCode}
+              onChange={(e) => setHtmlCode(e.target.value)}
+            />
+          </div>
           {message && (
             <Alert variant={message.type === "error" ? "destructive" : "default"}>
               <p>{message.text}</p>
@@ -150,7 +169,7 @@ function JotformImportDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleImport} disabled={isImporting || !htmlCode}>
+          <Button onClick={handleImport} disabled={isImporting || (!htmlCode && !url)}>
             {isImporting ? "Importing..." : "Import Form"}
           </Button>
         </div>
@@ -171,7 +190,7 @@ export function FormEditor({
   const [message, setMessage] = useState("")
   const [isSectionDialogOpen, setIsSectionDialogOpen] = useState(false)
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false)
-  const [isJotformDialogOpen, setIsJotformDialogOpen] = useState(false)
+  const [isImportFormDialogOpen, setIsImportFormDialogOpen] = useState(false)
   const [activeItemOptions, setActiveItemOptions] = useState<{
     sectionId: string
     brandId: string
@@ -253,9 +272,9 @@ export function FormEditor({
             Back to Dashboard
           </Button>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setIsJotformDialogOpen(true)}>
+            <Button variant="outline" onClick={() => setIsImportFormDialogOpen(true)}>
               <Upload className="mr-2 h-4 w-4" />
-              Import from Jotform
+              Import Form
             </Button>
             <Button asChild>
               <Link href={`/forms/${brandData.slug}`} target="_blank">
@@ -345,9 +364,9 @@ export function FormEditor({
           uploadedFiles={uploadedFiles}
         />
       )}
-      <JotformImportDialog
-        open={isJotformDialogOpen}
-        onOpenChange={setIsJotformDialogOpen}
+      <ImportFormDialog
+        open={isImportFormDialogOpen}
+        onOpenChange={setIsImportFormDialogOpen}
         brandId={brandData.id}
         brandSlug={brandData.slug}
         onImport={onDataChange}
