@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { BrandData } from "@/lib/types"
+import { generateText } from "ai"
+import { xai } from "@ai-sdk/openai"
 
 export async function getBrand(slug: string): Promise<BrandData | null> {
   const supabase = createAdminClient()
@@ -85,4 +87,21 @@ export async function saveForm(prevState: any, formData: FormData) {
   revalidatePath(`/forms/${brandSlug}`)
   revalidatePath(`/admin/dashboard`)
   return { success: true, message: "Form saved successfully!" }
+}
+
+export async function generateDescription(itemName: string): Promise<{ description: string } | { error: string }> {
+  if (!itemName) {
+    return { error: "Item name cannot be empty." }
+  }
+
+  try {
+    const { text } = await generateText({
+      model: xai("grok-3"),
+      prompt: `Generate a brief, one-sentence description for a medical printing order form item named '${itemName}'. The description should be neutral and informative.`,
+    })
+    return { description: text }
+  } catch (error) {
+    console.error("Grok AI error:", error)
+    return { error: "Failed to generate description." }
+  }
 }

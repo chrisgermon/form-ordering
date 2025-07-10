@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVertical, Trash2, Edit } from "lucide-react"
+import { GripVertical, Trash2, Edit, Sparkles, Loader2 } from "lucide-react"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import type { ProductItem } from "@/lib/types"
+import { generateDescription } from "./actions"
+import { toast } from "sonner"
 
 interface SortableItemProps {
   item: ProductItem
@@ -24,6 +26,7 @@ interface SortableItemProps {
 
 export function SortableItem({ item, onUpdateItem, onDeleteItem }: SortableItemProps) {
   const [isEditing, setIsEditing] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: item.id,
     data: { type: "item", sectionId: item.section_id },
@@ -41,6 +44,18 @@ export function SortableItem({ item, onUpdateItem, onDeleteItem }: SortableItemP
   const handleOptionsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const options = e.target.value.split("\n")
     onUpdateItem({ ...item, options })
+  }
+
+  const handleGenerateDescription = async () => {
+    setIsGenerating(true)
+    const result = await generateDescription(item.name)
+    if ("description" in result) {
+      handleFieldChange("description", result.description)
+      toast.success("Description generated successfully.")
+    } else {
+      toast.error("Failed to generate description.", { description: result.error })
+    }
+    setIsGenerating(false)
   }
 
   return (
@@ -91,7 +106,24 @@ export function SortableItem({ item, onUpdateItem, onDeleteItem }: SortableItemP
               </Select>
             </div>
             <div>
-              <Label htmlFor="description">Description</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label htmlFor="description">Description</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateDescription}
+                  disabled={isGenerating || !item.name}
+                  className="bg-transparent"
+                >
+                  {isGenerating ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4 text-purple-500" />
+                  )}
+                  Generate with AI
+                </Button>
+              </div>
               <Textarea
                 id="description"
                 value={item.description || ""}

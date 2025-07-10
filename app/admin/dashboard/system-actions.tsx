@@ -22,9 +22,10 @@ import {
   runSchemaV17Update,
   forceSchemaReload,
   seedDatabase,
+  runCodeAssessment,
 } from "./actions"
 import { useState } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, Sparkles } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 interface MigrationButtonProps {
@@ -63,6 +64,8 @@ function MigrationButton({ version, description, onRun }: MigrationButtonProps) 
 
 export default function SystemActions() {
   const [isLoading, setIsLoading] = useState(false)
+  const [isAssessing, setIsAssessing] = useState(false) // New state for assessment
+  const [assessmentResult, setAssessmentResult] = useState<string | null>(null) // New state for result
 
   const handleSeedDatabase = async () => {
     setIsLoading(true)
@@ -78,6 +81,22 @@ export default function SystemActions() {
       }
     }
     setIsLoading(false)
+  }
+
+  // New handler function for the code assessment
+  const handleRunAssessment = async () => {
+    setIsAssessing(true)
+    setAssessmentResult(null)
+    toast.loading("Grok is analyzing your code...")
+    const result = await runCodeAssessment()
+    toast.dismiss()
+    if (result.success) {
+      setAssessmentResult(result.assessment as string)
+      toast.success("Code assessment complete.")
+    } else {
+      toast.error("Assessment Failed", { description: result.message })
+    }
+    setIsAssessing(false)
   }
 
   return (
@@ -109,34 +128,59 @@ export default function SystemActions() {
           <MigrationButton version="v17" description="Adds order prefix to brands." onRun={runSchemaV17Update} />
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>System Actions</CardTitle>
-          <CardDescription>Perform system-level actions.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-            <div>
-              <p className="font-semibold text-gray-700">Force Schema Reload</p>
-              <p className="text-sm text-gray-500">Notifies the API to reload the schema.</p>
+      <div className="space-y-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>System Maintenance</CardTitle>
+            <CardDescription>Perform system-level actions.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div>
+                <p className="font-semibold text-gray-700">Force Schema Reload</p>
+                <p className="text-sm text-gray-500">Notifies the API to reload the schema.</p>
+              </div>
+              <Button onClick={forceSchemaReload} variant="outline" size="sm">
+                Reload Schema
+              </Button>
             </div>
-            <Button onClick={forceSchemaReload} variant="outline" size="sm">
-              Reload Schema
+            <Alert variant="destructive">
+              <AlertTitle>Seed Database</AlertTitle>
+              <AlertDescription>
+                This will delete all existing brands, sections, and items, and replace them with sample data. Use with
+                caution.
+              </AlertDescription>
+              <Button onClick={handleSeedDatabase} disabled={isLoading} variant="destructive" className="mt-4">
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Seed Database
+              </Button>
+            </Alert>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="text-purple-500" />
+              AI Code Assessment
+            </CardTitle>
+            <CardDescription>
+              Use Grok to analyze key project files for bugs, performance, and best practices.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={handleRunAssessment} disabled={isAssessing}>
+              {isAssessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              Run Assessment with Grok
             </Button>
-          </div>
-          <Alert variant="destructive">
-            <AlertTitle>Seed Database</AlertTitle>
-            <AlertDescription>
-              This will delete all existing brands, sections, and items, and replace them with sample data. Use with
-              caution.
-            </AlertDescription>
-            <Button onClick={handleSeedDatabase} disabled={isLoading} variant="destructive" className="mt-4">
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Seed Database
-            </Button>
-          </Alert>
-        </CardContent>
-      </Card>
+            {assessmentResult && (
+              <div className="mt-4 p-4 border rounded-lg bg-gray-50 max-h-[400px] overflow-y-auto">
+                <pre className="whitespace-pre-wrap text-sm font-mono text-gray-700">{assessmentResult}</pre>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

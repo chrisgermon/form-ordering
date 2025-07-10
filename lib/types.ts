@@ -1,6 +1,3 @@
-import type { z } from "zod"
-import type { orderFormSchema } from "./schemas"
-
 export interface ClinicLocation {
   name: string
   address: string
@@ -77,6 +74,25 @@ export interface UploadedFile {
   content_type: string | null
 }
 
+export interface OrderDataItem {
+  quantity: string
+  name: string
+  code: string
+  customQuantity?: string
+}
+
+export interface StoredOrderData {
+  brandId: string
+  orderedBy: string
+  email: string
+  billTo: ClinicLocation
+  deliverTo: ClinicLocation
+  date: string
+  items?: Record<string, OrderDataItem>
+  notes?: string
+  orderNumber: string
+}
+
 export interface Submission {
   id: string
   created_at: string
@@ -85,7 +101,7 @@ export interface Submission {
   status: string | null
   pdf_url: string | null
   ip_address: string | null
-  order_data: z.infer<typeof orderFormSchema> | null
+  order_data: StoredOrderData | null
   brands: { name: string } | null
   order_number?: string
 }

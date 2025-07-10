@@ -24,8 +24,7 @@ async function getSubmissions(): Promise<Submission[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from("submissions")
-    .select("*, brands(name)")
-    .order("created_at", { ascending: false })
+    .select("id, created_at, ordered_by, email, status, pdf_url, ip_address, order_data, order_number, brands(name)")
 
   if (error) {
     console.error("Error fetching submissions:", error)
