@@ -14,6 +14,9 @@ export default async function HomePage() {
     return redirect("/login")
   }
 
+  // Since there is no login, we redirect directly to the admin dashboard.
+  redirect("/admin")
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex h-16 items-center justify-between border-b bg-white px-6">

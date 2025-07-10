@@ -16,7 +16,7 @@
     "@radix-ui/react-checkbox": "latest",
     "@radix-ui/react-collapsible": "latest",
     "@radix-ui/react-dialog": "latest",
-    "@radix-ui/react-label": "^2.1.0",
+    "@radix-ui/react-label": "latest",
     "@radix-ui/react-popover": "latest",
     "@radix-ui/react-select": "latest",
     "@radix-ui/react-slot": "^1.1.0",
@@ -38,7 +38,6 @@
     "react-day-picker": "latest",
     "react-dom": "^19",
     "react-hook-form": "latest",
-    "shadcn": "latest",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "zod": "latest"
