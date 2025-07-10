@@ -11,6 +11,7 @@ import { generateObject } from "ai"
 import { xai } from "@ai-sdk/xai"
 import { z } from "zod"
 import type { ClinicLocation } from "@/lib/types"
+import { URL } from "url"
 
 async function executeSqlFile(filePath: string) {
   const supabase = createAdminClient()
@@ -232,7 +233,10 @@ export async function importFromJotform(brandId: string, brandSlug: string, html
     revalidatePath(`/forms/${brandSlug}`)
     return {
       success: true,
-      message: `Successfully imported ${createdSections.reduce((acc, s) => acc + s.items.length, 0)} fields from Jotform.`,
+      message: `Successfully imported ${createdSections.reduce(
+        (acc, s) => acc + s.items.length,
+        0,
+      )} fields from Jotform.`,
     }
   } catch (error) {
     console.error("Jotform import error:", error)
@@ -274,9 +278,9 @@ export async function runBrandSchemaCorrection() {
   }
 }
 
-export async function fetchClinicLocationsFromUrl(
+export async function fetchBrandDataFromUrl(
   url: string,
-): Promise<{ success: boolean; locations?: ClinicLocation[]; error?: string }> {
+): Promise<{ success: boolean; locations?: ClinicLocation[]; logoUrl?: string; error?: string }> {
   if (!process.env.XAI_API_KEY) {
     return { success: false, error: "AI service is not configured on the server." }
   }
@@ -288,7 +292,30 @@ export async function fetchClinicLocationsFromUrl(
     }
     const html = await response.text()
     const $ = cheerio.load(html)
-    // Remove script, style, nav, header, footer to reduce noise and tokens
+    const baseUrl = new URL(url).origin
+
+    // --- Logo Fetching Logic ---
+    let logoUrl: string | undefined
+    const logoSelectors = [
+      'meta[property="og:logo"]',
+      'meta[property="og:image"]',
+      'img[src*="logo"]',
+      'img[class*="logo"]',
+      "header img",
+      'link[rel="apple-touch-icon"]',
+      'link[rel="shortcut icon"]',
+      'link[rel="icon"]',
+    ]
+
+    for (const selector of logoSelectors) {
+      const potentialLogoSrc = $(selector).attr("content") || $(selector).attr("src") || $(selector).attr("href")
+      if (potentialLogoSrc) {
+        logoUrl = new URL(potentialLogoSrc, baseUrl).href
+        break // Stop at the first logo found
+      }
+    }
+
+    // --- Clinic Location Fetching Logic ---
     $("script, style, nav, header, footer").remove()
     const bodyText = $("body").text()
     const cleanText = bodyText.replace(/\s\s+/g, " ").trim()
@@ -307,9 +334,9 @@ export async function fetchClinicLocationsFromUrl(
       prompt: `Analyze the following text from a website and extract all clinic or office locations. For each location, provide its name, full address, and phone number. If a piece of information is not available, leave it as an empty string. Website text: "${cleanText}"`,
     })
 
-    return { success: true, locations: result.object.locations }
+    return { success: true, locations: result.object.locations, logoUrl }
   } catch (error) {
-    console.error("Error fetching locations with AI:", error)
+    console.error("Error fetching brand data with AI:", error)
     const message = error instanceof Error ? error.message : "An unknown error occurred."
     return { success: false, error: `AI processing failed: ${message}` }
   }

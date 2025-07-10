@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { X, Upload, Sparkles, Loader2 } from "lucide-react"
 import { resolveAssetUrl } from "@/lib/utils"
 import type { ClinicLocation } from "@/lib/types"
-import { fetchClinicLocationsFromUrl } from "./actions"
+import { fetchBrandDataFromUrl } from "./actions"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface Brand {
@@ -53,21 +53,26 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     clinicLocations: [newLocation()],
   })
   const [isUploading, setIsUploading] = useState(false)
-  const [isFetchingLocations, setIsFetchingLocations] = useState(false)
+  const [isFetchingData, setIsFetchingData] = useState(false)
   const [fetchUrl, setFetchUrl] = useState("")
   const [fetchError, setFetchError] = useState<string | null>(null)
 
   useEffect(() => {
     if (brand) {
+      const sanitizedLocations = (brand.clinic_locations || []).map((loc) => ({
+        name: loc.name || "",
+        address: loc.address || "",
+        phone: loc.phone || "",
+      }))
+
       setFormData({
         name: brand.name || "",
         logo: brand.logo || "",
         active: brand.active,
         emails: brand.emails?.length > 0 ? brand.emails : [""],
-        clinicLocations: brand.clinic_locations?.length > 0 ? brand.clinic_locations : [newLocation()],
+        clinicLocations: sanitizedLocations.length > 0 ? sanitizedLocations : [newLocation()],
       })
     } else {
-      // Reset for new brand
       setFormData({
         name: "",
         logo: "",
@@ -99,18 +104,15 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     setFormData((prev) => ({ ...prev, clinicLocations: newList }))
   }
 
-  const addEmail = () => {
-    setFormData((prev) => ({ ...prev, emails: [...prev.emails, ""] }))
-  }
+  const addEmail = () => setFormData((prev) => ({ ...prev, emails: [...prev.emails, ""] }))
 
   const removeEmail = (index: number) => {
     const newList = formData.emails.filter((_, i) => i !== index)
     setFormData((prev) => ({ ...prev, emails: newList.length > 0 ? newList : [""] }))
   }
 
-  const addLocation = () => {
+  const addLocation = () =>
     setFormData((prev) => ({ ...prev, clinicLocations: [...prev.clinicLocations, newLocation()] }))
-  }
 
   const removeLocation = (index: number) => {
     const newList = formData.clinicLocations.filter((_, i) => i !== index)
@@ -126,7 +128,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     uploadFormData.append("file", file)
 
     try {
-      const response = await fetch("/api/admin/upload", {
+      const response = await fetch(`/api/admin/upload?brandId=${brand?.id || ""}`, {
         method: "POST",
         body: uploadFormData,
       })
@@ -144,31 +146,36 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     }
   }
 
-  const handleFetchLocations = async () => {
+  const handleFetchBrandData = async () => {
     if (!fetchUrl) {
       setFetchError("Please enter a URL.")
       return
     }
-    setIsFetchingLocations(true)
+    setIsFetchingData(true)
     setFetchError(null)
     try {
-      const result = await fetchClinicLocationsFromUrl(fetchUrl)
-      if (result.success && result.locations) {
+      const result = await fetchBrandDataFromUrl(fetchUrl)
+      if (result.success) {
         if (
-          formData.clinicLocations.some((l) => l.name) &&
-          !confirm("This will replace the current clinic locations. Are you sure?")
+          (formData.clinicLocations.some((l) => l.name) || formData.logo) &&
+          !confirm("This will replace the current logo and clinic locations. Are you sure?")
         ) {
-          setIsFetchingLocations(false)
+          setIsFetchingData(false)
           return
         }
-        setFormData((prev) => ({ ...prev, clinicLocations: result.locations as ClinicLocation[] }))
+        if (result.locations) {
+          setFormData((prev) => ({ ...prev, clinicLocations: result.locations as ClinicLocation[] }))
+        }
+        if (result.logoUrl) {
+          setFormData((prev) => ({ ...prev, logo: result.logoUrl! }))
+        }
       } else {
-        setFetchError(result.error || "Failed to fetch locations.")
+        setFetchError(result.error || "Failed to fetch data.")
       }
     } catch (error) {
       setFetchError("An unexpected error occurred.")
     } finally {
-      setIsFetchingLocations(false)
+      setIsFetchingData(false)
     }
   }
 
@@ -185,11 +192,36 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <Label htmlFor="name">Brand Name</Label>
-          <Input id="name" value={formData.name} onChange={handleChange} required />
+      <div className="space-y-4">
+        <Label>Auto-fill from Website</Label>
+        <div className="p-4 border rounded-md bg-gray-50/50 space-y-3">
+          <div className="flex items-center gap-2">
+            <Input
+              type="url"
+              placeholder="https://example.com"
+              value={fetchUrl}
+              onChange={(e) => setFetchUrl(e.target.value)}
+            />
+            <Button type="button" onClick={handleFetchBrandData} disabled={isFetchingData}>
+              {isFetchingData ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              Fetch Data
+            </Button>
+          </div>
+          {fetchError && (
+            <Alert variant="destructive">
+              <AlertDescription>{fetchError}</AlertDescription>
+            </Alert>
+          )}
         </div>
+      </div>
+
+      <div>
+        <Label htmlFor="name">Brand Name</Label>
+        <Input id="name" value={formData.name} onChange={handleChange} required />
       </div>
 
       <div>
@@ -200,7 +232,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
             onValueChange={(value) => setFormData((p) => ({ ...p, logo: value === "none" ? "" : value }))}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select an uploaded logo" />
+              <SelectValue placeholder="Select an uploaded logo or fetch one" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">No Logo</SelectItem>
@@ -264,32 +296,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
 
       <div>
         <Label>Clinic Locations</Label>
-        <div className="p-4 border rounded-md bg-gray-50/50 space-y-3">
-          <Label>Auto-fetch from URL</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              type="url"
-              placeholder="https://example.com/locations"
-              value={fetchUrl}
-              onChange={(e) => setFetchUrl(e.target.value)}
-            />
-            <Button type="button" onClick={handleFetchLocations} disabled={isFetchingLocations}>
-              {isFetchingLocations ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
-              )}
-              Fetch
-            </Button>
-          </div>
-          {fetchError && (
-            <Alert variant="destructive">
-              <AlertDescription>{fetchError}</AlertDescription>
-            </Alert>
-          )}
-        </div>
-
-        <div className="space-y-4 mt-4">
+        <div className="space-y-4 mt-2">
           {formData.clinicLocations.map((location, index) => (
             <div key={index} className="p-4 border rounded-md space-y-3 relative">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
