@@ -278,6 +278,7 @@ export default function AdminDashboard() {
   }
 
   const filteredAndSortedFiles = useMemo(() => {
+    if (!Array.isArray(uploadedFiles)) return []
     let filtered = [...uploadedFiles]
 
     if (searchTerm) {
@@ -311,6 +312,7 @@ export default function AdminDashboard() {
   }
 
   const fileTypes = useMemo(() => {
+    if (!Array.isArray(uploadedFiles)) return ["all"]
     const types = new Set(uploadedFiles.map((file) => file.content_type).filter(Boolean))
     return ["all", ...Array.from(types as Set<string>)]
   }, [uploadedFiles])
@@ -411,7 +413,7 @@ export default function AdminDashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {brands.map((brand) => (
+                      {(brands || []).map((brand) => (
                         <TableRow key={brand.id}>
                           <TableCell>
                             <img
@@ -486,7 +488,7 @@ export default function AdminDashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {submissions.map((submission) => (
+                      {(submissions || []).map((submission) => (
                         <TableRow key={submission.id}>
                           <TableCell className="font-medium">{submission.brands?.name || "N/A"}</TableCell>
                           <TableCell>

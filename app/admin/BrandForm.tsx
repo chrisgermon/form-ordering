@@ -171,7 +171,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">No Logo</SelectItem>
-              {uploadedFiles
+              {(uploadedFiles || [])
                 .filter((file) => file.content_type?.startsWith("image/"))
                 .map((file) => (
                   <SelectItem key={file.id} value={file.pathname}>
