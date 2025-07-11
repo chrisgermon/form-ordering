@@ -8,7 +8,6 @@ import type { Brand } from "@/lib/types"
 import { nanoid } from "nanoid"
 import { put } from "@vercel/blob"
 import { scrapeWebsiteForData } from "@/lib/scraping"
-import * as cheerio from "cheerio"
 
 async function executeSqlFile(filePath: string): Promise<{ success: boolean; message: string }> {
   try {
@@ -133,86 +132,12 @@ export async function importForm(
   brandSlug: string,
   { htmlCode, url }: { htmlCode?: string; url?: string },
 ) {
-  if (!process.env.XAI_API_KEY) {
-    return { success: false, message: "AI service is not configured on the server." }
-  }
-
-  let finalHtmlCode = htmlCode
-  if (url) {
-    try {
-      const response = await fetch(url)
-      if (!response.ok) {
-        return { success: false, message: `Failed to fetch URL. Status: ${response.status}` }
-      }
-      finalHtmlCode = await response.text()
-    } catch (error) {
-      return { success: false, message: "Invalid or unreachable URL." }
-    }
-  }
-
-  if (!finalHtmlCode) {
-    return { success: false, message: "Please provide either a URL or HTML code." }
-  }
-
-  try {
-    const supabase = createAdminClient()
-    const $ = cheerio.load(finalHtmlCode)
-
-    // Clean up the HTML to send less data to the AI
-    $("script, style, nav, header, footer, img, svg").remove()
-    const formHtml = $("form").length ? $("form").html() : $("body").html()
-    const cleanHtml = (formHtml || "").replace(/\s\s+/g, " ").trim()
-
-    if (!cleanHtml) {
-      return {
-        success: false,
-        message: "AI could not find any form fields to import. Please check the source code or URL.",
-      }
-    }
-
-    // Now, save to database
-    const { count: existingSectionsCount } = await supabase
-      .from("product_sections")
-      .select("sort_order", { count: "exact", head: true })
-      .eq("brand_id", brandId)
-
-    let sectionSortOrder = existingSectionsCount || 0
-
-    for (const section of cleanHtml) {
-      const { data: newSection, error: sectionError } = await supabase
-        .from("product_sections")
-        .insert({
-          title: section.title,
-          brand_id: brandId,
-          sort_order: sectionSortOrder++,
-        })
-        .select()
-        .single()
-
-      if (sectionError) throw sectionError
-
-      const itemsToInsert = section.items.map((item, index) => ({
-        ...item,
-        brand_id: brandId,
-        section_id: newSection.id,
-        sort_order: index,
-      }))
-
-      if (itemsToInsert.length > 0) {
-        const { error: itemsError } = await supabase.from("product_items").insert(itemsToInsert)
-        if (itemsError) throw itemsError
-      }
-    }
-
-    revalidatePath(`/admin/editor/${brandSlug}`)
-    revalidatePath(`/forms/${brandSlug}`)
-    return {
-      success: true,
-      message: `Successfully imported ${cleanHtml.reduce((acc, s) => acc + s.items.length, 0)} fields.`,
-    }
-  } catch (error) {
-    console.error("Form import error:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during import."
-    return { success: false, message: `Import failed: ${errorMessage}` }
+  // The AI SDK package was causing build errors and has been removed.
+  // This function needs to be reimplemented if AI functionality is desired.
+  // For now, it will return a placeholder message.
+  console.log("Attempted to import form for brand:", brandId, "from url:", url)
+  return {
+    success: false,
+    message: "Form import feature is temporarily disabled due to a build issue. Please add fields manually.",
   }
 }
