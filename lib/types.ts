@@ -4,58 +4,45 @@ export interface ClinicLocation {
   phone: string
 }
 
-export interface ProductItem {
-  id: string
-  code: string
-  name: string
-  description: string | null
-  field_type: "checkbox_group" | "select" | "text" | "textarea" | "date"
-  options: string[]
-  placeholder: string | null
-  is_required: boolean
-  sample_link: string | null
-}
-
-export interface ProductSection {
-  id: string
-  title: string
-  sort_order: number
-  product_items: ProductItem[]
-}
-
-export interface BrandData {
-  id: string
-  name: string
-  slug: string
-  logo: string | null
-  emails: string[]
-  clinic_locations: ClinicLocation[]
-  product_sections: ProductSection[]
-}
-
 export interface Brand {
   id: string
   name: string
   slug: string
-  logo: string | null
+  logo: string
+  active: boolean
   emails: string[]
   clinic_locations: ClinicLocation[]
-  active: boolean
+  primary_color: string | null
+  secondary_color: string | null
+  created_at: string
 }
 
-export interface OrderInfo {
-  orderNumber: string
-  orderedBy: string
-  email: string
-  billTo: ClinicLocation
-  deliverTo: ClinicLocation
-  notes?: string
+export interface UploadedFile {
+  id: string
+  filename: string
+  original_name: string
+  url: string
+  pathname: string
+  uploaded_at: string
+  size: number
+  content_type: string | null
+  brand_id: string | null
 }
 
-export interface OrderPayload {
-  brandId: string
-  orderInfo: OrderInfo
-  items: Record<string, any>
+export interface FormSubmission {
+  id: string
+  brand_id: string
+  form_data: any
+  submitted_at: string
+  brands: { name: string } // from the join
 }
 
-export type BrandType = Omit<Brand, "product_sections">
+export interface SystemActions {
+  createAdminTables: () => Promise<{ success: boolean; message: string }>
+  initializeDatabase: () => Promise<{ success: boolean; message: string }>
+  autoAssignPdfs: () => Promise<{ success: boolean; message: string }>
+  runSchemaV5Update: () => Promise<{ success: boolean; message: string }>
+  forceSchemaReload: () => Promise<{ success: boolean; message: string }>
+  runBrandSchemaCorrection: () => Promise<{ success: boolean; message: string }>
+  runPrimaryColorFix: () => Promise<{ success: boolean; message: string }>
+}
