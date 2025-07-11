@@ -255,39 +255,6 @@ export async function uploadLogoFromUrl(
   }
 }
 
-export async function runSchemaV5Update() {
-  try {
-    await executeSqlFile("scripts/update-schema-v5.sql")
-    return { success: true, message: "Schema updated successfully for relative URLs!" }
-  } catch (error: any) {
-    console.error("Error running schema v5 update:", error)
-    return { success: false, message: `Failed to update schema: ${error.message}` }
-  }
-}
-
-export async function forceSchemaReload() {
-  try {
-    await executeSqlFile("scripts/force-schema-reload.sql")
-    return { success: true, message: "Schema cache reloaded successfully! Please try your previous action again." }
-  } catch (error: any) {
-    console.error("Error forcing schema reload:", error)
-    return { success: false, message: `Failed to reload schema: ${error.message}` }
-  }
-}
-
-export async function runBrandSchemaCorrection() {
-  try {
-    await executeSqlFile("scripts/correct-brands-schema.sql")
-    return {
-      success: true,
-      message: "Brands table schema corrected and cache reloaded successfully! The page should now work correctly.",
-    }
-  } catch (error: any) {
-    console.error("Error correcting brands schema:", error)
-    return { success: false, message: `Failed to correct schema: ${error.message}` }
-  }
-}
-
 export async function fetchBrandDataFromUrl(
   url: string,
   brandId: string | null,
@@ -358,6 +325,39 @@ export async function fetchBrandDataFromUrl(
     console.error("Error fetching brand data with AI:", error)
     const message = error instanceof Error ? error.message : "An unknown error occurred."
     return { success: false, error: `AI processing failed: ${message}` }
+  }
+}
+
+export async function runSchemaV5Update() {
+  try {
+    await executeSqlFile("scripts/update-schema-v5.sql")
+    return { success: true, message: "Schema updated successfully for relative URLs!" }
+  } catch (error: any) {
+    console.error("Error running schema v5 update:", error)
+    return { success: false, message: `Failed to update schema: ${error.message}` }
+  }
+}
+
+export async function forceSchemaReload() {
+  try {
+    await executeSqlFile("scripts/force-schema-reload.sql")
+    return { success: true, message: "Schema cache reloaded successfully! Please try your previous action again." }
+  } catch (error: any) {
+    console.error("Error forcing schema reload:", error)
+    return { success: false, message: `Failed to reload schema: ${error.message}` }
+  }
+}
+
+export async function runBrandSchemaCorrection() {
+  try {
+    await executeSqlFile("scripts/correct-brands-schema.sql")
+    return {
+      success: true,
+      message: "Brands table schema corrected and cache reloaded successfully! The page should now work correctly.",
+    }
+  } catch (error: any) {
+    console.error("Error correcting brands schema:", error)
+    return { success: false, message: `Failed to correct schema: ${error.message}` }
   }
 }
 
