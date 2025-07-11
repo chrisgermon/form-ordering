@@ -1,13 +1,10 @@
 import { put } from "@vercel/blob"
 import * as cheerio from "cheerio"
-import metascraper from "metascraper"
-import metascraperImage from "metascraper-image"
-
-const scraper = metascraper([metascraperImage()])
+import { nanoid } from "nanoid"
+import path from "path"
 
 async function fetchHtml(url: string) {
   try {
-    // Use a common user-agent to avoid being blocked
     const response = await fetch(url, {
       headers: {
         "User-Agent":
@@ -33,8 +30,8 @@ async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | 
       return null
     }
     const imageBlob = await response.blob()
-    const fileExtension = new URL(logoUrl).pathname.split(".").pop()?.split("?")[0] || "png"
-    const filename = `logos/${brandSlug}-logo.${fileExtension}`
+    const originalName = path.basename(new URL(logoUrl).pathname) || `logo-${nanoid(5)}`
+    const filename = `logos/${brandSlug}-${Date.now()}-${originalName}`
 
     const { url: blobUrl } = await put(filename, imageBlob, {
       access: "public",
@@ -50,30 +47,54 @@ async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | 
 
 export async function scrapeWebsiteForData(
   url: string,
-): Promise<{ title: string; description: string; locations: string[] }> {
+): Promise<{ title: string; description: string; locations: string[]; logoUrl: string | null }> {
   const html = await fetchHtml(url)
   if (!html) {
-    return { title: "", description: "", locations: [] }
+    return { title: "", description: "", locations: [], logoUrl: null }
   }
 
   const $ = cheerio.load(html)
+  const baseUrl = new URL(url).origin
+
   const title = $("title").first().text() || ""
   const description = $('meta[name="description"]').attr("content") || ""
 
-  // This is a basic attempt to find locations and is highly site-specific.
+  // Find Logo URL
+  const logoSelectors = [
+    'meta[property="og:logo"]',
+    'meta[property="og:image"]',
+    'link[rel="apple-touch-icon"]',
+    'link[rel="shortcut icon"]',
+    'link[rel="icon"]',
+  ]
+  let logoUrl: string | null = null
+  for (const selector of logoSelectors) {
+    const potentialLogoSrc = $(selector).attr("content") || $(selector).attr("href")
+    if (potentialLogoSrc) {
+      logoUrl = new URL(potentialLogoSrc, baseUrl).href
+      break
+    }
+  }
+  if (!logoUrl) {
+    const imgSelector = 'img[src*="logo"], img[alt*="logo" i]'
+    const logoSrc = $(imgSelector).first().attr("src")
+    if (logoSrc) {
+      logoUrl = new URL(logoSrc, baseUrl).href
+    }
+  }
+
+  // Find Locations
   const locations: string[] = []
   $("body")
     .find(":contains('Address'), :contains('Location')")
     .each((i, elem) => {
       const parentText = $(elem).parent().text().replace(/\s\s+/g, " ").trim()
-      // Heuristic for address-like text
       if (parentText.length > 20 && parentText.length < 200) {
         locations.push(parentText)
       }
     })
 
-  // Return unique locations, max 5
-  return { title, description, locations: [...new Set(locations)].slice(0, 5) }
+  return { title, description, locations: [...new Set(locations)].slice(0, 5), logoUrl }
 }
 
 export async function fetchAndUploadLogo(url: string, brandSlug: string): Promise<string | null> {
@@ -83,23 +104,37 @@ export async function fetchAndUploadLogo(url: string, brandSlug: string): Promis
   }
 
   try {
-    const metadata = await scraper({ url, html })
-    let logoUrl = metadata.image
+    const $ = cheerio.load(html)
+    const baseUrl = new URL(url).origin
+
+    const logoSelectors = [
+      'meta[property="og:logo"]',
+      'meta[property="og:image"]',
+      'link[rel="apple-touch-icon"]',
+      'link[rel="shortcut icon"]',
+      'link[rel="icon"]',
+    ]
+    let logoUrl: string | undefined
+
+    for (const selector of logoSelectors) {
+      const potentialLogoSrc = $(selector).attr("content") || $(selector).attr("href")
+      if (potentialLogoSrc) {
+        logoUrl = new URL(potentialLogoSrc, baseUrl).href
+        break
+      }
+    }
 
     if (!logoUrl) {
-      // Fallback: try to find a logo via cheerio
-      const $ = cheerio.load(html)
-      const logoSrc =
-        $('img[src*="logo"]').first().attr("src") ||
-        $('img[alt*="logo" i]').first().attr("src") ||
-        $('link[rel="shortcut icon"]').first().attr("href") ||
-        $('link[rel="icon"]').first().attr("href")
-
+      const imgSelector = 'img[src*="logo"], img[alt*="logo" i]'
+      const logoSrc = $(imgSelector).first().attr("src")
       if (logoSrc) {
-        logoUrl = new URL(logoSrc, url).href
-      } else {
-        return null
+        logoUrl = new URL(logoSrc, baseUrl).href
       }
+    }
+
+    if (!logoUrl) {
+      console.log("Could not find a logo URL on the page.")
+      return null
     }
 
     return await uploadLogo(logoUrl, brandSlug)
