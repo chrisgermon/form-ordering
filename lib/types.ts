@@ -34,7 +34,7 @@ export interface FormSubmission {
   brand_id: string
   form_data: any
   submitted_at: string
-  brands: { name: string } // from the join
+  brands: { name: string } | null // from the join
 }
 
 export interface SystemActions {
@@ -45,4 +45,5 @@ export interface SystemActions {
   forceSchemaReload: () => Promise<{ success: boolean; message: string }>
   runBrandSchemaCorrection: () => Promise<{ success: boolean; message: string }>
   runPrimaryColorFix: () => Promise<{ success: boolean; message: string }>
+  runSubmissionsFKFix: () => Promise<{ success: boolean; message: string }>
 }

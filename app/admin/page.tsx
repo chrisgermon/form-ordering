@@ -8,9 +8,12 @@ import {
   forceSchemaReload,
   runBrandSchemaCorrection,
   runPrimaryColorFix,
+  runSubmissionsFKFix,
 } from "./actions"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Terminal } from "lucide-react"
+
+export const revalidate = 0
 
 export default async function AdminPage() {
   const supabase = createAdminClient()
@@ -31,20 +34,9 @@ export default async function AdminPage() {
 
   const error = brandsError || filesError || submissionsError
   if (error) {
-    return (
-      <div className="container mx-auto p-8">
-        <Alert variant="destructive">
-          <Terminal className="h-4 w-4" />
-          <AlertTitle>Error loading dashboard data</AlertTitle>
-          <AlertDescription>
-            <p>There was a problem fetching initial data from the database.</p>
-            <pre className="mt-2 whitespace-pre-wrap rounded-md bg-secondary p-4 text-secondary-foreground font-mono text-xs">
-              {error.message}
-            </pre>
-          </AlertDescription>
-        </Alert>
-      </div>
-    )
+    // If there's an error, we still render the dashboard but show an error message.
+    // The System Actions tab will still be available to fix the issue.
+    console.error("Admin Dashboard Error:", error.message)
   }
 
   const systemActions = {
@@ -55,14 +47,32 @@ export default async function AdminPage() {
     forceSchemaReload,
     runBrandSchemaCorrection,
     runPrimaryColorFix,
+    runSubmissionsFKFix,
   }
 
   return (
-    <AdminDashboard
-      initialBrands={brands || []}
-      initialFiles={uploadedFiles || []}
-      initialSubmissions={submissions || []}
-      systemActions={systemActions}
-    />
+    <>
+      {error && (
+        <div className="container mx-auto p-4 md:p-8">
+          <Alert variant="destructive">
+            <Terminal className="h-4 w-4" />
+            <AlertTitle>Error loading dashboard data</AlertTitle>
+            <AlertDescription>
+              <p>There was a problem fetching initial data: "{error.message}"</p>
+              <p className="mt-2">
+                Please go to the <strong>System</strong> tab and run the <strong>Fix Submissions Relationship</strong>{" "}
+                action to resolve this.
+              </p>
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+      <AdminDashboard
+        initialBrands={brands || []}
+        initialFiles={uploadedFiles || []}
+        initialSubmissions={submissions || []}
+        systemActions={systemActions}
+      />
+    </>
   )
 }

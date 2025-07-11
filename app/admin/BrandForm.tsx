@@ -1,373 +1,219 @@
 "use client"
 
-import type React from "react"
 import { useState, useEffect } from "react"
+import { useForm, useFieldArray } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { X, Upload, Sparkles, Loader2 } from "lucide-react"
-import { resolveAssetUrl } from "@/lib/utils"
-import type { ClinicLocation } from "@/lib/types"
-import { fetchBrandDataFromUrl } from "./actions"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import type { Brand, ClinicLocation } from "@/lib/types"
+import { saveBrand, fetchBrandData } from "./actions"
+import { toast } from "sonner"
+import { Trash2, PlusCircle, Loader2 } from "lucide-react"
+import Image from "next/image"
 
-interface Brand {
-  id: string
-  name: string
-  slug: string
-  logo: string
-  active: boolean
-  emails: string[]
-  clinic_locations: ClinicLocation[]
-}
+const brandSchema = z.object({
+  name: z.string().min(1, "Brand name is required"),
+  website_url: z.string().url("Invalid URL").optional().or(z.literal("")),
+  primary_color: z.string().optional(),
+  secondary_color: z.string().optional(),
+  logo_url: z.string().url("Invalid URL").optional().or(z.literal("")),
+  locations: z
+    .array(
+      z.object({
+        id: z.number().optional(),
+        name: z.string().min(1, "Location name is required"),
+        address: z.string().min(1, "Address is required"),
+      }),
+    )
+    .optional(),
+})
 
-interface UploadedFile {
-  id: string
-  filename: string
-  original_name: string
-  url: string
-  pathname: string
-  uploaded_at: string
-  size: number
-  content_type: string | null
-}
+type BrandFormData = z.infer<typeof brandSchema>
 
 interface BrandFormProps {
-  brand: Brand | null
-  uploadedFiles: UploadedFile[]
-  onSave: (data: any) => void
-  onCancel: () => void
-  onLogoUpload: () => Promise<void>
+  isOpen: boolean
+  onClose: () => void
+  onSave: (brand: Brand) => void
+  brand?: Brand & { clinic_locations: ClinicLocation[] }
 }
 
-const newLocation = (): ClinicLocation => ({ name: "", address: "", phone: "" })
+export function BrandForm({ isOpen, onClose, onSave, brand }: BrandFormProps) {
+  const [isSaving, setIsSaving] = useState(false)
+  const [isFetching, setIsFetching] = useState(false)
 
-export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload }: BrandFormProps) {
-  const [formData, setFormData] = useState({
-    name: "",
-    logo: "",
-    active: true,
-    emails: [""],
-    clinicLocations: [newLocation()],
+  const { register, handleSubmit, control, reset, watch, setValue } = useForm<BrandFormData>({
+    resolver: zodResolver(brandSchema),
+    defaultValues: {
+      name: "",
+      website_url: "",
+      primary_color: "#000000",
+      secondary_color: "#ffffff",
+      logo_url: "",
+      locations: [],
+    },
   })
-  const [isUploading, setIsUploading] = useState(false)
-  const [isFetchingData, setIsFetchingData] = useState(false)
-  const [fetchUrl, setFetchUrl] = useState("")
-  const [fetchError, setFetchError] = useState<string | null>(null)
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "locations",
+  })
+
+  const websiteUrl = watch("website_url")
+  const logoUrl = watch("logo_url")
 
   useEffect(() => {
     if (brand) {
-      const sanitizedLocations = (brand.clinic_locations || []).map((loc) => ({
-        name: loc.name || "",
-        address: loc.address || "",
-        phone: loc.phone || "",
-      }))
-
-      setFormData({
-        name: brand.name || "",
-        logo: brand.logo || "",
-        active: brand.active,
-        emails: brand.emails?.length > 0 ? brand.emails : [""],
-        clinicLocations: sanitizedLocations.length > 0 ? sanitizedLocations : [newLocation()],
+      reset({
+        name: brand.name,
+        website_url: brand.website_url || "",
+        primary_color: brand.primary_color || "#000000",
+        secondary_color: brand.secondary_color || "#ffffff",
+        logo_url: brand.logo_url || "",
+        locations: brand.clinic_locations || [],
       })
     } else {
-      setFormData({
+      reset({
         name: "",
-        logo: "",
-        active: true,
-        emails: [""],
-        clinicLocations: [newLocation()],
+        website_url: "",
+        primary_color: "#000000",
+        secondary_color: "#ffffff",
+        logo_url: "",
+        locations: [],
       })
     }
-  }, [brand])
+  }, [brand, reset])
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { id, value, type } = e.target
-    const checked = (e.target as HTMLInputElement).checked
-    setFormData((prev) => ({
-      ...prev,
-      [id]: type === "checkbox" ? checked : value,
-    }))
-  }
-
-  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const newList = [...formData.emails]
-    newList[index] = e.target.value
-    setFormData((prev) => ({ ...prev, emails: newList }))
-  }
-
-  const handleLocationChange = (e: React.ChangeEvent<HTMLInputElement>, index: number, field: keyof ClinicLocation) => {
-    const newList = [...formData.clinicLocations]
-    newList[index] = { ...newList[index], [field]: e.target.value }
-    setFormData((prev) => ({ ...prev, clinicLocations: newList }))
-  }
-
-  const addEmail = () => setFormData((prev) => ({ ...prev, emails: [...prev.emails, ""] }))
-
-  const removeEmail = (index: number) => {
-    const newList = formData.emails.filter((_, i) => i !== index)
-    setFormData((prev) => ({ ...prev, emails: newList.length > 0 ? newList : [""] }))
-  }
-
-  const addLocation = () =>
-    setFormData((prev) => ({ ...prev, clinicLocations: [...prev.clinicLocations, newLocation()] }))
-
-  const removeLocation = (index: number) => {
-    const newList = formData.clinicLocations.filter((_, i) => i !== index)
-    setFormData((prev) => ({ ...prev, clinicLocations: newList.length > 0 ? newList : [newLocation()] }))
-  }
-
-  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    setIsUploading(true)
-    const uploadFormData = new FormData()
-    uploadFormData.append("file", file)
-
-    try {
-      const response = await fetch(`/api/admin/upload?brandId=${brand?.id || ""}`, {
-        method: "POST",
-        body: uploadFormData,
-      })
-      if (response.ok) {
-        const newFile = await response.json()
-        await onLogoUpload()
-        setFormData((prev) => ({ ...prev, logo: newFile.pathname }))
-      } else {
-        console.error("Failed to upload logo")
-      }
-    } catch (error) {
-      console.error("Error uploading logo:", error)
-    } finally {
-      setIsUploading(false)
-    }
-  }
-
-  const handleFetchBrandData = async () => {
-    if (!fetchUrl) {
-      setFetchError("Please enter a URL.")
+  const handleFetchData = async () => {
+    if (!websiteUrl) {
+      toast.error("Please enter a website URL to fetch data.")
       return
     }
-    setIsFetchingData(true)
-    setFetchError(null)
-    try {
-      const result = await fetchBrandDataFromUrl(fetchUrl, brand?.id || null)
-      if (result.success) {
-        if (
-          (formData.clinicLocations.some((l) => l.name) || formData.logo) &&
-          !confirm("This will replace the current logo and clinic locations. Are you sure?")
-        ) {
-          setIsFetchingData(false)
-          return
-        }
-        if (result.locations && result.locations.length > 0) {
-          setFormData((prev) => ({ ...prev, clinicLocations: result.locations as ClinicLocation[] }))
-        }
-        if (result.logoPathname) {
-          setFormData((prev) => ({ ...prev, logo: result.logoPathname! }))
-          // Refresh the file list so the new logo appears in the dropdown
-          await onLogoUpload()
-        }
-      } else {
-        setFetchError(result.error || "Failed to fetch data.")
+    setIsFetching(true)
+    const result = await fetchBrandData(websiteUrl, brand?.slug || "new-brand")
+    setIsFetching(false)
+
+    if (result.success && result.data) {
+      if (result.data.name) setValue("name", result.data.name)
+      if (result.data.logo_url) {
+        setValue("logo_url", result.data.logo_url)
       }
-    } catch (error) {
-      setFetchError("An unexpected error occurred.")
-    } finally {
-      setIsFetchingData(false)
+      if (result.data.locations && result.data.locations.length > 0) {
+        remove() // Clear existing locations
+        result.data.locations.forEach((loc) => append({ name: loc.name, address: loc.address }))
+      }
+      toast.success("Data fetched successfully!")
+    } else {
+      toast.error(result.error || "Failed to fetch data.")
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const dataToSave = {
-      ...formData,
+  const onSubmitHandler = async (data: BrandFormData) => {
+    setIsSaving(true)
+    const brandToSave = {
+      ...data,
       id: brand?.id,
-      emails: formData.emails.filter((email) => email.trim() !== ""),
-      clinicLocations: formData.clinicLocations.filter((loc) => loc.name.trim() !== ""),
+      slug: brand?.slug,
+      locations: data.locations || [],
     }
-    onSave(dataToSave)
+
+    const result = await saveBrand(brandToSave)
+    setIsSaving(false)
+
+    if (result.success && result.data) {
+      toast.success(`Brand ${brand ? "updated" : "created"} successfully!`)
+      onSave(result.data as Brand)
+      onClose()
+    } else {
+      toast.error(result.error || "Failed to save brand.")
+    }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-4">
-      <div className="space-y-4">
-        <Label>Auto-fill from Website</Label>
-        <div className="p-4 border rounded-md bg-gray-50/50 space-y-3">
-          <div className="flex items-center gap-2">
-            <Input
-              type="url"
-              placeholder="https://example.com"
-              value={fetchUrl}
-              onChange={(e) => setFetchUrl(e.target.value)}
-            />
-            <Button type="button" onClick={handleFetchBrandData} disabled={isFetchingData}>
-              {isFetchingData ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
-              )}
-              Fetch Data
-            </Button>
-          </div>
-          {fetchError && (
-            <Alert variant="destructive">
-              <AlertDescription>{fetchError}</AlertDescription>
-            </Alert>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="name">Brand Name</Label>
-        <Input id="name" value={formData.name} onChange={handleChange} required />
-      </div>
-
-      <div>
-        <Label>Logo</Label>
-        <div className="flex items-center gap-4">
-          <Select
-            value={formData.logo}
-            onValueChange={(value) => setFormData((p) => ({ ...p, logo: value === "none" ? "" : value }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select an uploaded logo or fetch one" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No Logo</SelectItem>
-              {(uploadedFiles || [])
-                .filter((file) => file.content_type?.startsWith("image/"))
-                .map((file) => (
-                  <SelectItem key={file.id} value={file.pathname}>
-                    {file.original_name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-          <div className="relative">
-            <Button type="button" variant="outline" asChild>
-              <label htmlFor="logo-upload" className="cursor-pointer">
-                <Upload className="mr-2 h-4 w-4" /> {isUploading ? "Uploading..." : "Upload"}
-              </label>
-            </Button>
-            <Input
-              id="logo-upload"
-              type="file"
-              accept="image/*"
-              onChange={handleLogoUpload}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              disabled={isUploading}
-            />
-          </div>
-        </div>
-        {formData.logo && (
-          <div className="mt-4 p-2 border rounded-md inline-block">
-            <img
-              src={resolveAssetUrl(formData.logo) || "/placeholder.svg"}
-              alt="Brand logo preview"
-              className="h-16 w-auto object-contain"
-            />
-          </div>
-        )}
-      </div>
-
-      <div>
-        <Label>Recipient Emails</Label>
-        <div className="space-y-2">
-          {formData.emails.map((email, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <Input
-                type="email"
-                placeholder="e.g., orders@example.com"
-                value={email}
-                onChange={(e) => handleEmailChange(e, index)}
-              />
-              <Button type="button" variant="ghost" size="icon" onClick={() => removeEmail(index)}>
-                <X className="h-4 w-4" />
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{brand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(onSubmitHandler)} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="website_url">Website URL</Label>
+            <div className="flex gap-2">
+              <Input id="website_url" {...register("website_url")} placeholder="https://example.com" />
+              <Button type="button" onClick={handleFetchData} disabled={isFetching || !websiteUrl}>
+                {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Fetch Data"}
               </Button>
             </div>
-          ))}
-        </div>
-        <Button type="button" variant="outline" size="sm" className="mt-2 bg-transparent" onClick={addEmail}>
-          Add Email
-        </Button>
-      </div>
+          </div>
 
-      <div>
-        <Label>Clinic Locations</Label>
-        <div className="space-y-4 mt-2">
-          {formData.clinicLocations.map((location, index) => (
-            <div key={index} className="p-4 border rounded-md space-y-3 relative">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor={`loc-name-${index}`} className="text-xs">
-                    Location Name
-                  </Label>
-                  <Input
-                    id={`loc-name-${index}`}
-                    placeholder="e.g., Main Street Clinic"
-                    value={location.name}
-                    onChange={(e) => handleLocationChange(e, index, "name")}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor={`loc-phone-${index}`} className="text-xs">
-                    Phone Number
-                  </Label>
-                  <Input
-                    id={`loc-phone-${index}`}
-                    placeholder="e.g., (02) 1234 5678"
-                    value={location.phone}
-                    onChange={(e) => handleLocationChange(e, index, "phone")}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor={`loc-address-${index}`} className="text-xs">
-                  Address
-                </Label>
-                <Input
-                  id={`loc-address-${index}`}
-                  placeholder="e.g., 123 Main St, Sydney NSW 2000"
-                  value={location.address}
-                  onChange={(e) => handleLocationChange(e, index, "address")}
+          <div className="space-y-2">
+            <Label htmlFor="name">Brand Name</Label>
+            <Input id="name" {...register("name")} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="primary_color">Primary Color</Label>
+              <Input id="primary_color" type="color" {...register("primary_color")} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="secondary_color">Secondary Color</Label>
+              <Input id="secondary_color" type="color" {...register("secondary_color")} />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="logo_url">Logo URL</Label>
+            <Input id="logo_url" {...register("logo_url")} placeholder="https://example.com/logo.png" />
+            {logoUrl && (
+              <div className="mt-2 p-2 border rounded-md flex justify-center bg-gray-50">
+                <Image
+                  src={logoUrl || "/placeholder.svg"}
+                  alt="Logo Preview"
+                  width={100}
+                  height={100}
+                  className="object-contain"
                 />
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute top-1 right-1"
-                onClick={() => removeLocation(index)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-        </div>
-        <Button type="button" variant="outline" size="sm" className="mt-2 bg-transparent" onClick={addLocation}>
-          Add Location
-        </Button>
-      </div>
+            )}
+          </div>
 
-      <div className="flex items-center space-x-2">
-        <Checkbox
-          id="active"
-          checked={formData.active}
-          onCheckedChange={(c) => setFormData({ ...formData, active: !!c })}
-        />
-        <Label htmlFor="active">Active Brand</Label>
-      </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-medium">Clinic Locations</h3>
+            {fields.map((field, index) => (
+              <div key={field.id} className="flex items-end gap-2 p-2 border rounded-md">
+                <div className="flex-grow grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label htmlFor={`locations.${index}.name`}>Location Name</Label>
+                    <Input {...register(`locations.${index}.name`)} placeholder="Main Clinic" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`locations.${index}.address`}>Address</Label>
+                    <Input {...register(`locations.${index}.address`)} placeholder="123 Health St, Wellness City" />
+                  </div>
+                </div>
+                <Button type="button" variant="destructive" size="icon" onClick={() => remove(index)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" onClick={() => append({ name: "", address: "" })}>
+              <PlusCircle className="mr-2 h-4 w-4" /> Add Location
+            </Button>
+          </div>
 
-      <div className="flex justify-end gap-2 pt-4 border-t">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit">Save Brand</Button>
-      </div>
-    </form>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Brand"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

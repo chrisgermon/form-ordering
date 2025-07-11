@@ -1,93 +1,103 @@
 "use client"
+
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Terminal, Loader2 } from "lucide-react"
+import { Loader2, Database } from "lucide-react"
 import type { SystemActions as SystemActionsType } from "@/lib/types"
 
-interface Action {
-  id: keyof SystemActionsType
-  title: string
-  description: string
-  action: () => Promise<{ success: boolean; message: string }>
-}
-
 export function SystemActions({ actions }: { actions: SystemActionsType }) {
-  const [loading, setLoading] = useState<string | null>(null)
-  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [loadingAction, setLoadingAction] = useState<string | null>(null)
 
-  const systemActions: Action[] = [
+  const handleRunAction = async (actionName: keyof SystemActionsType, confirmation: string) => {
+    if (!confirm(confirmation)) return
+    setLoadingAction(actionName)
+    try {
+      const result = await actions[actionName]()
+      alert(result.message)
+      if (result.success) {
+        window.location.reload()
+      }
+    } catch (error) {
+      alert(`An unexpected error occurred while running ${actionName}.`)
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
+  const actionCards = [
     {
-      id: "initializeDatabase",
-      title: "Seed Database",
-      description: "Populate the database with 5 sample brands. Use this for initial setup.",
-      action: actions.initializeDatabase,
-    },
-    {
-      id: "autoAssignPdfs",
-      title: "Auto-assign PDFs",
-      description: "Match uploaded PDFs to form items based on filename.",
-      action: actions.autoAssignPdfs,
-    },
-    {
-      id: "runBrandSchemaCorrection",
-      title: "Run Full Schema Correction",
+      key: "runSubmissionsFKFix",
+      title: "1. Fix Admin Page Error",
       description:
-        "Fixes multiple potential schema issues and reloads the schema cache. Run this if you see unexpected errors.",
-      action: actions.runBrandSchemaCorrection,
+        "Run this if the admin page shows a 'Could not find a relationship' error. This script corrects the link between 'form_submissions' and 'brands' in the database.",
+      buttonText: "Fix Submissions Relationship",
+      confirmation:
+        "This will fix the relationship between submissions and brands. This is likely needed to fix the current admin page error. Run now?",
+      variant: "destructive",
+      isPrimary: true,
     },
     {
-      id: "runPrimaryColorFix",
-      title: "Fix Primary Color Column",
-      description: "Adds the 'primary_color' column to the brands table if it's missing.",
-      action: actions.runPrimaryColorFix,
+      key: "runBrandSchemaCorrection",
+      title: "2. Fix Common Schema Errors",
+      description:
+        "Fixes common column issues (like in the 'brands' table) and forces the API to reload its schema. This is a common solution for production discrepancies.",
+      buttonText: "Run Full Schema Correction",
+      confirmation: "This will attempt to fix common issues with the 'brands' table schema. Continue?",
     },
     {
-      id: "forceSchemaReload",
-      title: "Force Schema Reload",
-      description: "Manually reloads Supabase's schema cache. Useful if you've made manual DB changes.",
-      action: actions.forceSchemaReload,
+      key: "forceSchemaReload",
+      title: "3. Force Schema Reload",
+      description:
+        "A direct way to tell the API to refresh its cache. Use this if you've manually changed the DB and don't see the changes.",
+      buttonText: "Reload Schema",
+      confirmation: "This will force the API to reload its database schema. Continue?",
+    },
+    {
+      key: "initializeDatabase",
+      title: "Initialize Database",
+      description:
+        "Wipes all data and creates 5 blank brands. Use this for a fresh start. This is a destructive action.",
+      buttonText: "Initialize & Reset",
+      confirmation:
+        "Are you sure you want to initialize the database? This will delete ALL existing data and cannot be undone.",
+      variant: "destructive",
     },
   ]
-
-  const handleAction = async (action: Action) => {
-    setLoading(action.id)
-    setResult(null)
-    const res = await action.action()
-    setResult(res)
-    setLoading(null)
-  }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>System Actions</CardTitle>
+        <CardTitle>System Maintenance</CardTitle>
         <CardDescription>
-          Run administrative tasks and database maintenance operations. Use with caution.
+          Use these actions for database setup and to resolve common errors. Start from the top if you're seeing issues.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {result && (
-          <Alert variant={result.success ? "default" : "destructive"}>
-            <Terminal className="h-4 w-4" />
-            <AlertTitle>{result.success ? "Success" : "Error"}</AlertTitle>
-            <AlertDescription>{result.message}</AlertDescription>
-          </Alert>
-        )}
-        <div className="grid gap-4 md:grid-cols-2">
-          {systemActions.map((item) => (
-            <div key={item.id} className="p-4 border rounded-lg flex items-center justify-between gap-4">
-              <div className="flex-1">
-                <h3 className="font-semibold">{item.title}</h3>
-                <p className="text-sm text-muted-foreground">{item.description}</p>
-              </div>
-              <Button onClick={() => handleAction(item)} disabled={!!loading} variant="outline" className="w-24">
-                {loading === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Run"}
-              </Button>
+      <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {actionCards.map((card) => (
+          <Card
+            key={card.key}
+            className={`p-4 flex flex-col justify-between ${card.isPrimary ? "border-red-500 border-2" : ""}`}
+          >
+            <div>
+              <h3 className={`font-semibold ${card.isPrimary ? "text-red-700" : ""}`}>{card.title}</h3>
+              <p className="text-sm text-muted-foreground mt-1">{card.description}</p>
             </div>
-          ))}
-        </div>
+            <Button
+              onClick={() => handleRunAction(card.key as keyof SystemActionsType, card.confirmation)}
+              disabled={!!loadingAction}
+              variant={card.variant as any}
+              className={`mt-4 ${card.isPrimary ? "bg-red-600 hover:bg-red-700 text-white" : ""}`}
+            >
+              {loadingAction === card.key ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Database className="mr-2 h-4 w-4" />
+              )}
+              {loadingAction === card.key ? "Running..." : card.buttonText}
+            </Button>
+          </Card>
+        ))}
       </CardContent>
     </Card>
   )

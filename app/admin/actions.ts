@@ -1,7 +1,6 @@
 "use server"
 
-import { createAdminClient } from "@/utils/supabase/server"
-import initializeDatabaseFunction from "@/lib/seed-database"
+import { createClient } from "@/utils/supabase/server"
 import { promises as fs } from "fs"
 import path from "path"
 import { revalidatePath } from "next/cache"
@@ -9,62 +8,75 @@ import * as cheerio from "cheerio"
 import { generateObject } from "ai"
 import { xai } from "@ai-sdk/xai"
 import { z } from "zod"
-import type { ClinicLocation } from "@/lib/types"
+import type { ClinicLocation, Brand, SystemAction } from "@/lib/types"
 import { nanoid } from "nanoid"
 import { put } from "@vercel/blob"
+import { fetchAndUploadLogo, scrapeWebsiteForData } from "@/lib/scraping"
+import { neon } from "@neondatabase/serverless"
 
-async function executeSqlFile(filePath: string) {
-  const supabase = createAdminClient()
-  const sql = await fs.readFile(path.join(process.cwd(), filePath), "utf8")
-  const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
-  if (error) throw error
+async function executeSqlFile(filePath: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const supabase = createClient()
+    const sql = await fs.readFile(path.join(process.cwd(), filePath), "utf8")
+    const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
+    if (error) throw error
+    return { success: true, message: "SQL script executed successfully." }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    console.error(`Error executing ${filePath}:`, errorMessage)
+    return { success: false, message: `Failed to execute SQL script: ${errorMessage}` }
+  }
 }
 
 export async function createAdminTables() {
-  try {
-    await executeSqlFile("scripts/create-admin-tables.sql")
-    return { success: true, message: "Admin tables created successfully!" }
-  } catch (error: any) {
-    console.error("Error creating admin tables:", error)
-    return { success: false, message: `Failed to create admin tables: ${error.message}` }
-  }
+  return executeSqlFile("scripts/create-admin-tables.sql")
 }
 
 export async function initializeDatabase() {
-  try {
-    await initializeDatabaseFunction()
-    revalidatePath("/admin")
-    return { success: true, message: "Database initialized successfully with 5 brands!" }
-  } catch (error: any) {
-    console.error("Error initializing database:", error)
-    return { success: false, message: `Failed to initialize database: ${error.message}` }
-  }
+  return executeSqlFile("scripts/create-tables.sql")
 }
 
 export async function autoAssignPdfs() {
-  const supabase = createAdminClient()
+  return executeSqlFile("scripts/00-create-rpc-function.sql")
+}
+
+export async function runSchemaV5Update() {
+  return executeSqlFile("scripts/update-schema-v5.sql")
+}
+
+export async function forceSchemaReload() {
+  return executeSqlFile("scripts/force-schema-reload.sql")
+}
+
+export async function runBrandSchemaCorrection() {
+  return executeSqlFile("scripts/correct-brands-schema.sql")
+}
+
+export async function runPrimaryColorFix() {
+  return executeSqlFile("scripts/fix-primary-color-issue.sql")
+}
+
+export async function runSubmissionsFKFix() {
+  return executeSqlFile("scripts/fix-submissions-fk.sql")
+}
+
+export async function fetchWebsiteData(url: string) {
   try {
-    const { data: files, error: filesError } = await supabase.from("uploaded_files").select("original_name, url")
-    if (filesError) throw filesError
-
-    const { data: items, error: itemsError } = await supabase
-      .from("product_items")
-      .select("id, code")
-      .is("sample_link", null)
-    if (itemsError) throw itemsError
-
-    let assignments = 0
-    for (const item of items) {
-      const matchingFile = files.find((file) => file.original_name.toUpperCase().startsWith(item.code.toUpperCase()))
-      if (matchingFile) {
-        await supabase.from("product_items").update({ sample_link: matchingFile.url }).eq("id", item.id)
-        assignments++
-      }
+    const data = await scrapeWebsiteForData(url)
+    let logoResult = null
+    if (data.logoUrl) {
+      logoResult = await fetchAndUploadLogo(data.logoUrl, url)
     }
-    revalidatePath("/admin")
-    return { success: true, message: `Auto-assigned ${assignments} PDF links.` }
-  } catch (error: any) {
-    return { success: false, message: `Failed to auto-assign PDFs: ${error.message}` }
+    return {
+      success: true,
+      data: {
+        ...data,
+        logo: logoResult,
+      },
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return { success: false, error: errorMessage }
   }
 }
 
@@ -106,7 +118,7 @@ export async function importForm(
   }
 
   try {
-    const supabase = createAdminClient()
+    const supabase = createClient()
     const $ = cheerio.load(finalHtmlCode)
 
     // Clean up the HTML to send less data to the AI
@@ -231,7 +243,7 @@ export async function uploadLogoFromUrl(
       contentType: contentType,
     })
 
-    const supabase = createAdminClient()
+    const supabase = createClient()
     const { data: uploadedFile, error } = await supabase
       .from("uploaded_files")
       .insert({
@@ -328,48 +340,119 @@ export async function fetchBrandDataFromUrl(
   }
 }
 
-export async function runSchemaV5Update() {
+export async function getDashboardData() {
+  const supabase = createClient()
   try {
-    await executeSqlFile("scripts/update-schema-v5.sql")
-    return { success: true, message: "Schema updated successfully for relative URLs!" }
-  } catch (error: any) {
-    console.error("Error running schema v5 update:", error)
-    return { success: false, message: `Failed to update schema: ${error.message}` }
+    const [{ data: brands, error: brandsError }, { data: submissions, error: submissionsError }] = await Promise.all([
+      supabase.from("brands").select("*, clinic_locations(*)").order("name", { ascending: true }),
+      supabase.from("form_submissions").select("*, brands(name, slug)").order("created_at", { ascending: false }),
+    ])
+
+    if (brandsError) throw brandsError
+    if (submissionsError) throw submissionsError
+
+    return { brands, submissions }
+  } catch (error) {
+    console.error("Error loading dashboard data", error)
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return { error: `There was a problem fetching initial data from the database. ${errorMessage}` }
   }
 }
 
-export async function forceSchemaReload() {
+export async function fetchBrandData(url: string, brandSlug: string) {
   try {
-    await executeSqlFile("scripts/force-schema-reload.sql")
-    return { success: true, message: "Schema cache reloaded successfully! Please try your previous action again." }
-  } catch (error: any) {
-    console.error("Error forcing schema reload:", error)
-    return { success: false, message: `Failed to reload schema: ${error.message}` }
-  }
-}
+    const [scrapedData, logoUrl] = await Promise.all([scrapeWebsiteForData(url), fetchAndUploadLogo(url, brandSlug)])
 
-export async function runBrandSchemaCorrection() {
-  try {
-    await executeSqlFile("scripts/correct-brands-schema.sql")
+    const locations = scrapedData.locations.map((loc) => ({ name: loc, address: loc }))
+
     return {
       success: true,
-      message: "Brands table schema corrected and cache reloaded successfully! The page should now work correctly.",
+      data: {
+        name: scrapedData.title,
+        logo_url: logoUrl,
+        locations: locations,
+      },
     }
-  } catch (error: any) {
-    console.error("Error correcting brands schema:", error)
-    return { success: false, message: `Failed to correct schema: ${error.message}` }
+  } catch (error) {
+    console.error("Error fetching brand data:", error)
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return { success: false, error: `Failed to fetch data from URL: ${errorMessage}` }
   }
 }
 
-export async function runPrimaryColorFix() {
+export async function saveBrand(
+  brandData: Omit<Brand, "id" | "created_at" | "slug"> & {
+    id?: number
+    slug?: string
+    locations: Omit<ClinicLocation, "id" | "brand_id">[]
+  },
+) {
+  const supabase = createClient()
+
+  const { id, locations, ...brandFields } = brandData
+
   try {
-    await executeSqlFile("scripts/fix-primary-color-issue.sql")
-    return {
-      success: true,
-      message: "Schema fixed and cache reloaded. The 'primary_color' error should now be resolved.",
+    let brandResult
+    let brandId: number
+    let brandSlug: string
+
+    if (id) {
+      // Update existing brand
+      const { data, error } = await supabase.from("brands").update(brandFields).eq("id", id).select().single()
+
+      if (error) throw error
+      brandResult = data
+      brandId = brandResult.id
+      brandSlug = brandResult.slug
+    } else {
+      // Create new brand
+      const { data, error } = await supabase.from("brands").insert(brandFields).select().single()
+
+      if (error) throw error
+      brandResult = data
+      brandId = brandResult.id
+      brandSlug = brandResult.slug
     }
-  } catch (error: any) {
-    console.error("Error running primary color fix:", error)
-    return { success: false, message: `Failed to run fix: ${error.message}` }
+
+    // Delete existing locations for this brand to resync
+    const { error: deleteError } = await supabase.from("clinic_locations").delete().eq("brand_id", brandId)
+    if (deleteError) throw deleteError
+
+    // Insert new locations if any
+    if (locations && locations.length > 0) {
+      const locationsToInsert = locations.map((loc) => ({
+        ...loc,
+        brand_id: brandId,
+      }))
+      const { error: insertError } = await supabase.from("clinic_locations").insert(locationsToInsert)
+      if (insertError) throw insertError
+    }
+
+    revalidatePath("/admin")
+    revalidatePath(`/forms/${brandSlug}`)
+    return { success: true, data: brandResult }
+  } catch (error) {
+    console.error("Error saving brand:", error)
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return { success: false, error: `Failed to save brand: ${errorMessage}` }
+  }
+}
+
+export async function runSystemAction(action: SystemAction) {
+  if (!process.env.POSTGRES_URL) {
+    return { success: false, error: "Database URL not configured." }
+  }
+
+  try {
+    const sql = neon(process.env.POSTGRES_URL)
+    const query = action.query
+    await sql.unsafe(query)
+
+    revalidatePath("/admin")
+    return { success: true, message: `${action.name} executed successfully.` }
+  } catch (error) {
+    console.error(`Error executing system action "${action.name}":`, error)
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return { success: false, error: `Failed to execute action: ${errorMessage}` }
   }
 }
