@@ -89,12 +89,12 @@ function UploadDialog({
           <DialogDescription>Select a file and optionally assign it to a brand.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
-          <div>
+          <div onPointerDown={(e) => e.stopPropagation()}>
             <Label htmlFor="file-upload">File</Label>
             <Input id="file-upload" type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
           </div>
           {!defaultBrandId && (
-            <div>
+            <div onPointerDown={(e) => e.stopPropagation()}>
               <Label htmlFor="brand-select">Assign to Brand (optional)</Label>
               <Select value={brandId || "none"} onValueChange={(value) => setBrandId(value === "none" ? null : value)}>
                 <SelectTrigger id="brand-select">
