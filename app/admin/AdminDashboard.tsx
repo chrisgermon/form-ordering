@@ -1,31 +1,24 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { BrandGrid } from "@/components/brand-grid"
+import { BrandGrid } from "./BrandGrid"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { BrandForm } from "./BrandForm"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubmissionsTable } from "./SubmissionsTable"
-import { SystemActions } from "./SystemActions"
-import type { Brand, UploadedFile, FormSubmission, SystemActions as SystemActionsType } from "@/lib/types"
+import type { Brand, UploadedFile, FormSubmission } from "@/lib/types"
 
 interface AdminDashboardProps {
   initialBrands: Brand[]
   initialFiles: UploadedFile[]
   initialSubmissions: FormSubmission[]
-  systemActions: SystemActionsType
+  error: string | null
 }
 
-export function AdminDashboard({
-  initialBrands,
-  initialFiles,
-  initialSubmissions,
-  systemActions,
-}: AdminDashboardProps) {
+export function AdminDashboard({ initialBrands, initialFiles, initialSubmissions, error }: AdminDashboardProps) {
   const [brands, setBrands] = useState<Brand[]>(initialBrands)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>(initialFiles)
-  const [submissions, setSubmissions] = useState<FormSubmission[]>(initialSubmissions)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
 
@@ -57,7 +50,7 @@ export function AdminDashboard({
 
   const handleDeleteBrand = async (brandId: string) => {
     if (confirm("Are you sure you want to delete this brand and all its data? This action cannot be undone.")) {
-      const response = await fetch(`/api/admin/brands/${brandId}`, { method: "DELETE" })
+      const response = await fetch(`/api/admin/brands?id=${brandId}`, { method: "DELETE" })
       if (response.ok) {
         await fetchBrands()
       } else {
@@ -68,7 +61,7 @@ export function AdminDashboard({
 
   const handleSaveBrand = async (data: any) => {
     const isNew = !data.id
-    const url = isNew ? "/api/admin/brands" : `/api/admin/brands/${data.id}`
+    const url = isNew ? "/api/admin/brands" : `/api/admin/brands`
     const method = isNew ? "POST" : "PUT"
 
     const response = await fetch(url, {
@@ -93,20 +86,23 @@ export function AdminDashboard({
         <Button onClick={handleAddBrand}>Add New Brand</Button>
       </header>
 
+      {error && (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+          <p className="font-bold">Dashboard Error</p>
+          <p>{error}</p>
+        </div>
+      )}
+
       <Tabs defaultValue="brands">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="brands">Brands</TabsTrigger>
           <TabsTrigger value="submissions">Submissions</TabsTrigger>
-          <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
         <TabsContent value="brands" className="mt-4">
           <BrandGrid brands={brands} onEdit={handleEditBrand} onDelete={handleDeleteBrand} />
         </TabsContent>
         <TabsContent value="submissions" className="mt-4">
-          <SubmissionsTable submissions={submissions} />
-        </TabsContent>
-        <TabsContent value="system" className="mt-4">
-          <SystemActions actions={systemActions} />
+          <SubmissionsTable submissions={initialSubmissions} />
         </TabsContent>
       </Tabs>
 
