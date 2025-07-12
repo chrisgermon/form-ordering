@@ -1,58 +1,176 @@
 "use server"
 
 import { createAdminClient } from "@/utils/supabase/server"
-import { promises as fs } from "fs"
-import path from "path"
 import { revalidatePath } from "next/cache"
-import type { Brand } from "@/lib/types"
+import type { ClinicLocation } from "@/lib/types"
 import { nanoid } from "nanoid"
 import { put } from "@vercel/blob"
 import { scrapeWebsiteForData } from "@/lib/scraping"
+import path from "path"
 
-async function executeSqlFile(filePath: string): Promise<{ success: boolean; message: string }> {
+// New helper function that takes SQL as a string
+async function executeSql(sql: string): Promise<{ success: boolean; message: string }> {
   try {
     const supabase = createAdminClient()
-    const sql = await fs.readFile(path.join(process.cwd(), filePath), "utf8")
+    // The RPC function 'execute_sql' must exist in the database.
+    // The 'autoAssignPdfs' action (a misnomer) creates it.
     const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
     if (error) throw error
     return { success: true, message: "SQL script executed successfully." }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    console.error(`Error executing ${filePath}:`, errorMessage)
+    console.error(`Error executing SQL:`, errorMessage)
     return { success: false, message: `Failed to execute SQL script: ${errorMessage}` }
   }
 }
 
 export async function createAdminTables() {
-  return executeSqlFile("scripts/create-admin-tables.sql")
+  const sql = `
+    CREATE TABLE IF NOT EXISTS brands (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        logo TEXT,
+        emails TEXT[],
+        clinic_locations JSONB,
+        active BOOLEAN DEFAULT true,
+        primary_color TEXT,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS product_sections (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        sort_order INTEGER,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS product_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        section_id UUID REFERENCES product_sections(id) ON DELETE CASCADE,
+        brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        code TEXT,
+        description TEXT,
+        field_type TEXT NOT NULL,
+        options JSONB,
+        placeholder TEXT,
+        is_required BOOLEAN DEFAULT false,
+        sample_link TEXT,
+        sort_order INTEGER,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS submissions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        brand_id UUID REFERENCES brands(id) ON DELETE SET NULL,
+        ordered_by TEXT,
+        email TEXT,
+        order_date DATE,
+        deliver_to TEXT,
+        bill_to TEXT,
+        items JSONB,
+        status TEXT DEFAULT 'pending',
+        ip_address TEXT,
+        pdf_url TEXT,
+        email_response TEXT,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS uploaded_files (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        brand_id UUID REFERENCES brands(id) ON DELETE SET NULL,
+        filename TEXT NOT NULL,
+        original_name TEXT,
+        url TEXT NOT NULL,
+        pathname TEXT,
+        content_type TEXT,
+        size BIGINT,
+        uploaded_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_sections_brand_id ON product_sections(brand_id);
+    CREATE INDEX IF NOT EXISTS idx_product_items_section_id ON product_items(section_id);
+    CREATE INDEX IF NOT EXISTS idx_product_items_brand_id ON product_items(brand_id);
+    CREATE INDEX IF NOT EXISTS idx_submissions_brand_id ON submissions(brand_id);
+    CREATE INDEX IF NOT EXISTS idx_uploaded_files_brand_id ON uploaded_files(brand_id);
+    CREATE INDEX IF NOT EXISTS idx_brands_slug ON brands(slug);
+    NOTIFY pgrst, 'reload schema';
+  `
+  return executeSql(sql)
 }
 
 export async function initializeDatabase() {
-  return executeSqlFile("scripts/create-tables.sql")
+  const sql = `
+    TRUNCATE TABLE brands, product_sections, product_items, submissions, uploaded_files RESTART IDENTITY;
+    INSERT INTO brands (name, slug, emails) VALUES
+    ('Focus Radiology', 'focus-radiology', ARRAY['orders@focusradiology.com.au']),
+    ('Vision Radiology', 'vision-radiology', ARRAY['orders@visionradiology.com.au']),
+    ('Apex Radiology', 'apex-radiology', ARRAY['orders@apexradiology.com.au']),
+    ('Horizon Radiology', 'horizon-radiology', ARRAY['orders@horizonradiology.com.au']),
+    ('Pulse Radiology', 'pulse-radiology', ARRAY['orders@pulseradiology.com.au']);
+    NOTIFY pgrst, 'reload schema';
+    `
+  return executeSql(sql)
 }
 
+// This action creates the RPC function needed for other actions to run SQL.
 export async function autoAssignPdfs() {
-  return executeSqlFile("scripts/00-create-rpc-function.sql")
+  const sql = `
+    CREATE OR REPLACE FUNCTION execute_sql(sql_query TEXT)
+    RETURNS void AS $$
+    BEGIN
+        EXECUTE sql_query;
+    END;
+    $$ LANGUAGE plpgsql;
+    `
+  return executeSql(sql)
 }
 
 export async function runSchemaV5Update() {
-  return executeSqlFile("scripts/update-schema-v5.sql")
+  const sql = `
+    ALTER TABLE uploaded_files
+    ADD COLUMN IF NOT EXISTS pathname TEXT;
+    NOTIFY pgrst, 'reload schema';
+    `
+  return executeSql(sql)
 }
 
 export async function forceSchemaReload() {
-  return executeSqlFile("scripts/force-schema-reload.sql")
+  const sql = `NOTIFY pgrst, 'reload schema';`
+  return executeSql(sql)
 }
 
 export async function runBrandSchemaCorrection() {
-  return executeSqlFile("scripts/correct-brands-schema.sql")
+  const sql = `
+    ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS clinic_locations JSONB;
+    ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS emails TEXT[];
+    ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
+    ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+    ALTER TABLE public.brands DROP CONSTRAINT IF EXISTS brands_slug_key;
+    ALTER TABLE public.brands ADD CONSTRAINT brands_slug_key UNIQUE (slug);
+    NOTIFY pgrst, 'reload schema';
+    `
+  return executeSql(sql)
 }
 
 export async function runPrimaryColorFix() {
-  return executeSqlFile("scripts/fix-primary-color-issue.sql")
+  const sql = `
+    ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS primary_color TEXT;
+    NOTIFY pgrst, 'reload schema';
+    `
+  return executeSql(sql)
 }
 
 export async function runSubmissionsFKFix() {
-  return executeSqlFile("scripts/fix-submissions-fk.sql")
+  const sql = `
+    ALTER TABLE public.submissions ADD COLUMN IF NOT EXISTS brand_id UUID;
+    ALTER TABLE public.submissions DROP CONSTRAINT IF EXISTS form_submissions_brand_id_fkey;
+    ALTER TABLE public.submissions ADD CONSTRAINT form_submissions_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES public.brands(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_form_submissions_brand_id ON public.submissions(brand_id);
+    NOTIFY pgrst, 'reload schema';
+    `
+  return executeSql(sql)
 }
 
 export async function fetchBrandData(url: string, brandSlug: string) {
@@ -100,31 +218,49 @@ async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | 
   }
 }
 
-export async function saveBrand(brandData: Omit<Brand, "id" | "created_at" | "updated_at"> & { id?: string }) {
+export async function saveBrand(formData: FormData) {
   const supabase = createAdminClient()
-  const { id, clinic_locations, ...brandFields } = brandData
+  const id = formData.get("id") as string | null
+  const name = formData.get("name") as string
+  const slug = formData.get("slug") as string
+  const logo = formData.get("logo") as string
+  const emails = (formData.get("emails") as string)
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean)
+  const clinic_locations = JSON.parse((formData.get("clinic_locations") as string) || "[]") as ClinicLocation[]
 
-  try {
-    let savedBrand: Brand
-
-    if (id) {
-      const { data, error } = await supabase.from("brands").update(brandFields).eq("id", id).select().single()
-      if (error) throw error
-      savedBrand = data
-    } else {
-      const { data, error } = await supabase.from("brands").insert(brandFields).select().single()
-      if (error) throw error
-      savedBrand = data
-    }
-
-    revalidatePath("/admin")
-    revalidatePath(`/forms/${savedBrand.slug}`)
-    return { success: true, data: savedBrand }
-  } catch (error) {
-    console.error("Error saving brand:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return { success: false, error: `Failed to save brand: ${errorMessage}` }
+  if (!name || !slug) {
+    return { success: false, error: "Brand name and slug are required." }
   }
+
+  const brandData = {
+    name,
+    slug,
+    logo,
+    emails,
+    clinic_locations,
+    updated_at: new Date().toISOString(),
+  }
+
+  let error
+  if (id) {
+    const { error: updateError } = await supabase.from("brands").update(brandData).eq("id", id)
+    error = updateError
+  } else {
+    const { error: insertError } = await supabase
+      .from("brands")
+      .insert({ ...brandData, created_at: new Date().toISOString() })
+    error = insertError
+  }
+
+  if (error) {
+    console.error("Error saving brand:", error)
+    return { success: false, error: error.message }
+  }
+
+  revalidatePath("/admin")
+  return { success: true }
 }
 
 export async function importForm(
@@ -132,9 +268,6 @@ export async function importForm(
   brandSlug: string,
   { htmlCode, url }: { htmlCode?: string; url?: string },
 ) {
-  // The AI SDK package was causing build errors and has been removed.
-  // This function needs to be reimplemented if AI functionality is desired.
-  // For now, it will return a placeholder message.
   console.log("Attempted to import form for brand:", brandId, "from url:", url)
   return {
     success: false,
