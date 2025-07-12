@@ -175,6 +175,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
               render={({ field }) => (
                 <Select onValueChange={field.onChange} value={field.value || "default-logo"}>
                   {" "}
+                  {/* Updated default value to be a non-empty string */}{" "}
                   {/* Updated default value to be a non-empty string */}
                   <SelectTrigger>
                     <SelectValue placeholder="Select a logo from brand files" />
