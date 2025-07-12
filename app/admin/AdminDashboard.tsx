@@ -62,6 +62,15 @@ export function AdminDashboard({ initialBrands, initialSubmissions, initialFiles
     }
   }
 
+  const handleSubmissionsRefresh = async () => {
+    toast.info("Refreshing submissions...")
+    // This is a client-side action, so we trigger the API route to revalidate its cache
+    // and then fetch the new data.
+    await fetch("/api/revalidate?path=/api/admin/submissions", { method: "POST" })
+    await fetchSubmissions()
+    toast.success("Submissions refreshed!")
+  }
+
   const handleAddBrand = () => {
     setSelectedBrand(null)
     setIsFormOpen(true)
@@ -121,7 +130,7 @@ export function AdminDashboard({ initialBrands, initialSubmissions, initialFiles
         <div className="flex items-center gap-2">
           <Button onClick={handleRefresh} variant="outline">
             <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh Data
+            Refresh All Data
           </Button>
           <Button onClick={handleAddBrand}>Add New Brand</Button>
         </div>
@@ -137,7 +146,7 @@ export function AdminDashboard({ initialBrands, initialSubmissions, initialFiles
           <BrandGrid brands={brands} onEdit={handleEditBrand} onDelete={handleDeleteBrand} />
         </TabsContent>
         <TabsContent value="submissions" className="mt-4">
-          <SubmissionsTable submissions={submissions} />
+          <SubmissionsTable submissions={submissions} onRefresh={handleSubmissionsRefresh} />
         </TabsContent>
         <TabsContent value="files" className="mt-4">
           <FileManager initialFiles={uploadedFiles} brands={brands} onFilesUpdate={fetchFiles} />
