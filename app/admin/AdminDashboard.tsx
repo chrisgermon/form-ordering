@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { BrandForm } from "./BrandForm"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubmissionsTable } from "./SubmissionsTable"
+import { FileManager } from "./FileManager"
 import type { Brand, UploadedFile, FormSubmission } from "@/lib/types"
 
 interface AdminDashboardProps {
@@ -94,9 +95,10 @@ export function AdminDashboard({ initialBrands, initialFiles, initialSubmissions
       )}
 
       <Tabs defaultValue="brands">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="brands">Brands</TabsTrigger>
           <TabsTrigger value="submissions">Submissions</TabsTrigger>
+          <TabsTrigger value="files">Files</TabsTrigger>
         </TabsList>
         <TabsContent value="brands" className="mt-4">
           <BrandGrid brands={brands} onEdit={handleEditBrand} onDelete={handleDeleteBrand} />
@@ -104,16 +106,16 @@ export function AdminDashboard({ initialBrands, initialFiles, initialSubmissions
         <TabsContent value="submissions" className="mt-4">
           <SubmissionsTable submissions={initialSubmissions} />
         </TabsContent>
+        <TabsContent value="files" className="mt-4">
+          <FileManager initialFiles={uploadedFiles} brands={brands} onFilesUpdate={fetchFiles} />
+        </TabsContent>
       </Tabs>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-3xl h-[90vh] flex flex-col">
+        <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{selectedBrand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
-            <DialogDescription>
-              Fill in the details for the brand below. You can use the AI fetcher to automatically populate fields from
-              a website.
-            </DialogDescription>
+            <DialogDescription>Manage brand settings and files below.</DialogDescription>
           </DialogHeader>
           <BrandForm
             brand={selectedBrand}

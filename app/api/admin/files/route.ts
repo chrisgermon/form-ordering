@@ -1,14 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/utils/supabase/server"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = createAdminClient()
+    const { searchParams } = new URL(request.url)
+    const brandId = searchParams.get("brandId")
 
-    const { data: files, error } = await supabase
-      .from("uploaded_files")
-      .select("*, brands(name)")
-      .order("uploaded_at", { ascending: false })
+    let query = supabase.from("uploaded_files").select("*, brands(name)").order("uploaded_at", { ascending: false })
+
+    if (brandId && brandId !== "global") {
+      query = query.eq("brand_id", brandId)
+    }
+
+    const { data: files, error } = await query
 
     if (error) throw error
 
@@ -28,6 +33,8 @@ export async function DELETE(request: NextRequest) {
     if (!id) {
       return NextResponse.json({ error: "File ID is required" }, { status: 400 })
     }
+
+    // TODO: Also delete from Vercel Blob storage
 
     const { error } = await supabase.from("uploaded_files").delete().eq("id", id)
 
