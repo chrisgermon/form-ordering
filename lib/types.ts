@@ -40,7 +40,7 @@ export interface FormSubmission {
 export interface SystemActions {
   createAdminTables: () => Promise<{ success: boolean; message: string }>
   initializeDatabase: () => Promise<{ success: boolean; message: string }>
-  autoAssignPdfs: () => Promise<{ success: boolean; message: string }>
+  createExecuteSqlFunction: () => Promise<{ success: boolean; message: string }>
   runSchemaV5Update: () => Promise<{ success: boolean; message: string }>
   forceSchemaReload: () => Promise<{ success: boolean; message: string }>
   runBrandSchemaCorrection: () => Promise<{ success: boolean; message: string }>

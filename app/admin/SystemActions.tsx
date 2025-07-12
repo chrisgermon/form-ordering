@@ -3,14 +3,14 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, Database } from "lucide-react"
+import { Loader2, Database, ShieldCheck } from "lucide-react"
 import type { SystemActions as SystemActionsType } from "@/lib/types"
 
 export function SystemActions({ actions }: { actions: SystemActionsType }) {
   const [loadingAction, setLoadingAction] = useState<string | null>(null)
 
-  const handleRunAction = async (actionName: keyof SystemActionsType, confirmation: string) => {
-    if (!confirm(confirmation)) return
+  const handleRunAction = async (actionName: keyof SystemActionsType, confirmation?: string) => {
+    if (confirmation && !confirm(confirmation)) return
     setLoadingAction(actionName)
     try {
       const result = await actions[actionName]()
@@ -27,41 +27,47 @@ export function SystemActions({ actions }: { actions: SystemActionsType }) {
 
   const actionCards = [
     {
+      key: "createExecuteSqlFunction",
+      title: "Step 0: Enable System Actions",
+      description:
+        "You must run this action once to enable all other system maintenance tasks. It installs a required helper function in your database.",
+      buttonText: "Enable System Actions",
+      confirmation:
+        "This will install a helper function in your database required for other actions. This is safe to run multiple times. Continue?",
+      variant: "default",
+      isPrimary: true,
+      Icon: ShieldCheck,
+    },
+    {
       key: "runSubmissionsFKFix",
-      title: "1. Fix Admin Page Error",
+      title: "Step 1: Fix Admin Page Error",
       description:
         "Run this if the admin page shows a 'Could not find a relationship' error. This script corrects the link between 'form_submissions' and 'brands' in the database.",
       buttonText: "Fix Submissions Relationship",
       confirmation:
         "This will fix the relationship between submissions and brands. This is likely needed to fix the current admin page error. Run now?",
       variant: "destructive",
-      isPrimary: true,
+      Icon: Database,
     },
     {
       key: "runBrandSchemaCorrection",
-      title: "2. Fix Common Schema Errors",
+      title: "Step 2: Fix Common Schema Errors",
       description:
         "Fixes common column issues (like in the 'brands' table) and forces the API to reload its schema. This is a common solution for production discrepancies.",
       buttonText: "Run Full Schema Correction",
       confirmation: "This will attempt to fix common issues with the 'brands' table schema. Continue?",
-    },
-    {
-      key: "forceSchemaReload",
-      title: "3. Force Schema Reload",
-      description:
-        "A direct way to tell the API to refresh its cache. Use this if you've manually changed the DB and don't see the changes.",
-      buttonText: "Reload Schema",
-      confirmation: "This will force the API to reload its database schema. Continue?",
+      Icon: Database,
     },
     {
       key: "initializeDatabase",
-      title: "Initialize Database",
+      title: "Initialize Database (Destructive)",
       description:
         "Wipes all data and creates 5 blank brands. Use this for a fresh start. This is a destructive action.",
       buttonText: "Initialize & Reset",
       confirmation:
         "Are you sure you want to initialize the database? This will delete ALL existing data and cannot be undone.",
       variant: "destructive",
+      Icon: Database,
     },
   ]
 
@@ -70,29 +76,32 @@ export function SystemActions({ actions }: { actions: SystemActionsType }) {
       <CardHeader>
         <CardTitle>System Maintenance</CardTitle>
         <CardDescription>
-          Use these actions for database setup and to resolve common errors. Start from the top if you're seeing issues.
+          Use these actions for database setup and to resolve common errors. Follow the steps in order if you're seeing
+          issues.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {actionCards.map((card) => (
           <Card
             key={card.key}
-            className={`p-4 flex flex-col justify-between ${card.isPrimary ? "border-red-500 border-2" : ""}`}
+            className={`p-4 flex flex-col justify-between ${
+              card.isPrimary ? "border-blue-500 border-2 shadow-lg" : ""
+            }`}
           >
             <div>
-              <h3 className={`font-semibold ${card.isPrimary ? "text-red-700" : ""}`}>{card.title}</h3>
+              <h3 className={`font-semibold ${card.isPrimary ? "text-blue-700" : ""}`}>{card.title}</h3>
               <p className="text-sm text-muted-foreground mt-1">{card.description}</p>
             </div>
             <Button
               onClick={() => handleRunAction(card.key as keyof SystemActionsType, card.confirmation)}
               disabled={!!loadingAction}
               variant={card.variant as any}
-              className={`mt-4 ${card.isPrimary ? "bg-red-600 hover:bg-red-700 text-white" : ""}`}
+              className={`mt-4 ${card.isPrimary ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}`}
             >
               {loadingAction === card.key ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <Database className="mr-2 h-4 w-4" />
+                <card.Icon className="mr-2 h-4 w-4" />
               )}
               {loadingAction === card.key ? "Running..." : card.buttonText}
             </Button>

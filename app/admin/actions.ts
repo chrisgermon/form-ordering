@@ -13,14 +13,44 @@ async function executeSql(sql: string): Promise<{ success: boolean; message: str
   try {
     const supabase = createAdminClient()
     // The RPC function 'execute_sql' must exist in the database.
-    // The 'autoAssignPdfs' action (a misnomer) creates it.
+    // The 'createExecuteSqlFunction' action creates it.
     const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
-    if (error) throw error
+    if (error) {
+      // Provide a more specific error message if the RPC function is missing
+      if (error.message.includes("function execute_sql(sql_query => text) does not exist")) {
+        return {
+          success: false,
+          message: "Database helper function is missing. Please run 'Enable System Actions' from the System tab first.",
+        }
+      }
+      throw error
+    }
     return { success: true, message: "SQL script executed successfully." }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
     console.error(`Error executing SQL:`, errorMessage)
     return { success: false, message: `Failed to execute SQL script: ${errorMessage}` }
+  }
+}
+
+// This action creates the RPC function needed for other actions to run SQL.
+export async function createExecuteSqlFunction() {
+  const supabase = createAdminClient()
+  const sql = `
+    CREATE OR REPLACE FUNCTION execute_sql(sql_query TEXT)
+    RETURNS void AS $$
+    BEGIN
+        EXECUTE sql_query;
+    END;
+    $$ LANGUAGE plpgsql;
+    `
+  try {
+    const { error } = await supabase.execute(sql)
+    if (error) throw error
+    return { success: true, message: "Helper function created successfully. You can now run other system actions." }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return { success: false, message: `Failed to create helper function: ${errorMessage}` }
   }
 }
 
@@ -110,19 +140,6 @@ export async function initializeDatabase() {
     ('Horizon Radiology', 'horizon-radiology', ARRAY['orders@horizonradiology.com.au']),
     ('Pulse Radiology', 'pulse-radiology', ARRAY['orders@pulseradiology.com.au']);
     NOTIFY pgrst, 'reload schema';
-    `
-  return executeSql(sql)
-}
-
-// This action creates the RPC function needed for other actions to run SQL.
-export async function autoAssignPdfs() {
-  const sql = `
-    CREATE OR REPLACE FUNCTION execute_sql(sql_query TEXT)
-    RETURNS void AS $$
-    BEGIN
-        EXECUTE sql_query;
-    END;
-    $$ LANGUAGE plpgsql;
     `
   return executeSql(sql)
 }
