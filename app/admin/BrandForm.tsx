@@ -57,7 +57,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     resolver: zodResolver(brandFormSchema),
     defaultValues: {
       name: "",
-      logo: "",
+      logo: "default-logo", // Use non-empty string as the default for "no logo"
       active: true,
       emails: [],
       clinicLocations: [],
@@ -75,7 +75,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     if (brand) {
       reset({
         name: brand.name,
-        logo: brand.logo || "",
+        logo: brand.logo || "default-logo", // Ensure null from DB becomes non-empty string for the form
         active: brand.active,
         emails: brand.emails.map((email) => ({ value: email })),
         clinicLocations: brand.clinic_locations || [],
@@ -83,7 +83,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     } else {
       reset({
         name: "",
-        logo: "",
+        logo: "default-logo",
         active: true,
         emails: [{ value: "" }],
         clinicLocations: [{ name: "", address: "", phone: "" }],
@@ -125,7 +125,8 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     const payload = {
       id: brand?.id,
       ...data,
-      logo: data.logo || null,
+      // Convert empty string back to null for the database, otherwise use the value.
+      logo: data.logo ? data.logo : null,
       emails: data.emails.map((e) => e.value).filter(Boolean),
     }
     await onSave(payload)
@@ -173,12 +174,15 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
               name="logo"
               control={control}
               render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value || "default-logo"}>
+                <Select
+                  onValueChange={field.onChange}
+                  value={field.value || "default-logo"} // Ensure value is always a non-empty string
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a logo from brand files" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default-logo">No Logo</SelectItem>
+                    <SelectItem value="default-logo">No Logo</SelectItem> {/* Use non-empty string for "No Logo" */}
                     {brandSpecificFiles
                       .filter((file) => file.content_type?.startsWith("image/"))
                       .map((file) => (
