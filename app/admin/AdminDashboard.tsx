@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react"
 import { BrandGrid } from "./BrandGrid"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { BrandForm } from "./BrandForm"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubmissionsTable } from "./SubmissionsTable"
@@ -110,6 +110,10 @@ export function AdminDashboard({ initialBrands, initialFiles, initialSubmissions
         <DialogContent className="max-w-3xl h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{selectedBrand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
+            <DialogDescription>
+              Fill in the details for the brand below. You can use the AI fetcher to automatically populate fields from
+              a website.
+            </DialogDescription>
           </DialogHeader>
           <BrandForm
             brand={selectedBrand}

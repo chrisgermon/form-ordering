@@ -8,12 +8,10 @@ export interface Brand {
   id: string
   name: string
   slug: string
-  logo: string
+  logo: string | null
   active: boolean
   emails: string[]
   clinic_locations: ClinicLocation[]
-  primary_color: string | null
-  secondary_color: string | null
   created_at: string
 }
 

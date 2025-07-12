@@ -8,7 +8,10 @@ async function getDashboardData() {
   const supabase = createAdminClient()
 
   try {
-    const brandsQuery = supabase.from("brands").select("*").order("name")
+    const brandsQuery = supabase
+      .from("brands")
+      .select("id, name, slug, logo, active, emails, clinic_locations, created_at")
+      .order("name")
     const submissionsQuery = supabase
       .from("submissions")
       .select("*, brands(name)")

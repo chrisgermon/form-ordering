@@ -19,7 +19,7 @@ import { fetchBrandData } from "./actions"
 
 const brandFormSchema = z.object({
   name: z.string().min(1, "Brand name is required"),
-  logo: z.string().optional(),
+  logo: z.string().nullable().optional(),
   active: z.boolean(),
   emails: z.array(z.object({ value: z.string().email("Invalid email address").or(z.literal("")) })),
   clinicLocations: z.array(
@@ -58,7 +58,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     resolver: zodResolver(brandFormSchema),
     defaultValues: {
       name: "",
-      logo: "default-logo.png", // Updated default value to be a non-empty string
+      logo: "",
       active: true,
       emails: [],
       clinicLocations: [],
@@ -76,7 +76,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     if (brand) {
       reset({
         name: brand.name,
-        logo: brand.logo || "default-logo.png", // Updated default value to be a non-empty string
+        logo: brand.logo || "",
         active: brand.active,
         emails: brand.emails.map((email) => ({ value: email })),
         clinicLocations: brand.clinic_locations || [],
@@ -84,7 +84,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     } else {
       reset({
         name: "",
-        logo: "default-logo.png", // Updated default value to be a non-empty string
+        logo: "",
         active: true,
         emails: [{ value: "" }],
         clinicLocations: [{ name: "", address: "", phone: "" }],
@@ -108,8 +108,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
         onLogoUpload() // Refresh file list to include the new logo
       }
       if (result.data.locations && result.data.locations.length > 0) {
-        removeLocation() // Clear existing locations
-        result.data.locations.forEach((loc) => appendLocation(loc))
+        setValue("clinicLocations", result.data.locations)
       }
       toast.success("Data fetched successfully!")
     } else {
@@ -192,15 +191,12 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
               name="logo"
               control={control}
               render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value || "default-logo.png"}>
-                  {" "}
-                  {/* Updated default value to be a non-empty string */}
+                <Select onValueChange={field.onChange} value={field.value || "default-logo"}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select an uploaded logo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default-logo.png">No Logo</SelectItem>{" "}
-                    {/* Updated default value to be a non-empty string */}
+                    <SelectItem value="default-logo">No Logo</SelectItem>
                     {uploadedFiles.map((file) => (
                       <SelectItem key={file.id} value={file.pathname}>
                         {file.original_name}

@@ -21,42 +21,22 @@ const ScrapedDataSchema = z.object({
 
 export type ScrapedData = z.infer<typeof ScrapedDataSchema>
 
-// Fallback simple scraper for when AI is not needed or fails
-function simpleScrape(html: string, url: string): ScrapedData {
-  const $ = cheerio.load(html)
-  const baseUrl = new URL(url).origin
-
-  const companyName = $("title").first().text() || $('meta[property="og:title"]').attr("content") || ""
-
-  let logoUrl: string | null = null
-  const logoSelectors = [
-    'meta[property="og:logo"]',
-    'meta[property="og:image"]',
-    'link[rel="apple-touch-icon"]',
-    'link[rel="shortcut icon"]',
-    'link[rel="icon"]',
-    'img[id*="logo"]',
-    'img[class*="logo"]',
-    "header img",
-  ]
-
-  for (const selector of logoSelectors) {
-    const potentialLogoSrc = $(selector).attr("content") || $(selector).attr("src") || $(selector).attr("href")
-    if (potentialLogoSrc) {
-      try {
-        logoUrl = new URL(potentialLogoSrc, baseUrl).href
-        break
-      } catch (e) {
-        /* ignore invalid urls */
-      }
+/**
+ * Extracts a JSON object from a string that might contain other text.
+ * @param text The string to extract JSON from.
+ * @returns The parsed JSON object.
+ */
+function extractJson(text: string): any {
+  const match = text.match(/\{[\s\S]*\}/)
+  if (match) {
+    try {
+      return JSON.parse(match[0])
+    } catch (e) {
+      console.error("Failed to parse extracted JSON:", e)
+      throw new Error("AI returned invalid JSON.")
     }
   }
-
-  return {
-    companyName,
-    logoUrl,
-    locations: [], // Simple scraper won't find locations
-  }
+  throw new Error("No JSON object found in AI response.")
 }
 
 export async function scrapeWebsiteWithAI(url: string): Promise<ScrapedData> {
@@ -70,15 +50,14 @@ export async function scrapeWebsiteWithAI(url: string): Promise<ScrapedData> {
 
     // Clean up the HTML to send to the AI - remove scripts, styles, etc.
     $("script, style, link[rel='stylesheet'], noscript, footer, header").remove()
-    const mainContent = $("body").html()
+    const mainContent = $("body").text().replace(/\s\s+/g, " ").trim()
 
     if (!mainContent || mainContent.length < 100) {
-      console.log("Content too short, using simple scraper as fallback.")
-      return simpleScrape(html, url)
+      throw new Error("Website content is too short or could not be read. Please check the URL.")
     }
 
     const prompt = `
-      Analyze the following HTML content from the website at ${url}. Your task is to extract the company name, a full URL to their primary logo, and a list of their physical clinic/business locations.
+      Analyze the following text content from the website at ${url}. Your task is to extract the company name, a full URL to their primary logo, and a list of their physical clinic/business locations.
 
       For each location, provide its name, full address, and phone number. The location name should be the name of the branch or clinic (e.g., "Downtown Clinic").
 
@@ -93,9 +72,9 @@ export async function scrapeWebsiteWithAI(url: string): Promise<ScrapedData> {
         ]
       }
 
-      If you cannot find a specific piece of information (e.g., no phone number for a location), the value should be null. If no locations are found, "locations" should be an empty array [].
+      If you cannot find a specific piece of information (e.g., no phone number for a location), the value should be null. If no locations are found, "locations" should be an empty array []. The logoUrl must be an absolute URL.
 
-      HTML Content to analyze:
+      Website Text Content to analyze:
       ${mainContent.substring(0, 18000)}
     `
 
@@ -105,8 +84,7 @@ export async function scrapeWebsiteWithAI(url: string): Promise<ScrapedData> {
       maxTokens: 2048,
     })
 
-    const jsonString = text.trim()
-    const parsedData = JSON.parse(jsonString)
+    const parsedData = extractJson(text)
     const validatedData = ScrapedDataSchema.parse(parsedData)
 
     // Post-process logo URL to be absolute
