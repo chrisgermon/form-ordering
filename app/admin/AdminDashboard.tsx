@@ -9,18 +9,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubmissionsTable } from "./SubmissionsTable"
 import { FileManager } from "./FileManager"
 import type { Brand, UploadedFile, FormSubmission } from "@/lib/types"
+import { revalidateAllData } from "./actions"
+import { toast } from "sonner"
+import { RefreshCw } from "lucide-react"
 
 interface AdminDashboardProps {
   brands: Brand[]
   submissions: FormSubmission[]
   files: UploadedFile[]
+  error: string | null
 }
 
-export function AdminDashboard({
-  brands: initialBrands,
-  submissions: initialSubmissions,
-  files: initialFiles,
-}: AdminDashboardProps) {
+export function AdminDashboard({ initialBrands, initialSubmissions, initialFiles, error }: AdminDashboardProps) {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
   const [brands, setBrands] = useState<Brand[]>(initialBrands || [])
@@ -43,6 +43,25 @@ export function AdminDashboard({
     }
   }, [])
 
+  const fetchSubmissions = useCallback(async () => {
+    const response = await fetch("/api/admin/submissions")
+    if (response.ok) {
+      const data = await response.json()
+      setSubmissions(data)
+    }
+  }, [])
+
+  const handleRefresh = async () => {
+    toast.info("Revalidating and refreshing data...")
+    const result = await revalidateAllData()
+    if (result.success) {
+      await Promise.all([fetchBrands(), fetchFiles(), fetchSubmissions()])
+      toast.success("Data refreshed successfully!")
+    } else {
+      toast.error("Failed to refresh data.")
+    }
+  }
+
   const handleAddBrand = () => {
     setSelectedBrand(null)
     setIsFormOpen(true)
@@ -57,9 +76,10 @@ export function AdminDashboard({
     if (confirm("Are you sure you want to delete this brand and all its data? This action cannot be undone.")) {
       const response = await fetch(`/api/admin/brands?id=${brandId}`, { method: "DELETE" })
       if (response.ok) {
+        toast.success("Brand deleted successfully.")
         await fetchBrands()
       } else {
-        alert("Failed to delete brand.")
+        toast.error("Failed to delete brand.")
       }
     }
   }
@@ -76,19 +96,35 @@ export function AdminDashboard({
     })
 
     if (response.ok) {
+      toast.success(`Brand ${isNew ? "created" : "updated"} successfully.`)
       setIsFormOpen(false)
       await fetchBrands()
     } else {
       const errorData = await response.json()
-      alert(`Failed to save brand: ${errorData.error}`)
+      toast.error(`Failed to save brand: ${errorData.error}`)
     }
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <h2 className="text-2xl font-bold text-red-600">Dashboard Error</h2>
+        <p className="mt-2 text-red-500">{error}</p>
+      </div>
+    )
   }
 
   return (
     <div className="container mx-auto p-4 md:p-8">
       <header className="flex flex-wrap gap-4 justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <Button onClick={handleAddBrand}>Add New Brand</Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={handleRefresh} variant="outline">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh Data
+          </Button>
+          <Button onClick={handleAddBrand}>Add New Brand</Button>
+        </div>
       </header>
 
       <Tabs defaultValue="brands" className="w-full">
@@ -104,7 +140,7 @@ export function AdminDashboard({
           <SubmissionsTable submissions={submissions} />
         </TabsContent>
         <TabsContent value="files" className="mt-4">
-          <FileManager files={uploadedFiles} brands={brands} onFilesUpdate={fetchFiles} />
+          <FileManager initialFiles={uploadedFiles} brands={brands} onFilesUpdate={fetchFiles} />
         </TabsContent>
       </Tabs>
 
@@ -119,7 +155,7 @@ export function AdminDashboard({
             uploadedFiles={uploadedFiles}
             onSave={handleSaveBrand}
             onCancel={() => setIsFormOpen(false)}
-            onFilesUpdate={fetchFiles}
+            onLogoUpload={fetchFiles}
           />
         </DialogContent>
       </Dialog>

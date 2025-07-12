@@ -203,3 +203,18 @@ export async function clearFormForBrand(brandId: string, brandSlug: string) {
   revalidatePath(`/admin/editor/${brandSlug}`)
   return { success: true, message: "Form has been cleared successfully." }
 }
+
+export async function revalidateAllData() {
+  try {
+    // Revalidate the main pages and all admin API routes
+    revalidatePath("/", "layout")
+    revalidatePath("/admin")
+    revalidatePath("/api/admin/brands")
+    revalidatePath("/api/admin/files")
+    revalidatePath("/api/admin/submissions")
+    return { success: true, message: "Data revalidated successfully." }
+  } catch (error) {
+    console.error("Revalidation failed:", error)
+    return { success: false, message: "An error occurred during revalidation." }
+  }
+}

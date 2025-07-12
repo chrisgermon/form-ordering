@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import { AdminDashboard } from "./AdminDashboard"
 import type { Brand, FormSubmission, UploadedFile } from "@/lib/types"
+import { Toaster } from "@/components/ui/sonner"
 
 export const dynamic = "force-dynamic"
 
@@ -17,7 +18,7 @@ async function getDashboardData() {
       .select("*, brands(name)")
       .order("created_at", { ascending: false })
       .limit(100)
-    const filesQuery = supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false }).limit(100)
+    const filesQuery = supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false })
 
     const [brandsResult, submissionsResult, filesResult] = await Promise.all([
       brandsQuery,
@@ -51,8 +52,9 @@ export default async function AdminPage() {
   const { brands, submissions, files, error } = await getDashboardData()
 
   return (
-    <div className="container mx-auto p-4">
+    <>
       <AdminDashboard initialBrands={brands} initialSubmissions={submissions} initialFiles={files} error={error} />
-    </div>
+      <Toaster richColors />
+    </>
   )
 }
