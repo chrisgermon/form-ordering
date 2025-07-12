@@ -387,6 +387,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                   height={98}
                   className="mx-auto object-contain"
                   priority
+                  unoptimized={brandData.logo?.endsWith(".svg")}
                 />
               )}
             </div>

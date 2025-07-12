@@ -110,6 +110,7 @@ function LogoSelectionDialog({
                 width={48}
                 height={48}
                 className="object-contain rounded-md bg-gray-50 shrink-0"
+                unoptimized={file.pathname?.endsWith(".svg")}
               />
               <p className="font-medium flex-grow truncate">{file.original_name}</p>
             </div>
@@ -271,6 +272,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
                       width={48}
                       height={48}
                       className="object-contain rounded-md bg-gray-50 shrink-0"
+                      unoptimized={currentLogoFile.pathname?.endsWith(".svg")}
                     />
                     <div className="flex-grow">
                       <p className="font-semibold">{currentLogoFile.original_name}</p>
@@ -363,13 +365,15 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
           </TabsContent>
           <TabsContent value="files" className="flex-grow overflow-y-auto mt-4">
             {brand && (
-              <FileManager
-                initialFiles={brandSpecificFiles}
-                brands={brand ? [brand] : []}
-                onFilesUpdate={onLogoUpload}
-                isEmbedded={true}
-                brandId={brand.id}
-              />
+              <div onClick={(e) => e.stopPropagation()}>
+                <FileManager
+                  initialFiles={brandSpecificFiles}
+                  brands={brand ? [brand] : []}
+                  onFilesUpdate={onLogoUpload}
+                  isEmbedded={true}
+                  brandId={brand.id}
+                />
+              </div>
             )}
           </TabsContent>
         </Tabs>

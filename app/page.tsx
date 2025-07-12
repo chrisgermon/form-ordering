@@ -40,6 +40,7 @@ export default async function HomePage() {
                   width={150}
                   height={150}
                   className="object-contain h-full w-full"
+                  unoptimized={brand.logo?.endsWith(".svg")}
                 />
               </div>
               <div className="p-4 border-t border-gray-200">

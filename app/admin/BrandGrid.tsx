@@ -36,6 +36,7 @@ export function BrandGrid({ brands, onEdit, onDelete }: BrandGridProps) {
                 width={150}
                 height={150}
                 className="h-16 w-auto object-contain"
+                unoptimized={brand.logo?.endsWith(".svg")}
               />
             </div>
             <Button asChild variant="outline" className="w-full bg-transparent">
