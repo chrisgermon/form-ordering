@@ -1,38 +1,54 @@
 "use server"
 
 import { createAdminClient } from "@/utils/supabase/server"
-import { revalidatePath } from "next/cache"
-import type { ClinicLocation } from "@/lib/types"
-import { nanoid } from "nanoid"
-import { put } from "@vercel/blob"
-import { scrapeWebsiteForData } from "@/lib/scraping"
-import path from "path"
-
-// This helper function uses the Supabase client and relies on the RPC function created above.
-async function executeSql(sql: string): Promise<{ success: boolean; message: string }> {
-  try {
-    const supabase = createAdminClient()
-    const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
-    if (error) {
-      if (error.message.includes("function execute_sql(sql_query => text) does not exist")) {
-        return {
-          success: false,
-          message:
-            "Database helper function is missing. Please run 'Step 0: Enable System Actions' from the System tab first.",
-        }
-      }
-      throw error
-    }
-    return { success: true, message: "SQL script executed successfully." }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    console.error(`Error executing SQL:`, errorMessage)
-    return { success: false, message: `Failed to execute SQL script: ${errorMessage}` }
-  }
+\
+\
+{
+  ClinicLocation
+  \
 }
+from
+;("@/lib/types")
+import { nanoid } from "nanoid"
 
-export async function createAdminTables() {
-  const sql = `
+// This helper function uses the Supabase client and relies on the RPC function created above.\
+async function executeSql(sql: string): Promise<\{ success: boolean; message: string \}>
+\
+{
+  try
+  \
+  {
+    const supabase = createAdminClient()
+    \
+    const \{ error \} = await supabase.rpc("execute_sql\", \{ sql_query: sql \})\
+    if (error) \{\
+      if (error.message.includes(\"function execute_sql(sql_query => text) does not exist\")) \{\
+        return \{\
+          success: false,\
+          message:\
+            \"Database helper function is missing. Please run 'Step 0: Enable System Actions' from the System tab first.",\
+        \}\
+      \}\
+    throw error
+    \
+  }
+  \
+  return \
+  success: true, message
+  : "SQL script executed successfully." \
+  \
+  \
+}
+catch (error) \
+{
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    console.error(`Error executing SQL:`, errorMessage)\
+    return \success: false, message: `Failed to execute SQL script: $\errorMessage\` \}
+  \}
+\}
+
+export async function createAdminTables() \{
+  const sql = `\
     CREATE TABLE IF NOT EXISTS brands (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name TEXT NOT NULL,
@@ -44,7 +60,7 @@ export async function createAdminTables() {
         primary_color TEXT,
         created_at TIMESTAMPTZ DEFAULT now(),
         updated_at TIMESTAMPTZ DEFAULT now()
-    );
+    );\
     CREATE TABLE IF NOT EXISTS product_sections (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
@@ -52,7 +68,7 @@ export async function createAdminTables() {
         sort_order INTEGER,
         created_at TIMESTAMPTZ DEFAULT now(),
         updated_at TIMESTAMPTZ DEFAULT now()
-    );
+    );\
     CREATE TABLE IF NOT EXISTS product_items (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         section_id UUID REFERENCES product_sections(id) ON DELETE CASCADE,
@@ -68,7 +84,7 @@ export async function createAdminTables() {
         sort_order INTEGER,
         created_at TIMESTAMPTZ DEFAULT now(),
         updated_at TIMESTAMPTZ DEFAULT now()
-    );
+    );\
     CREATE TABLE IF NOT EXISTS submissions (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         brand_id UUID REFERENCES brands(id) ON DELETE SET NULL,
@@ -84,7 +100,7 @@ export async function createAdminTables() {
         email_response TEXT,
         created_at TIMESTAMPTZ DEFAULT now(),
         updated_at TIMESTAMPTZ DEFAULT now()
-    );
+    );\
     CREATE TABLE IF NOT EXISTS uploaded_files (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         brand_id UUID REFERENCES brands(id) ON DELETE SET NULL,
@@ -95,19 +111,19 @@ export async function createAdminTables() {
         content_type TEXT,
         size BIGINT,
         uploaded_at TIMESTAMPTZ DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS idx_product_sections_brand_id ON product_sections(brand_id);
-    CREATE INDEX IF NOT EXISTS idx_product_items_section_id ON product_items(section_id);
-    CREATE INDEX IF NOT EXISTS idx_product_items_brand_id ON product_items(brand_id);
-    CREATE INDEX IF NOT EXISTS idx_submissions_brand_id ON submissions(brand_id);
-    CREATE INDEX IF NOT EXISTS idx_uploaded_files_brand_id ON uploaded_files(brand_id);
+    );\
+    CREATE INDEX IF NOT EXISTS idx_product_sections_brand_id ON product_sections(brand_id);\
+    CREATE INDEX IF NOT EXISTS idx_product_items_section_id ON product_items(section_id);\
+    CREATE INDEX IF NOT EXISTS idx_product_items_brand_id ON product_items(brand_id);\
+    CREATE INDEX IF NOT EXISTS idx_submissions_brand_id ON submissions(brand_id);\
+    CREATE INDEX IF NOT EXISTS idx_uploaded_files_brand_id ON uploaded_files(brand_id);\
     CREATE INDEX IF NOT EXISTS idx_brands_slug ON brands(slug);
     NOTIFY pgrst, 'reload schema';
   `
   return executeSql(sql)
-}
+\}
 
-export async function initializeDatabase() {
+export async function initializeDatabase() \{
   const sql = `
     TRUNCATE TABLE brands, product_sections, product_items, submissions, uploaded_files RESTART IDENTITY;
     INSERT INTO brands (name, slug, emails) VALUES
@@ -119,23 +135,23 @@ export async function initializeDatabase() {
     NOTIFY pgrst, 'reload schema';
     `
   return executeSql(sql)
-}
+\}
 
-export async function runSchemaV5Update() {
+export async function runSchemaV5Update() \{
   const sql = `
     ALTER TABLE uploaded_files
     ADD COLUMN IF NOT EXISTS pathname TEXT;
     NOTIFY pgrst, 'reload schema';
     `
   return executeSql(sql)
-}
+\}
 
-export async function forceSchemaReload() {
+export async function forceSchemaReload() \{
   const sql = `NOTIFY pgrst, 'reload schema';`
   return executeSql(sql)
-}
+\}
 
-export async function runBrandSchemaCorrection() {
+export async function runBrandSchemaCorrection() \{
   const sql = `
     ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS clinic_locations JSONB;
     ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS emails TEXT[];
@@ -146,17 +162,17 @@ export async function runBrandSchemaCorrection() {
     NOTIFY pgrst, 'reload schema';
     `
   return executeSql(sql)
-}
+\}
 
-export async function runPrimaryColorFix() {
+export async function runPrimaryColorFix() \{
   const sql = `
     ALTER TABLE public.brands ADD COLUMN IF NOT EXISTS primary_color TEXT;
     NOTIFY pgrst, 'reload schema';
     `
   return executeSql(sql)
-}
+\}
 
-export async function runSubmissionsFKFix() {
+export async function runSubmissionsFKFix() \{
   const sql = `
     -- Ensure the submissions table exists before trying to alter it.
     CREATE TABLE IF NOT EXISTS submissions (
@@ -186,54 +202,54 @@ export async function runSubmissionsFKFix() {
     NOTIFY pgrst, 'reload schema';
   `
   return executeSql(sql)
-}
+\}
 
-export async function fetchBrandData(url: string, brandSlug: string) {
-  try {
-    const scrapedData = await scrapeWebsiteForData(url)
-    let uploadedLogoUrl: string | null = null
-    if (scrapedData.logoUrl) {
-      uploadedLogoUrl = await uploadLogo(scrapedData.logoUrl, brandSlug)
-    }
-
-    return {
-      success: true,
-      data: {
-        name: scrapedData.title,
-        logo: uploadedLogoUrl,
-        locations: scrapedData.locations.map((loc) => ({ name: loc, address: loc, phone: "" })),
-      },
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return { success: false, error: errorMessage }
-  }
-}
-
-async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | null> {
-  try {
+async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | null> \{
+  try \{
     const response = await fetch(logoUrl)
-    if (!response.ok) {
-      console.error(`Failed to fetch logo image: ${response.statusText}`)
+    if (!response.ok) \{
+      console.error(`Failed to fetch logo image: $\response.statusText\`)
       return null
-    }
+    \}
     const imageBlob = await response.blob()
-    const originalName = path.basename(new URL(logoUrl).pathname) || `logo-${nanoid(5)}`
-    const filename = `logos/${brandSlug}-${Date.now()}-${originalName}`
+    const originalName = path.basename(new URL(logoUrl).pathname) || `logo-$\nanoid(5)\`
+    const filename = `logos/$\brandSlug\-$\Date.now()\-$\originalName\`
 
-    const { url: blobUrl } = await put(filename, imageBlob, {
+    const \{ pathname \} = await put(filename, imageBlob, \{
       access: "public",
       contentType: response.headers.get("content-type") || undefined,
-    })
+    \})
 
-    return blobUrl
-  } catch (error) {
+    return pathname
+  \} catch (error) \{
     console.error("Error uploading logo:", error)
     return null
-  }
-}
+  \}
+\}
 
-export async function saveBrand(formData: FormData) {
+export async function fetchBrandData(url: string, brandSlug: string) \{
+  try \{
+    const scrapedData = await scrapeWebsiteForData(url)
+    let uploadedLogoPath: string | null = null
+    if (scrapedData.logoUrl) \{
+      uploadedLogoPath = await uploadLogo(scrapedData.logoUrl, brandSlug)
+    \}
+
+    return \{
+      success: true,
+      data: \{
+        name: scrapedData.title,
+        logo: uploadedLogoPath,
+        locations: scrapedData.locations.map((loc) => (\{ name: loc, address: loc, phone: "" \})),
+      \},
+    \}
+  \} catch (error) \{
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return \{ success: false, error: errorMessage \}
+  \}
+\}
+
+export async function saveBrand(formData: FormData) \{
   const supabase = createAdminClient()
   const id = formData.get("id") as string | null
   const name = formData.get("name") as string
@@ -245,47 +261,47 @@ export async function saveBrand(formData: FormData) {
     .filter(Boolean)
   const clinic_locations = JSON.parse((formData.get("clinic_locations") as string) || "[]") as ClinicLocation[]
 
-  if (!name || !slug) {
-    return { success: false, error: "Brand name and slug are required." }
-  }
+  if (!name || !slug) \{
+    return \{ success: false, error: "Brand name and slug are required." \}
+  \}
 
-  const brandData = {
+  const brandData = \{
     name,
     slug,
     logo,
     emails,
     clinic_locations,
     updated_at: new Date().toISOString(),
-  }
+  \}
 
   let error
-  if (id) {
-    const { error: updateError } = await supabase.from("brands").update(brandData).eq("id", id)
+  if (id) \{
+    const \{ error: updateError \} = await supabase.from("brands").update(brandData).eq("id", id)
     error = updateError
-  } else {
-    const { error: insertError } = await supabase
+  \} else \{
+    const \{ error: insertError \} = await supabase
       .from("brands")
-      .insert({ ...brandData, created_at: new Date().toISOString() })
+      .insert(\{ ...brandData, created_at: new Date().toISOString() \})
     error = insertError
-  }
+  \}
 
-  if (error) {
+  if (error) \{
     console.error("Error saving brand:", error)
-    return { success: false, error: error.message }
-  }
+    return \{ success: false, error: error.message \}
+  \}
 
   revalidatePath("/admin")
-  return { success: true }
-}
+  return \{ success: true \}
+\}
 
 export async function importForm(
   brandId: string,
   brandSlug: string,
-  { htmlCode, url }: { htmlCode?: string; url?: string },
-) {
+  \{ htmlCode, url \}: \{ htmlCode?: string; url?: string \},
+) \{
   console.log("Attempted to import form for brand:", brandId, "from url:", url)
-  return {
+  return \{
     success: false,
     message: "Form import feature is temporarily disabled due to a build issue. Please add fields manually.",
-  }
-}
+  \}
+\}

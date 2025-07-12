@@ -14,13 +14,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import type { Brand, UploadedFile } from "@/lib/types"
 import { toast } from "sonner"
-import { Trash2, PlusCircle, Loader2, Upload } from "lucide-react"
+import { Trash2, PlusCircle, Loader2, Upload, Sparkles } from "lucide-react"
+import { fetchBrandData } from "./actions"
 
 const brandFormSchema = z.object({
   name: z.string().min(1, "Brand name is required"),
   logo: z.string().optional(),
   active: z.boolean(),
-  emails: z.array(z.object({ value: z.string().email("Invalid email address") })),
+  emails: z.array(z.object({ value: z.string().email("Invalid email address").or(z.literal("")) })),
   clinicLocations: z.array(
     z.object({
       name: z.string().min(1, "Location name is required"),
@@ -43,6 +44,8 @@ interface BrandFormProps {
 export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload }: BrandFormProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [isFetching, setIsFetching] = useState(false)
+  const [websiteUrl, setWebsiteUrl] = useState("")
 
   const {
     register,
@@ -55,7 +58,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     resolver: zodResolver(brandFormSchema),
     defaultValues: {
       name: "",
-      logo: "defaultLogoPath", // Updated default value to be a non-empty string
+      logo: "default-logo.png", // Updated default value to be a non-empty string
       active: true,
       emails: [],
       clinicLocations: [],
@@ -73,7 +76,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     if (brand) {
       reset({
         name: brand.name,
-        logo: brand.logo || "defaultLogoPath", // Updated default value to be a non-empty string
+        logo: brand.logo || "default-logo.png", // Updated default value to be a non-empty string
         active: brand.active,
         emails: brand.emails.map((email) => ({ value: email })),
         clinicLocations: brand.clinic_locations || [],
@@ -81,7 +84,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     } else {
       reset({
         name: "",
-        logo: "defaultLogoPath", // Updated default value to be a non-empty string
+        logo: "default-logo.png", // Updated default value to be a non-empty string
         active: true,
         emails: [{ value: "" }],
         clinicLocations: [{ name: "", address: "", phone: "" }],
@@ -89,12 +92,37 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     }
   }, [brand, reset])
 
+  const handleFetchData = async () => {
+    if (!websiteUrl) {
+      toast.error("Please enter a website URL to fetch data.")
+      return
+    }
+    setIsFetching(true)
+    const result = await fetchBrandData(websiteUrl, brand?.slug || "new-brand")
+    setIsFetching(false)
+
+    if (result.success && result.data) {
+      if (result.data.name) setValue("name", result.data.name)
+      if (result.data.logo) {
+        setValue("logo", result.data.logo)
+        onLogoUpload() // Refresh file list to include the new logo
+      }
+      if (result.data.locations && result.data.locations.length > 0) {
+        removeLocation() // Clear existing locations
+        result.data.locations.forEach((loc) => appendLocation(loc))
+      }
+      toast.success("Data fetched successfully!")
+    } else {
+      toast.error(result.error || "Failed to fetch data.")
+    }
+  }
+
   const onSubmitHandler = async (data: BrandFormData) => {
     setIsSaving(true)
     const payload = {
       id: brand?.id,
       ...data,
-      emails: data.emails.map((e) => e.value).filter(Boolean), // Convert back to string array
+      emails: data.emails.map((e) => e.value).filter(Boolean),
     }
     await onSave(payload)
     setIsSaving(false)
@@ -117,7 +145,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
         const newFile = await response.json()
         setValue("logo", newFile.pathname, { shouldValidate: true })
         toast.success("Logo uploaded and selected.")
-        onLogoUpload() // Refresh the file list in the parent
+        onLogoUpload()
       } else {
         const errorData = await response.json()
         toast.error(`Failed to upload logo: ${errorData.error}`)
@@ -132,6 +160,25 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
   return (
     <form onSubmit={handleSubmit(onSubmitHandler)} className="flex flex-col h-full overflow-hidden">
       <div className="flex-grow overflow-y-auto pr-6 -mr-6 space-y-6">
+        <div className="p-4 border rounded-md bg-blue-50 border-blue-200">
+          <Label htmlFor="website_url">Fetch Data with AI</Label>
+          <p className="text-sm text-muted-foreground mb-2">
+            Enter a website URL to automatically populate the brand name, logo, and locations.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              id="website_url"
+              placeholder="https://example.com"
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+            />
+            <Button type="button" onClick={handleFetchData} disabled={isFetching || !websiteUrl}>
+              {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              <span className="ml-2">Fetch</span>
+            </Button>
+          </div>
+        </div>
+
         <div className="space-y-2">
           <Label htmlFor="name">Brand Name</Label>
           <Input id="name" {...register("name")} />
@@ -145,13 +192,15 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
               name="logo"
               control={control}
               render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value}>
+                <Select onValueChange={field.onChange} value={field.value || "default-logo.png"}>
+                  {" "}
+                  {/* Updated default value to be a non-empty string */}
                   <SelectTrigger>
                     <SelectValue placeholder="Select an uploaded logo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="defaultLogoPath">No Logo</SelectItem>{" "}
-                    {/* Updated value to be a non-empty string */}
+                    <SelectItem value="default-logo.png">No Logo</SelectItem>{" "}
+                    {/* Updated default value to be a non-empty string */}
                     {uploadedFiles.map((file) => (
                       <SelectItem key={file.id} value={file.pathname}>
                         {file.original_name}
