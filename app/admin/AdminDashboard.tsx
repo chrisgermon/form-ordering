@@ -112,7 +112,7 @@ export function AdminDashboard({ initialBrands, initialFiles, initialSubmissions
       </Tabs>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{selectedBrand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
             <DialogDescription>Manage brand settings and files below.</DialogDescription>

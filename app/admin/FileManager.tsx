@@ -30,25 +30,23 @@ function UploadDialog({
   onOpenChange,
   onUploadSuccess,
   brands,
-  defaultBrandId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onUploadSuccess: () => void
   brands: Brand[]
-  defaultBrandId?: string | null
 }) {
   const [file, setFile] = useState<File | null>(null)
-  const [brandId, setBrandId] = useState<string | undefined | null>(defaultBrandId)
+  const [brandId, setBrandId] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
 
   useEffect(() => {
     if (open) {
       setFile(null)
-      setBrandId(defaultBrandId)
+      setBrandId(null)
       setIsUploading(false)
     }
-  }, [open, defaultBrandId])
+  }, [open])
 
   const handleUpload = async () => {
     if (!file) {
@@ -83,7 +81,7 @@ function UploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent onPointerDown={(e) => e.stopPropagation()}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Upload New File</DialogTitle>
           <DialogDescription>Select a file and optionally assign it to a brand.</DialogDescription>
@@ -93,24 +91,22 @@ function UploadDialog({
             <Label htmlFor="file-upload">File</Label>
             <Input id="file-upload" type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
           </div>
-          {!defaultBrandId && (
-            <div>
-              <Label htmlFor="brand-select">Assign to Brand (optional)</Label>
-              <Select value={brandId || "none"} onValueChange={(value) => setBrandId(value === "none" ? null : value)}>
-                <SelectTrigger id="brand-select">
-                  <SelectValue placeholder="Select a brand" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Brand (Global)</SelectItem>
-                  {brands.map((brand) => (
-                    <SelectItem key={brand.id} value={brand.id}>
-                      {brand.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <div>
+            <Label htmlFor="brand-select">Assign to Brand (optional)</Label>
+            <Select value={brandId || "none"} onValueChange={(value) => setBrandId(value === "none" ? null : value)}>
+              <SelectTrigger id="brand-select">
+                <SelectValue placeholder="Select a brand" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No Brand (Global)</SelectItem>
+                {brands.map((brand) => (
+                  <SelectItem key={brand.id} value={brand.id}>
+                    {brand.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -130,17 +126,13 @@ export function FileManager({
   initialFiles,
   brands,
   onFilesUpdate,
-  isEmbedded = false,
-  brandId: embeddedBrandId,
 }: {
   initialFiles: UploadedFile[]
   brands: Brand[]
   onFilesUpdate: () => void
-  isEmbedded?: boolean
-  brandId?: string | null
 }) {
   const [files, setFiles] = useState<UploadedFile[]>(initialFiles)
-  const [filter, setFilter] = useState<string>(isEmbedded ? embeddedBrandId || "global" : "global")
+  const [filter, setFilter] = useState<string>("global")
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
 
@@ -149,14 +141,11 @@ export function FileManager({
   }, [initialFiles])
 
   const filteredFiles = useMemo(() => {
-    if (isEmbedded) {
-      return files
-    }
     if (filter === "global") {
       return files
     }
     return files.filter((file) => file.brand_id === filter)
-  }, [files, filter, isEmbedded])
+  }, [files, filter])
 
   const handleSelectAll = (checked: boolean | "indeterminate") => {
     if (checked === true) {
@@ -221,24 +210,22 @@ export function FileManager({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-4 justify-between items-center">
-        {!isEmbedded && (
-          <div className="flex-1 min-w-[200px]">
-            <Select value={filter} onValueChange={setFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by brand" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="global">Global (All Files)</SelectItem>
-                {brands.map((brand) => (
-                  <SelectItem key={brand.id} value={brand.id}>
-                    {brand.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        <div className={isEmbedded ? "w-full flex justify-end" : ""}>
+        <div className="flex-1 min-w-[200px]">
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by brand" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="global">Global (All Files)</SelectItem>
+              {brands.map((brand) => (
+                <SelectItem key={brand.id} value={brand.id}>
+                  {brand.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
           <Button onClick={() => setIsUploadDialogOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
             Upload File
@@ -275,7 +262,7 @@ export function FileManager({
               </TableHead>
               <TableHead className="w-[80px]">Preview</TableHead>
               <TableHead>File Name</TableHead>
-              {!isEmbedded && <TableHead>Brand</TableHead>}
+              <TableHead>Brand</TableHead>
               <TableHead>Size</TableHead>
               <TableHead>Date</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -317,15 +304,13 @@ export function FileManager({
                       {file.original_name}
                     </a>
                   </TableCell>
-                  {!isEmbedded && (
-                    <TableCell>
-                      {file.brand_id ? (
-                        <Badge variant="secondary">{brands.find((b) => b.id === file.brand_id)?.name || "N/A"}</Badge>
-                      ) : (
-                        <Badge variant="outline">Global</Badge>
-                      )}
-                    </TableCell>
-                  )}
+                  <TableCell>
+                    {file.brand_id ? (
+                      <Badge variant="secondary">{brands.find((b) => b.id === file.brand_id)?.name || "N/A"}</Badge>
+                    ) : (
+                      <Badge variant="outline">Global</Badge>
+                    )}
+                  </TableCell>
                   <TableCell>{formatBytes(file.size)}</TableCell>
                   <TableCell>{format(new Date(file.uploaded_at), "dd MMM yyyy")}</TableCell>
                   <TableCell className="text-right">
@@ -337,7 +322,7 @@ export function FileManager({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={isEmbedded ? 5 : 6} className="h-24 text-center">
+                <TableCell colSpan={7} className="h-24 text-center">
                   No files found.
                 </TableCell>
               </TableRow>
@@ -350,7 +335,6 @@ export function FileManager({
         onOpenChange={setIsUploadDialogOpen}
         onUploadSuccess={onFilesUpdate}
         brands={brands}
-        defaultBrandId={isEmbedded ? embeddedBrandId : undefined}
       />
     </div>
   )
