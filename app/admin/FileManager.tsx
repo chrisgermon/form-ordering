@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Upload, Trash2, Loader2, FileIcon } from "lucide-react"
 import Image from "next/image"
 import { toast } from "sonner"
@@ -141,6 +142,7 @@ export function FileManager({
   const [files, setFiles] = useState<UploadedFile[]>(initialFiles)
   const [filter, setFilter] = useState<string>(isEmbedded ? embeddedBrandId || "global" : "global")
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
 
   useEffect(() => {
     setFiles(initialFiles)
@@ -156,11 +158,55 @@ export function FileManager({
     return files.filter((file) => file.brand_id === filter)
   }, [files, filter, isEmbedded])
 
+  const handleSelectAll = (checked: boolean | "indeterminate") => {
+    if (checked === true) {
+      setSelectedFiles(filteredFiles.map((file) => file.id))
+    } else {
+      setSelectedFiles([])
+    }
+  }
+
+  const handleSelectOne = (fileId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedFiles((prev) => [...prev, fileId])
+    } else {
+      setSelectedFiles((prev) => prev.filter((id) => id !== fileId))
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    if (
+      !confirm(`Are you sure you want to delete ${selectedFiles.length} selected files? This action cannot be undone.`)
+    )
+      return
+
+    try {
+      const response = await fetch(`/api/admin/files`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileIds: selectedFiles }),
+      })
+      if (response.ok) {
+        toast.success(`${selectedFiles.length} files deleted successfully.`)
+        setSelectedFiles([])
+        onFilesUpdate()
+      } else {
+        toast.error("Failed to delete files.")
+      }
+    } catch (error) {
+      toast.error("An error occurred while deleting files.")
+    }
+  }
+
   const handleDelete = async (fileId: string) => {
     if (!confirm("Are you sure you want to delete this file? This action cannot be undone.")) return
 
     try {
-      const response = await fetch(`/api/admin/files?id=${fileId}`, { method: "DELETE" })
+      const response = await fetch(`/api/admin/files`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileIds: [fileId] }),
+      })
       if (response.ok) {
         toast.success("File deleted successfully.")
         onFilesUpdate()
@@ -200,10 +246,33 @@ export function FileManager({
         </div>
       </div>
 
+      {selectedFiles.length > 0 && (
+        <div className="flex items-center justify-between p-2 bg-gray-100 rounded-md border">
+          <span className="text-sm font-medium text-gray-700">{selectedFiles.length} selected</span>
+          <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete Selected
+          </Button>
+        </div>
+      )}
+
       <div className="border rounded-lg overflow-hidden bg-white">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={
+                    selectedFiles.length === filteredFiles.length && filteredFiles.length > 0
+                      ? true
+                      : selectedFiles.length > 0
+                        ? "indeterminate"
+                        : false
+                  }
+                  onCheckedChange={handleSelectAll}
+                  aria-label="Select all"
+                />
+              </TableHead>
               <TableHead className="w-[80px]">Preview</TableHead>
               <TableHead>File Name</TableHead>
               {!isEmbedded && <TableHead>Brand</TableHead>}
@@ -215,7 +284,14 @@ export function FileManager({
           <TableBody>
             {filteredFiles.length > 0 ? (
               filteredFiles.map((file) => (
-                <TableRow key={file.id}>
+                <TableRow key={file.id} data-state={selectedFiles.includes(file.id) && "selected"}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedFiles.includes(file.id)}
+                      onCheckedChange={(checked) => handleSelectOne(file.id, !!checked)}
+                      aria-label={`Select file ${file.original_name}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     {file.content_type?.startsWith("image/") ? (
                       <Image
@@ -261,7 +337,7 @@ export function FileManager({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={isEmbedded ? 4 : 5} className="h-24 text-center">
+                <TableCell colSpan={isEmbedded ? 5 : 6} className="h-24 text-center">
                   No files found.
                 </TableCell>
               </TableRow>
