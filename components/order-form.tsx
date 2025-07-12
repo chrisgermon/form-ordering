@@ -130,29 +130,61 @@ const FormField = ({
       case "text":
         return (
           <Controller
-            name={`${fieldName}.quantity`}
+            name={fieldName}
             control={control}
-            defaultValue=""
-            render={({ field }) => <Input placeholder={item.placeholder || ""} {...field} />}
+            render={({ field }) => (
+              <Input
+                placeholder={item.placeholder || ""}
+                value={field.value?.quantity || ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (value) {
+                    field.onChange({ quantity: value, name: item.name, code: item.code })
+                  } else {
+                    field.onChange(undefined) // Clear the item if input is empty
+                  }
+                }}
+              />
+            )}
           />
         )
       case "textarea":
         return (
           <Controller
-            name={`${fieldName}.quantity`}
+            name={fieldName}
             control={control}
-            defaultValue=""
-            render={({ field }) => <Textarea placeholder={item.placeholder || ""} {...field} />}
+            render={({ field }) => (
+              <Textarea
+                placeholder={item.placeholder || ""}
+                value={field.value?.quantity || ""}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (value) {
+                    field.onChange({ quantity: value, name: item.name, code: item.code })
+                  } else {
+                    field.onChange(undefined)
+                  }
+                }}
+              />
+            )}
           />
         )
       case "select":
         return (
           <Controller
-            name={`${fieldName}.quantity`}
+            name={fieldName}
             control={control}
-            defaultValue=""
             render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value}>
+              <Select
+                onValueChange={(value) => {
+                  if (value) {
+                    field.onChange({ quantity: value, name: item.name, code: item.code })
+                  } else {
+                    field.onChange(undefined)
+                  }
+                }}
+                value={field.value?.quantity || ""}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder={item.placeholder || "Select an option"} />
                 </SelectTrigger>
@@ -170,7 +202,7 @@ const FormField = ({
       case "date":
         return (
           <Controller
-            name={`${fieldName}.quantity`}
+            name={fieldName}
             control={control}
             render={({ field }) => (
               <Popover>
@@ -179,15 +211,26 @@ const FormField = ({
                     variant={"outline"}
                     className={cn(
                       "w-full justify-start text-left font-normal bg-gray-100 border-gray-300",
-                      !field.value && "text-muted-foreground",
+                      !field.value?.quantity && "text-muted-foreground",
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {field.value ? format(field.value, "dd-MM-yyyy") : <span>DD-MM-YYYY</span>}
+                    {field.value?.quantity ? format(field.value.quantity, "dd-MM-yyyy") : <span>DD-MM-YYYY</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
-                  <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                  <Calendar
+                    mode="single"
+                    selected={field.value?.quantity}
+                    onSelect={(date) => {
+                      if (date) {
+                        field.onChange({ quantity: date, name: item.name, code: item.code })
+                      } else {
+                        field.onChange(undefined)
+                      }
+                    }}
+                    initialFocus
+                  />
                 </PopoverContent>
               </Popover>
             )}

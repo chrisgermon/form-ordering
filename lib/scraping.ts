@@ -1,5 +1,5 @@
 import { generateText } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { xai } from "@ai-sdk/xai"
 import * as cheerio from "cheerio"
 import { z } from "zod"
 
@@ -79,7 +79,7 @@ export async function scrapeWebsiteWithAI(url: string): Promise<ScrapedData> {
     `
 
     const { text } = await generateText({
-      model: openai("gpt-4o"), // Changed from xai("grok-3")
+      model: xai("grok-3"),
       prompt: prompt,
       maxTokens: 2048,
     })
@@ -96,65 +96,6 @@ export async function scrapeWebsiteWithAI(url: string): Promise<ScrapedData> {
   } catch (error) {
     console.error("Error scraping website with AI:", error)
     const message = error instanceof Error ? error.message : "An unknown error occurred during AI scraping."
-    throw new Error(message)
-  }
-}
-
-const FormFieldSchema = z.object({
-  code: z.string().optional().nullable(),
-  name: z.string(),
-  field_type: z.enum(["checkbox_group", "select", "text", "textarea", "date"]),
-  options: z.array(z.string()).optional().nullable(),
-  placeholder: z.string().optional().nullable(),
-  is_required: z.boolean().optional().nullable(),
-})
-
-const ParsedFormSchema = z.object({
-  fields: z.array(FormFieldSchema),
-})
-
-export type ParsedForm = z.infer<typeof ParsedFormSchema>
-
-/**
- * Uses AI to parse HTML form content into a structured JSON object.
- * @param htmlContent The HTML string of the form to parse.
- * @returns A structured object representing the form fields.
- */
-export async function parseFormWithAI(htmlContent: string): Promise<ParsedForm> {
-  const prompt = `
-      You are an expert web form parser. Analyze the following HTML source code of a form. Your task is to identify all form fields (inputs, textareas, selects, checkboxes, radio buttons) and convert them into a structured JSON object.
-
-      Return a single, raw JSON object and nothing else. The JSON object must follow this exact structure:
-      { "fields": [ { "code": "string | null", "name": "string", "field_type": "string", "options": "string[] | null", "placeholder": "string | null", "is_required": "boolean | null" } ] }
-
-      - "name": The label associated with the form field. This is the most important part.
-      - "code": A short, unique identifier. You can generate this from the "name" or "id" attribute of the HTML element (e.g., 'PAT01'). If not available, leave it as null.
-      - "field_type": Must be one of: 'text', 'textarea', 'select', 'checkbox_group', 'date'.
-        - Use 'text' for <input type="text">, <input type="email">, <input type="tel">, etc.
-        - Use 'date' for <input type="date">.
-        - Use 'select' for <select> elements.
-        - Use 'checkbox_group' for a group of <input type="checkbox"> or <input type="radio"> that share the same "name" attribute.
-      - "options": An array of strings for the "value" or text of options in a 'select' or 'checkbox_group'. For other types, this should be null.
-      - "placeholder": The placeholder text, if any.
-      - "is_required": Set to true if the field has a "required" attribute or seems mandatory.
-
-      HTML to analyze:
-      ${htmlContent.substring(0, 18000)}
-    `
-
-  try {
-    const { text } = await generateText({
-      model: openai("gpt-4o"),
-      prompt: prompt,
-      maxTokens: 4096,
-    })
-
-    const parsedData = extractJson(text)
-    const validatedData = ParsedFormSchema.parse(parsedData)
-    return validatedData
-  } catch (error) {
-    console.error("Error parsing form with AI:", error)
-    const message = error instanceof Error ? error.message : "An unknown error occurred during AI form parsing."
     throw new Error(message)
   }
 }

@@ -5,9 +5,8 @@ import { revalidatePath } from "next/cache"
 import type { ClinicLocation } from "@/lib/types"
 import { nanoid } from "nanoid"
 import { put } from "@vercel/blob"
-import { scrapeWebsiteWithAI, parseFormWithAI } from "@/lib/scraping"
+import { scrapeWebsiteWithAI } from "@/lib/scraping"
 import path from "path"
-import * as cheerio from "cheerio"
 
 // This helper function uses the Supabase client and relies on the RPC function created above.
 async function executeSql(sql: string): Promise<{ success: boolean; message: string }> {
@@ -337,73 +336,9 @@ export async function importForm(
   brandSlug: string,
   { htmlCode, url }: { htmlCode?: string; url?: string },
 ) {
-  const supabase = createAdminClient()
-  let content = htmlCode
-
-  try {
-    if (url) {
-      const response = await fetch(url, { headers: { "User-Agent": "V0-Scraper/1.0" } })
-      if (!response.ok) throw new Error(`Failed to fetch URL: ${response.statusText}`)
-      content = await response.text()
-    }
-
-    if (!content) {
-      return { success: false, message: "No HTML content provided or fetched." }
-    }
-
-    // Clean up HTML to focus on the form
-    const $ = cheerio.load(content)
-    $("script, style, link, noscript, footer, header").remove()
-    const formHtml = $("form").first().html() || $("body").html()
-
-    if (!formHtml) {
-      return { success: false, message: "Could not find a form in the provided content." }
-    }
-
-    const parsedData = await parseFormWithAI(formHtml)
-
-    // Begin transaction to update database
-    // 1. Delete old items and sections for this brand to ensure a clean import
-    await supabase.from("product_items").delete().eq("brand_id", brandId)
-    await supabase.from("product_sections").delete().eq("brand_id", brandId)
-
-    // 2. Create a new section for the imported items
-    const sectionTitle = url ? `Imported from ${new URL(url).hostname}` : "Imported Form"
-    const { data: newSection, error: sectionError } = await supabase
-      .from("product_sections")
-      .insert({ brand_id: brandId, title: sectionTitle, sort_order: 0 })
-      .select()
-      .single()
-
-    if (sectionError) throw sectionError
-
-    // 3. Insert new items
-    if (parsedData.fields && parsedData.fields.length > 0) {
-      const itemsToInsert = parsedData.fields.map((field, index) => ({
-        brand_id: brandId,
-        section_id: newSection.id,
-        code: field.code || `IMP-${index + 1}`,
-        name: field.name,
-        field_type: field.field_type,
-        options: field.options || [],
-        placeholder: field.placeholder,
-        is_required: field.is_required || false,
-        sort_order: index,
-      }))
-
-      const { error: itemsError } = await supabase.from("product_items").insert(itemsToInsert)
-      if (itemsError) throw itemsError
-    }
-
-    revalidatePath(`/admin/editor/${brandSlug}`)
-
-    return {
-      success: true,
-      message: `Successfully imported ${parsedData.fields.length} fields. Please review them in the editor.`,
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    console.error("Error importing form:", errorMessage)
-    return { success: false, message: `Import failed: ${errorMessage}` }
+  console.log("Attempted to import form for brand:", brandId, "from url:", url)
+  return {
+    success: false,
+    message: "Form import feature is temporarily disabled due to a build issue. Please add fields manually.",
   }
 }
