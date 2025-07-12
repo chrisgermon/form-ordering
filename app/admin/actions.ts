@@ -14,96 +14,96 @@ import { Pool } from "pg"
 const CREATE_TABLES_SQL = `
 -- Brands Table
 CREATE TABLE IF NOT EXISTS brands (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    slug TEXT UNIQUE NOT NULL,
-    logo TEXT,
-    emails TEXT[] NOT NULL DEFAULT '{}',
-    clinic_locations JSONB NOT NULL DEFAULT '[]'::jsonb,
-    active BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  logo TEXT,
+  emails TEXT[] NOT NULL DEFAULT '{}',
+  clinic_locations JSONB NOT NULL DEFAULT '[]'::jsonb,
+  active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Product Sections Table
 CREATE TABLE IF NOT EXISTS product_sections (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title TEXT NOT NULL,
-    sort_order INTEGER,
-    brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  sort_order INTEGER,
+  brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Product Items Table
 CREATE TABLE IF NOT EXISTS product_items (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    code TEXT,
-    name TEXT NOT NULL,
-    description TEXT,
-    field_type TEXT NOT NULL DEFAULT 'checkbox_group',
-    options JSONB NOT NULL DEFAULT '[]'::jsonb,
-    placeholder TEXT,
-    is_required BOOLEAN NOT NULL DEFAULT false,
-    sample_link TEXT,
-    sort_order INTEGER,
-    section_id UUID REFERENCES product_sections(id) ON DELETE CASCADE,
-    brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT,
+  name TEXT NOT NULL,
+  description TEXT,
+  field_type TEXT NOT NULL DEFAULT 'checkbox_group',
+  options JSONB NOT NULL DEFAULT '[]'::jsonb,
+  placeholder TEXT,
+  is_required BOOLEAN NOT NULL DEFAULT false,
+  sample_link TEXT,
+  sort_order INTEGER,
+  section_id UUID REFERENCES product_sections(id) ON DELETE CASCADE,
+  brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Submissions Table
 CREATE TABLE IF NOT EXISTS submissions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
-    ordered_by TEXT,
-    email TEXT,
-    bill_to TEXT,
-    deliver_to TEXT,
-    items JSONB,
-    pdf_url TEXT,
-    status TEXT,
-    email_response TEXT,
-    order_data JSONB,
-    ip_address TEXT,
-    created_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+  ordered_by TEXT,
+  email TEXT,
+  bill_to TEXT,
+  deliver_to TEXT,
+  items JSONB,
+  pdf_url TEXT,
+  status TEXT,
+  email_response TEXT,
+  order_data JSONB,
+  ip_address TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Uploaded Files Table
 CREATE TABLE IF NOT EXISTS uploaded_files (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    filename TEXT NOT NULL,
-    original_name TEXT NOT NULL,
-    url TEXT NOT NULL,
-    pathname TEXT,
-    size BIGINT NOT NULL,
-    content_type TEXT,
-    brand_id UUID REFERENCES brands(id) ON DELETE SET NULL,
-    uploaded_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  filename TEXT NOT NULL,
+  original_name TEXT NOT NULL,
+  url TEXT NOT NULL,
+  pathname TEXT,
+  size BIGINT NOT NULL,
+  content_type TEXT,
+  brand_id UUID REFERENCES brands(id) ON DELETE SET NULL,
+  uploaded_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Function to update 'updated_at' timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
+  NEW.updated_at = NOW();
+  RETURN NEW;
 END;
 $$ language 'plpgsql';
 
 -- Triggers for 'updated_at'
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_brands_updated_at') THEN
-    CREATE TRIGGER update_brands_updated_at BEFORE UPDATE ON brands FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_product_sections_updated_at') THEN
-    CREATE TRIGGER update_product_sections_updated_at BEFORE UPDATE ON product_sections FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_product_items_updated_at') THEN
-    CREATE TRIGGER update_product_items_updated_at BEFORE UPDATE ON product_items FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-  END IF;
+IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_brands_updated_at') THEN
+  CREATE TRIGGER update_brands_updated_at BEFORE UPDATE ON brands FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+END IF;
+IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_product_sections_updated_at') THEN
+  CREATE TRIGGER update_product_sections_updated_at BEFORE UPDATE ON product_sections FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+END IF;
+IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_product_items_updated_at') THEN
+  CREATE TRIGGER update_product_items_updated_at BEFORE UPDATE ON product_items FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+END IF;
 END;
 $$;
 `
@@ -123,33 +123,33 @@ const FORCE_SCHEMA_RELOAD_SQL = `NOTIFY pgrst, 'reload schema';`
 const CORRECT_BRANDS_SCHEMA_SQL = `
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='email') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='emails') THEN
-            RAISE NOTICE 'Renaming column "email" to "emails" and converting to TEXT[].';
-            ALTER TABLE brands RENAME COLUMN email TO emails;
-            ALTER TABLE brands ALTER COLUMN emails TYPE TEXT[] USING ARRAY[emails];
-        ELSE
-            RAISE NOTICE 'Dropping redundant "email" column.';
-            ALTER TABLE brands DROP COLUMN email;
-        END IF;
-    END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='email') THEN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='emails') THEN
+          RAISE NOTICE 'Renaming column "email" to "emails" and converting to TEXT[].';
+          ALTER TABLE brands RENAME COLUMN email TO emails;
+          ALTER TABLE brands ALTER COLUMN emails TYPE TEXT[] USING ARRAY[emails];
+      ELSE
+          RAISE NOTICE 'Dropping redundant "email" column.';
+          ALTER TABLE brands DROP COLUMN email;
+      END IF;
+  END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='emails') THEN
-        RAISE NOTICE 'Adding "emails" column with type TEXT[].';
-        ALTER TABLE brands ADD COLUMN emails TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
-    END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='emails') THEN
+      RAISE NOTICE 'Adding "emails" column with type TEXT[].';
+      ALTER TABLE brands ADD COLUMN emails TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+  END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='clinic_locations') THEN
-        RAISE NOTICE 'Adding "clinic_locations" column with type JSONB.';
-        ALTER TABLE brands ADD COLUMN clinic_locations JSONB NOT NULL DEFAULT '[]'::jsonb;
-    END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='clinic_locations') THEN
+      RAISE NOTICE 'Adding "clinic_locations" column with type JSONB.';
+      ALTER TABLE brands ADD COLUMN clinic_locations JSONB NOT NULL DEFAULT '[]'::jsonb;
+  END IF;
 
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='email_to') THEN
-        RAISE NOTICE 'Dropping legacy "email_to" column.';
-        ALTER TABLE brands DROP COLUMN email_to;
-    END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='email_to') THEN
+      RAISE NOTICE 'Dropping legacy "email_to" column.';
+      ALTER TABLE brands DROP COLUMN email_to;
+  END IF;
 
-    RAISE NOTICE 'Brands table schema correction complete.';
+  RAISE NOTICE 'Brands table schema correction complete.';
 END;
 $$;
 ${FORCE_SCHEMA_RELOAD_SQL}
@@ -169,42 +169,42 @@ ${FORCE_SCHEMA_RELOAD_SQL}
 const SEED_PULSE_RADIOLOGY_FORM_SQL = `
 DO $$
 DECLARE
-    pulse_brand_id UUID;
+  pulse_brand_id UUID;
 BEGIN
-    SELECT id INTO pulse_brand_id FROM brands WHERE slug = 'pulse-radiology';
+  SELECT id INTO pulse_brand_id FROM brands WHERE slug = 'pulse-radiology';
 
-    IF pulse_brand_id IS NOT NULL THEN
-        DELETE FROM product_items WHERE brand_id = pulse_brand_id;
-        DELETE FROM product_sections WHERE brand_id = pulse_brand_id;
-    ELSE
-        INSERT INTO brands (name, slug) VALUES ('Pulse Radiology', 'pulse-radiology')
-        ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
-        RETURNING id INTO pulse_brand_id;
-    END IF;
+  IF pulse_brand_id IS NOT NULL THEN
+      DELETE FROM product_items WHERE brand_id = pulse_brand_id;
+      DELETE FROM product_sections WHERE brand_id = pulse_brand_id;
+  ELSE
+      INSERT INTO brands (name, slug) VALUES ('Pulse Radiology', 'pulse-radiology')
+      ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+      RETURNING id INTO pulse_brand_id;
+  END IF;
 END $$;
 
 WITH pulse_brand AS (
-  SELECT id FROM brands WHERE slug = 'pulse-radiology'
+SELECT id FROM brands WHERE slug = 'pulse-radiology'
 ),
 details_section AS (
-  INSERT INTO product_sections (brand_id, title, sort_order)
-  SELECT id, 'Order Details', 0 FROM pulse_brand
-  RETURNING id
+INSERT INTO product_sections (brand_id, title, sort_order)
+SELECT id, 'Order Details', 0 FROM pulse_brand
+RETURNING id
 ),
 operational_section AS (
-  INSERT INTO product_sections (brand_id, title, sort_order)
-  SELECT id, 'Operational and Patient Brochures', 1 FROM pulse_brand
-  RETURNING id
+INSERT INTO product_sections (brand_id, title, sort_order)
+SELECT id, 'Operational and Patient Brochures', 1 FROM pulse_brand
+RETURNING id
 ),
 referrals_section AS (
-  INSERT INTO product_sections (brand_id, title, sort_order)
-  SELECT id, 'Referrals', 2 FROM pulse_brand
-  RETURNING id
+INSERT INTO product_sections (brand_id, title, sort_order)
+SELECT id, 'Referrals', 2 FROM pulse_brand
+RETURNING id
 ),
 patient_brochures_section AS (
-  INSERT INTO product_sections (brand_id, title, sort_order)
-  SELECT id, 'Patient Brochures', 3 FROM pulse_brand
-  RETURNING id
+INSERT INTO product_sections (brand_id, title, sort_order)
+SELECT id, 'Patient Brochures', 3 FROM pulse_brand
+RETURNING id
 )
 INSERT INTO product_items (brand_id, section_id, name, code, field_type, is_required, placeholder, sort_order, options, description, sample_link)
 VALUES
@@ -238,6 +238,9 @@ async function executeSqlScript(sql: string, scriptName: string): Promise<{ succ
   // Use the direct connection string for pg
   const pool = new Pool({
     connectionString: process.env.POSTGRES_URL,
+    ssl: {
+      rejectUnauthorized: false,
+    },
   })
 
   try {
