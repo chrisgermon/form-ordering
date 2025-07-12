@@ -130,118 +130,123 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmitHandler)} className="space-y-6">
-      <div className="space-y-2">
-        <Label htmlFor="name">Brand Name</Label>
-        <Input id="name" {...register("name")} />
-        {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
-      </div>
+    <form onSubmit={handleSubmit(onSubmitHandler)} className="flex flex-col h-full overflow-hidden">
+      <div className="flex-grow overflow-y-auto pr-6 -mr-6 space-y-6">
+        <div className="space-y-2">
+          <Label htmlFor="name">Brand Name</Label>
+          <Input id="name" {...register("name")} />
+          {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
+        </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="logo">Logo</Label>
-        <div className="flex items-center gap-2">
-          <Controller
-            name="logo"
-            control={control}
-            render={({ field }) => (
-              <Select onValueChange={field.onChange} value={field.value}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an uploaded logo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="defaultLogoPath">No Logo</SelectItem>{" "}
-                  {/* Updated value to be a non-empty string */}
-                  {uploadedFiles.map((file) => (
-                    <SelectItem key={file.id} value={file.pathname}>
-                      {file.original_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-          <div className="relative">
-            <Button type="button" variant="outline" asChild disabled={isUploading}>
-              <label htmlFor="logo-upload" className="cursor-pointer flex items-center">
-                <Upload className="mr-2 h-4 w-4" /> {isUploading ? "Uploading..." : "Upload"}
-              </label>
-            </Button>
-            <Input
-              id="logo-upload"
-              type="file"
-              accept=".png,.jpg,.jpeg,.svg"
-              onChange={handleFileSelectAndUpload}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              disabled={isUploading}
+        <div className="space-y-2">
+          <Label htmlFor="logo">Logo</Label>
+          <div className="flex items-center gap-2">
+            <Controller
+              name="logo"
+              control={control}
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an uploaded logo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="defaultLogoPath">No Logo</SelectItem>{" "}
+                    {/* Updated value to be a non-empty string */}
+                    {uploadedFiles.map((file) => (
+                      <SelectItem key={file.id} value={file.pathname}>
+                        {file.original_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             />
+            <div className="relative">
+              <Button type="button" variant="outline" asChild disabled={isUploading}>
+                <label htmlFor="logo-upload" className="cursor-pointer flex items-center">
+                  <Upload className="mr-2 h-4 w-4" /> {isUploading ? "Uploading..." : "Upload"}
+                </label>
+              </Button>
+              <Input
+                id="logo-upload"
+                type="file"
+                accept=".png,.jpg,.jpeg,.svg"
+                onChange={handleFileSelectAndUpload}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                disabled={isUploading}
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="flex items-center space-x-2">
-        <Controller
-          name="active"
-          control={control}
-          render={({ field }) => <Switch id="active" checked={field.value} onCheckedChange={field.onChange} />}
-        />
-        <Label htmlFor="active">Active</Label>
-        <p className="text-sm text-muted-foreground">(Inactive brands will not appear on the public homepage)</p>
-      </div>
+        <div className="flex items-center space-x-2">
+          <Controller
+            name="active"
+            control={control}
+            render={({ field }) => <Switch id="active" checked={field.value} onCheckedChange={field.onChange} />}
+          />
+          <Label htmlFor="active">Active</Label>
+          <p className="text-sm text-muted-foreground">(Inactive brands will not appear on the public homepage)</p>
+        </div>
 
-      <div className="space-y-3 p-4 border rounded-md">
-        <Label>Recipient Emails</Label>
-        <p className="text-sm text-muted-foreground">
-          These addresses will receive the order submission emails for this brand.
-        </p>
-        {emailFields.map((field, index) => (
-          <div key={field.id} className="flex items-center gap-2">
-            <Input {...register(`emails.${index}.value`)} placeholder="name@example.com" />
-            <Button type="button" variant="ghost" size="icon" onClick={() => removeEmail(index)}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        ))}
-        <Button type="button" variant="outline" size="sm" onClick={() => appendEmail({ value: "" })}>
-          <PlusCircle className="mr-2 h-4 w-4" /> Add Email
-        </Button>
-      </div>
-
-      <div className="space-y-3 p-4 border rounded-md">
-        <Label>Clinic Locations</Label>
-        <p className="text-sm text-muted-foreground">
-          These locations will appear in the "Bill To" and "Deliver To" dropdowns on the order form.
-        </p>
-        {locationFields.map((field, index) => (
-          <div key={field.id} className="space-y-2 p-3 border rounded-md bg-gray-50/50">
-            <div className="flex justify-end">
-              <Button type="button" variant="ghost" size="icon" onClick={() => removeLocation(index)}>
+        <div className="space-y-3 p-4 border rounded-md">
+          <Label>Recipient Emails</Label>
+          <p className="text-sm text-muted-foreground">
+            These addresses will receive the order submission emails for this brand.
+          </p>
+          {emailFields.map((field, index) => (
+            <div key={field.id} className="flex items-center gap-2">
+              <Input {...register(`emails.${index}.value`)} placeholder="name@example.com" />
+              <Button type="button" variant="ghost" size="icon" onClick={() => removeEmail(index)}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label htmlFor={`clinicLocations.${index}.name`}>Location Name</Label>
-                <Input {...register(`clinicLocations.${index}.name`)} placeholder="Main Clinic" />
+          ))}
+          <Button type="button" variant="outline" size="sm" onClick={() => appendEmail({ value: "" })}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Add Email
+          </Button>
+        </div>
+
+        <div className="space-y-3 p-4 border rounded-md">
+          <Label>Clinic Locations</Label>
+          <p className="text-sm text-muted-foreground">
+            These locations will appear in the "Bill To" and "Deliver To" dropdowns on the order form.
+          </p>
+          {locationFields.map((field, index) => (
+            <div key={field.id} className="space-y-2 p-3 border rounded-md bg-gray-50/50">
+              <div className="flex justify-end">
+                <Button type="button" variant="ghost" size="icon" onClick={() => removeLocation(index)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor={`clinicLocations.${index}.name`}>Location Name</Label>
+                  <Input {...register(`clinicLocations.${index}.name`)} placeholder="Main Clinic" />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`clinicLocations.${index}.phone`}>Phone Number</Label>
+                  <Input {...register(`clinicLocations.${index}.phone`)} placeholder="e.g., (02) 1234 5678" />
+                </div>
               </div>
               <div className="space-y-1">
-                <Label htmlFor={`clinicLocations.${index}.phone`}>Phone Number</Label>
-                <Input {...register(`clinicLocations.${index}.phone`)} placeholder="e.g., (02) 1234 5678" />
+                <Label htmlFor={`clinicLocations.${index}.address`}>Address</Label>
+                <Textarea
+                  {...register(`clinicLocations.${index}.address`)}
+                  placeholder="123 Health St, Wellness City"
+                />
               </div>
             </div>
-            <div className="space-y-1">
-              <Label htmlFor={`clinicLocations.${index}.address`}>Address</Label>
-              <Textarea {...register(`clinicLocations.${index}.address`)} placeholder="123 Health St, Wellness City" />
-            </div>
-          </div>
-        ))}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => appendLocation({ name: "", address: "", phone: "" })}
-        >
-          <PlusCircle className="mr-2 h-4 w-4" /> Add Location
-        </Button>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => appendLocation({ name: "", address: "", phone: "" })}
+          >
+            <PlusCircle className="mr-2 h-4 w-4" /> Add Location
+          </Button>
+        </div>
       </div>
 
       <div className="flex justify-end gap-2 pt-4 border-t">
