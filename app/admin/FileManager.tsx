@@ -83,18 +83,18 @@ function UploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent onPointerDown={(e) => e.stopPropagation()}>
         <DialogHeader>
           <DialogTitle>Upload New File</DialogTitle>
           <DialogDescription>Select a file and optionally assign it to a brand.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
-          <div onPointerDown={(e) => e.stopPropagation()}>
+          <div>
             <Label htmlFor="file-upload">File</Label>
             <Input id="file-upload" type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
           </div>
           {!defaultBrandId && (
-            <div onPointerDown={(e) => e.stopPropagation()}>
+            <div>
               <Label htmlFor="brand-select">Assign to Brand (optional)</Label>
               <Select value={brandId || "none"} onValueChange={(value) => setBrandId(value === "none" ? null : value)}>
                 <SelectTrigger id="brand-select">
