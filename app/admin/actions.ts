@@ -235,12 +235,11 @@ ${FORCE_SCHEMA_RELOAD_SQL}
 
 // --- Helper Function to Execute SQL ---
 async function executeSqlScript(sql: string, scriptName: string): Promise<{ success: boolean; message: string }> {
-  // Use the direct connection string for pg
+  // Append sslmode=require to the connection string for Vercel Postgres
+  const connectionString = `${process.env.POSTGRES_URL}?sslmode=require`
+
   const pool = new Pool({
-    connectionString: process.env.POSTGRES_URL,
-    ssl: {
-      rejectUnauthorized: false,
-    },
+    connectionString: connectionString,
   })
 
   try {
