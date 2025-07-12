@@ -17,9 +17,16 @@ interface AdminDashboardProps {
   files: UploadedFile[]
 }
 
-export function AdminDashboard({ brands, submissions, files }: AdminDashboardProps) {
+export function AdminDashboard({
+  brands: initialBrands,
+  submissions: initialSubmissions,
+  files: initialFiles,
+}: AdminDashboardProps) {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
+  const [brands, setBrands] = useState<Brand[]>(initialBrands || [])
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>(initialFiles || [])
+  const [submissions, setSubmissions] = useState<FormSubmission[]>(initialSubmissions || [])
 
   const fetchBrands = useCallback(async () => {
     const response = await fetch("/api/admin/brands")
@@ -99,7 +106,7 @@ export function AdminDashboard({ brands, submissions, files }: AdminDashboardPro
           <SubmissionsTable submissions={submissions} brands={brands} />
         </TabsContent>
         <TabsContent value="files" className="mt-4">
-          <FileManager files={files} />
+          <FileManager files={uploadedFiles} brands={brands} onFilesUpdate={fetchFiles} />
         </TabsContent>
         <TabsContent value="system" className="mt-4">
           <SystemActions />
@@ -114,7 +121,7 @@ export function AdminDashboard({ brands, submissions, files }: AdminDashboardPro
           </DialogHeader>
           <BrandForm
             brand={selectedBrand}
-            files={files}
+            files={uploadedFiles}
             onSave={handleSaveBrand}
             onCancel={() => setIsFormOpen(false)}
             onFilesUpdate={fetchFiles}

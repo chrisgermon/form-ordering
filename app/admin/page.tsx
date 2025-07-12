@@ -19,20 +19,20 @@ async function getDashboardData() {
       .limit(100)
     const filesQuery = supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false }).limit(100)
 
-    const [
-      { data: brands, error: brandsError },
-      { data: submissions, error: submissionsError },
-      { data: files, error: filesError },
-    ] = await Promise.all([brandsQuery, submissionsQuery, filesQuery])
+    const [brandsResult, submissionsResult, filesResult] = await Promise.all([
+      brandsQuery,
+      submissionsQuery,
+      filesQuery,
+    ])
 
-    if (brandsError) throw brandsError
-    if (submissionsError) throw submissionsError
-    if (filesError) throw filesError
+    if (brandsResult.error) throw brandsResult.error
+    if (submissionsResult.error) throw submissionsResult.error
+    if (filesResult.error) throw filesResult.error
 
     return {
-      brands: (brands as Brand[]) || [],
-      submissions: (submissions as FormSubmission[]) || [],
-      files: (files as UploadedFile[]) || [],
+      brands: (brandsResult.data as Brand[]) || [],
+      submissions: (submissionsResult.data as FormSubmission[]) || [],
+      files: (filesResult.data as UploadedFile[]) || [],
       error: null,
     }
   } catch (error) {
