@@ -31,7 +31,7 @@ export function AdminDashboard({
     const response = await fetch("/api/admin/brands")
     if (response.ok) {
       const data = await response.json()
-      // Assuming there's a way to update the brands state from here
+      setBrands(data)
     }
   }, [])
 
@@ -39,7 +39,7 @@ export function AdminDashboard({
     const response = await fetch("/api/admin/files")
     if (response.ok) {
       const data = await response.json()
-      // Assuming there's a way to update the files state from here
+      setUploadedFiles(data)
     }
   }, [])
 
@@ -101,7 +101,7 @@ export function AdminDashboard({
           <BrandGrid brands={brands} onEdit={handleEditBrand} onDelete={handleDeleteBrand} />
         </TabsContent>
         <TabsContent value="submissions" className="mt-4">
-          <SubmissionsTable submissions={submissions} brands={brands} />
+          <SubmissionsTable submissions={submissions} />
         </TabsContent>
         <TabsContent value="files" className="mt-4">
           <FileManager files={uploadedFiles} brands={brands} onFilesUpdate={fetchFiles} />
@@ -116,7 +116,7 @@ export function AdminDashboard({
           </DialogHeader>
           <BrandForm
             brand={selectedBrand}
-            files={uploadedFiles}
+            uploadedFiles={uploadedFiles}
             onSave={handleSaveBrand}
             onCancel={() => setIsFormOpen(false)}
             onFilesUpdate={fetchFiles}
