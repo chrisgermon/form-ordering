@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import type { ClinicLocation } from "@/lib/types"
 import { nanoid } from "nanoid"
 import { put } from "@vercel/blob"
-import { scrapeWebsiteWithAI } from "@/lib/scraping"
+import { scrapeWebsiteWithAI, parseFormWithAI } from "@/lib/scraping"
 import path from "path"
 
 // This helper function uses the Supabase client and relies on the RPC function created above.
@@ -336,9 +336,68 @@ export async function importForm(
   brandSlug: string,
   { htmlCode, url }: { htmlCode?: string; url?: string },
 ) {
-  console.log("Attempted to import form for brand:", brandId, "from url:", url)
-  return {
-    success: false,
-    message: "Form import feature is temporarily disabled due to a build issue. Please add fields manually.",
+  const supabase = createAdminClient()
+
+  try {
+    let htmlContent = htmlCode
+    if (url) {
+      const response = await fetch(url)
+      if (!response.ok) {
+        return { success: false, message: `Failed to fetch URL: ${response.statusText}` }
+      }
+      htmlContent = await response.text()
+    }
+
+    if (!htmlContent) {
+      return { success: false, message: "No HTML content provided or found at URL." }
+    }
+
+    const parsedForm = await parseFormWithAI(htmlContent)
+
+    // Start a transaction
+    // Step 1: Delete existing form data for the brand
+    await supabase.from("product_items").delete().eq("brand_id", brandId)
+    await supabase.from("product_sections").delete().eq("brand_id", brandId)
+
+    // Step 2: Insert new sections and items
+    for (const [sectionIndex, section] of parsedForm.sections.entries()) {
+      const { data: newSection, error: sectionError } = await supabase
+        .from("product_sections")
+        .insert({
+          brand_id: brandId,
+          title: section.title,
+          sort_order: sectionIndex,
+        })
+        .select("id")
+        .single()
+
+      if (sectionError) throw new Error(`Failed to insert section "${section.title}": ${sectionError.message}`)
+
+      if (section.items && section.items.length > 0) {
+        const itemsToInsert = section.items.map((item, itemIndex) => ({
+          brand_id: brandId,
+          section_id: newSection.id,
+          code: item.code,
+          name: item.name,
+          field_type: item.fieldType,
+          options: item.options || [],
+          placeholder: item.placeholder,
+          is_required: item.isRequired || false,
+          sort_order: itemIndex,
+        }))
+
+        const { error: itemsError } = await supabase.from("product_items").insert(itemsToInsert)
+        if (itemsError) throw new Error(`Failed to insert items for section "${section.title}": ${itemsError.message}`)
+      }
+    }
+
+    revalidatePath(`/admin/editor/${brandSlug}`)
+    revalidatePath(`/forms/${brandSlug}`)
+
+    return { success: true, message: "Form imported successfully!" }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during import."
+    console.error("Error importing form:", errorMessage)
+    return { success: false, message: errorMessage }
   }
 }
