@@ -6,87 +6,283 @@ import type { ClinicLocation } from "@/lib/types"
 import { nanoid } from "nanoid"
 import { put } from "@vercel/blob"
 import { scrapeWebsiteWithAI, parseFormWithAI } from "@/lib/scraping"
-import path from "path"
-import { readFileSync } from "fs"
 import { Pool } from "pg"
 
-// This helper function uses the Supabase client and relies on the RPC function created above.
-async function executeSql(sql: string): Promise<{ success: boolean; message: string }> {
-  try {
-    const supabase = createAdminClient()
-    const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
-    if (error) {
-      if (error.message.includes("function execute_sql(sql_query => text) does not exist")) {
-        return {
-          success: false,
-          message:
-            "Database helper function is missing. Please run 'Step 0: Enable System Actions' from the System tab first.",
-        }
-      }
-      throw error
-    }
-    return { success: true, message: "SQL script executed successfully." }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    console.error(`Error executing SQL:`, errorMessage)
-    return { success: false, message: `Failed to execute SQL script: ${errorMessage}` }
-  }
-}
+// --- SQL Script Content ---
+// By embedding the SQL here, we avoid filesystem errors in the serverless environment.
 
-async function executeSqlFile(filePath: string) {
+const CREATE_TABLES_SQL = `
+-- Brands Table
+CREATE TABLE IF NOT EXISTS brands (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    slug TEXT UNIQUE NOT NULL,
+    logo TEXT,
+    emails TEXT[] NOT NULL DEFAULT '{}',
+    clinic_locations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Product Sections Table
+CREATE TABLE IF NOT EXISTS product_sections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    sort_order INTEGER,
+    brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Product Items Table
+CREATE TABLE IF NOT EXISTS product_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code TEXT,
+    name TEXT NOT NULL,
+    description TEXT,
+    field_type TEXT NOT NULL DEFAULT 'checkbox_group',
+    options JSONB NOT NULL DEFAULT '[]'::jsonb,
+    placeholder TEXT,
+    is_required BOOLEAN NOT NULL DEFAULT false,
+    sample_link TEXT,
+    sort_order INTEGER,
+    section_id UUID REFERENCES product_sections(id) ON DELETE CASCADE,
+    brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Submissions Table
+CREATE TABLE IF NOT EXISTS submissions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+    ordered_by TEXT,
+    email TEXT,
+    bill_to TEXT,
+    deliver_to TEXT,
+    items JSONB,
+    pdf_url TEXT,
+    status TEXT,
+    email_response TEXT,
+    order_data JSONB,
+    ip_address TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Uploaded Files Table
+CREATE TABLE IF NOT EXISTS uploaded_files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    filename TEXT NOT NULL,
+    original_name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    pathname TEXT,
+    size BIGINT NOT NULL,
+    content_type TEXT,
+    brand_id UUID REFERENCES brands(id) ON DELETE SET NULL,
+    uploaded_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Function to update 'updated_at' timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Triggers for 'updated_at'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_brands_updated_at') THEN
+    CREATE TRIGGER update_brands_updated_at BEFORE UPDATE ON brands FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_product_sections_updated_at') THEN
+    CREATE TRIGGER update_product_sections_updated_at BEFORE UPDATE ON product_sections FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_product_items_updated_at') THEN
+    CREATE TRIGGER update_product_items_updated_at BEFORE UPDATE ON product_items FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  END IF;
+END;
+$$;
+`
+
+const SEED_BRANDS_SQL = `
+INSERT INTO brands (name, slug, active, emails, clinic_locations) VALUES
+('Vision Radiology', 'vision-radiology', true, '[]', '[]'),
+('Light Radiology', 'light-radiology', true, '[]', '[]'),
+('Quantum Medical Imaging', 'quantum-medical-imaging', true, '[]', '[]'),
+('Focus Radiology', 'focus-radiology', true, '[]', '[]'),
+('Pulse Radiology', 'pulse-radiology', true, '[]', '[]')
+ON CONFLICT (slug) DO NOTHING;
+`
+
+const FORCE_SCHEMA_RELOAD_SQL = `NOTIFY pgrst, 'reload schema';`
+
+const CORRECT_BRANDS_SCHEMA_SQL = `
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='email') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='emails') THEN
+            RAISE NOTICE 'Renaming column "email" to "emails" and converting to TEXT[].';
+            ALTER TABLE brands RENAME COLUMN email TO emails;
+            ALTER TABLE brands ALTER COLUMN emails TYPE TEXT[] USING ARRAY[emails];
+        ELSE
+            RAISE NOTICE 'Dropping redundant "email" column.';
+            ALTER TABLE brands DROP COLUMN email;
+        END IF;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='emails') THEN
+        RAISE NOTICE 'Adding "emails" column with type TEXT[].';
+        ALTER TABLE brands ADD COLUMN emails TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='clinic_locations') THEN
+        RAISE NOTICE 'Adding "clinic_locations" column with type JSONB.';
+        ALTER TABLE brands ADD COLUMN clinic_locations JSONB NOT NULL DEFAULT '[]'::jsonb;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='email_to') THEN
+        RAISE NOTICE 'Dropping legacy "email_to" column.';
+        ALTER TABLE brands DROP COLUMN email_to;
+    END IF;
+
+    RAISE NOTICE 'Brands table schema correction complete.';
+END;
+$$;
+${FORCE_SCHEMA_RELOAD_SQL}
+`
+
+const FIX_PRIMARY_COLOR_SQL = `
+ALTER TABLE brands DROP COLUMN IF EXISTS primary_color;
+${FORCE_SCHEMA_RELOAD_SQL}
+`
+
+const SUBMISSIONS_FK_FIX_SQL = `
+ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES brands(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_uploaded_files_brand_id ON uploaded_files(brand_id);
+${FORCE_SCHEMA_RELOAD_SQL}
+`
+
+const SEED_PULSE_RADIOLOGY_FORM_SQL = `
+DO $$
+DECLARE
+    pulse_brand_id UUID;
+BEGIN
+    SELECT id INTO pulse_brand_id FROM brands WHERE slug = 'pulse-radiology';
+
+    IF pulse_brand_id IS NOT NULL THEN
+        DELETE FROM product_items WHERE brand_id = pulse_brand_id;
+        DELETE FROM product_sections WHERE brand_id = pulse_brand_id;
+    ELSE
+        INSERT INTO brands (name, slug) VALUES ('Pulse Radiology', 'pulse-radiology')
+        ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+        RETURNING id INTO pulse_brand_id;
+    END IF;
+END $$;
+
+WITH pulse_brand AS (
+  SELECT id FROM brands WHERE slug = 'pulse-radiology'
+),
+details_section AS (
+  INSERT INTO product_sections (brand_id, title, sort_order)
+  SELECT id, 'Order Details', 0 FROM pulse_brand
+  RETURNING id
+),
+operational_section AS (
+  INSERT INTO product_sections (brand_id, title, sort_order)
+  SELECT id, 'Operational and Patient Brochures', 1 FROM pulse_brand
+  RETURNING id
+),
+referrals_section AS (
+  INSERT INTO product_sections (brand_id, title, sort_order)
+  SELECT id, 'Referrals', 2 FROM pulse_brand
+  RETURNING id
+),
+patient_brochures_section AS (
+  INSERT INTO product_sections (brand_id, title, sort_order)
+  SELECT id, 'Patient Brochures', 3 FROM pulse_brand
+  RETURNING id
+)
+INSERT INTO product_items (brand_id, section_id, name, code, field_type, is_required, placeholder, sort_order, options, description, sample_link)
+VALUES
+((SELECT id FROM pulse_brand), (SELECT id FROM details_section), 'Ordered By', 'ordered_by', 'text', true, 'Your Name', 0, '[]'::jsonb, NULL, NULL),
+((SELECT id FROM pulse_brand), (SELECT id FROM details_section), 'Email Address', 'email', 'text', true, 'your.email@example.com', 1, '[]'::jsonb, NULL, NULL),
+((SELECT id FROM pulse_brand), (SELECT id FROM details_section), 'Date', 'date', 'date', true, NULL, 2, '[]'::jsonb, NULL, NULL),
+((SELECT id FROM pulse_brand), (SELECT id FROM details_section), 'Bill to Clinic', 'bill_to', 'text', true, 'Clinic Name', 3, '[]'::jsonb, NULL, NULL),
+((SELECT id FROM pulse_brand), (SELECT id FROM details_section), 'Deliver to Clinic', 'deliver_to', 'text', true, 'Clinic Name', 4, '[]'::jsonb, NULL, NULL),
+((SELECT id FROM pulse_brand), (SELECT id FROM operational_section), 'Letterhead', 'PR-LTRHD', 'checkbox_group', false, 'Please enter number of boxes here', 0, '["1 box", "2 boxes", "4 boxes", "other"]'::jsonb, '2000 per box', 'https://drive.google.com/uc?export=download&id=1OXVwxKvqg9KXpRKWZR6T0V6Ob6ZR5Jfx'),
+((SELECT id FROM pulse_brand), (SELECT id FROM operational_section), 'Appointment Cards', 'PR-APPNT', 'checkbox_group', false, 'Please enter number of boxes here', 1, '["1 box", "2 boxes", "4 boxes", "other"]'::jsonb, '250 per box', 'https://drive.google.com/uc?export=download&id=1Itcw9bbpnZ_IZmcvwBwbQgbhdF5MHH3w'),
+((SELECT id FROM pulse_brand), (SELECT id FROM operational_section), 'Euflexxa Appointment Cards', 'PR-EUFAPPNT', 'checkbox_group', false, 'Please enter number of boxes here', 2, '["1 box", "2 boxes", "4 boxes", "other"]'::jsonb, '250 per box', 'https://drive.google.com/uc?export=download&id=1yBkL9PHf8pJfOx1ZOpOdXfoAAfK-mNcB'),
+((SELECT id FROM pulse_brand), (SELECT id FROM operational_section), 'X-Ray Envelopes Small', 'PR-SMXE', 'checkbox_group', false, 'Please enter number of boxes here', 3, '["4 boxes", "6 boxes", "8 boxes", "other"]'::jsonb, '250 per box', 'https://drive.google.com/uc?export=download&id=1HRMOWZgQEHgJLIATgim0OyC8vuhd65Jh'),
+((SELECT id FROM pulse_brand), (SELECT id FROM operational_section), 'X-Ray Envelopes Large', 'PR-LGXE', 'checkbox_group', false, 'Please enter number of boxes here', 4, '["4 boxes", "6 boxes", "8 boxes", "other"]'::jsonb, '250 per box', 'https://drive.google.com/uc?export=download&id=1HRMOWZgQEHgJLIATgim0OyC8vuhd65Jh'),
+((SELECT id FROM pulse_brand), (SELECT id FROM operational_section), 'A5 Labels', 'PR-A5LABEL', 'checkbox_group', false, 'Please enter number of boxes here', 5, '["5 boxes", "10 boxes", "15 boxes", "other"]'::jsonb, '1000 per box', NULL),
+((SELECT id FROM pulse_brand), (SELECT id FROM referrals_section), 'A4 General', 'PR-A4BLANK1', 'checkbox_group', false, 'Please enter number of boxes here', 0, '["1 box", "2 boxes", "4 boxes", "other"]'::jsonb, '20 packs of 100 per box', 'https://drive.google.com/uc?export=download&id=1HHIHvg5tUSVh7fpYEf6jYJ1Zh2Iv02ry'),
+((SELECT id FROM pulse_brand), (SELECT id FROM referrals_section), 'A4 Blank', 'PR-A4BLANK2', 'checkbox_group', false, 'Please enter number of boxes here', 1, '["1 box", "2 boxes", "4 boxes", "other"]'::jsonb, '20 packs of 100 per box', 'https://drive.google.com/uc?export=download&id=125ODAMbSkkBWlWk5NahseP-vJbkYNNwa'),
+((SELECT id FROM pulse_brand), (SELECT id FROM referrals_section), 'A4 GP Cardiac', 'PR-A4GP1', 'checkbox_group', false, 'Please enter number of boxes here', 2, '["1 box", "2 boxes", "4 boxes", "other"]'::jsonb, '20 packs of 100 per box', NULL),
+((SELECT id FROM pulse_brand), (SELECT id FROM referrals_section), 'A5 General', 'PR-A5GEN1', 'checkbox_group', false, 'Please enter number of boxes here', 3, '["1 box", "2 boxes", "4 boxes", "other"]'::jsonb, '40 pads of 50 per box', 'https://drive.google.com/uc?export=download&id=1DxEdOOieeuPLHA2cP8sWTy53nXQgiuFr'),
+((SELECT id FROM pulse_brand), (SELECT id FROM referrals_section), 'A5 Dental', 'PR-A5DENTAL2', 'checkbox_group', false, 'Please enter number of boxes here', 4, '["1 box", "2 boxes", "3 boxes", "other"]'::jsonb, '40 pads of 50 per box', 'https://drive.google.com/uc?export=download&id=1jyx6bisNm0HmdQprtElr645lEAawbw19'),
+((SELECT id FROM pulse_brand), (SELECT id FROM referrals_section), 'A5 Chiropractic', 'PR-A5CHIRO1', 'checkbox_group', false, 'Please enter number of boxes here', 5, '["1 box", "2 boxes", "3 boxes", "other"]'::jsonb, '40 pads of 50 per box', NULL),
+((SELECT id FROM pulse_brand), (SELECT id FROM patient_brochures_section), 'Presentation Folder', 'PR-PFOLD', 'checkbox_group', false, 'Please enter a number here', 0, '["500", "1000", "1500", "other"]'::jsonb, NULL, 'https://drive.google.com/uc?export=download&id=1-MB1rbVzuYgp4Y3gmHFaNJ5hLSqkMmCg'),
+((SELECT id FROM pulse_brand), (SELECT id FROM patient_brochures_section), 'Euflexxa', 'PR-EFX3F', 'checkbox_group', false, 'Please enter a number here', 1, '["100", "200", "300", "other"]'::jsonb, NULL, 'https://drive.google.com/uc?export=download&id=1wUxnqat9Fb3ApQj0mHTemPm9LIijiLUk'),
+((SELECT id FROM pulse_brand), (SELECT id FROM patient_brochures_section), 'Bulk Billed Interventional Procedures', 'PR-DLINJ1', 'checkbox_group', false, 'Please enter a number here', 2, '["100", "200", "300", "other"]'::jsonb, NULL, 'https://drive.google.com/uc?export=download&id=1zbEHb5E3GyIh8yvtau5EQc3VLMJFX8Dh'),
+((SELECT id FROM pulse_brand), (SELECT id FROM patient_brochures_section), 'A4 Lastography', 'PR-ELASTO', 'checkbox_group', false, 'Please enter a number here', 3, '["100", "200", "300", "other"]'::jsonb, NULL, 'https://drive.google.com/uc?export=download&id=1qkjvH-I2IVemXp3sliOfAZaKPfSX-t0F'),
+((SELECT id FROM pulse_brand), (SELECT id FROM patient_brochures_section), 'A5 Same Day Service', 'PR-A5SAMEDAY', 'checkbox_group', false, 'Please enter a number here', 4, '["100", "200", "300", "other"]'::jsonb, NULL, 'https://drive.google.com/uc?export=download&id=1gSNQ7Tw2e-VuCTeSiV8Iai1vcNz6MCCu');
+${FORCE_SCHEMA_RELOAD_SQL}
+`
+
+// --- Helper Function to Execute SQL ---
+async function executeSqlScript(sql: string, scriptName: string): Promise<{ success: boolean; message: string }> {
+  // Use the direct connection string for pg
   const pool = new Pool({
     connectionString: process.env.POSTGRES_URL,
   })
 
   try {
-    const sql = readFileSync(path.join(process.cwd(), filePath), "utf8")
     await pool.query(sql)
-    return { success: true, message: `Successfully executed ${path.basename(filePath)}` }
+    return { success: true, message: `Successfully executed ${scriptName}` }
   } catch (error) {
-    console.error(`Error executing ${filePath}:`, error)
+    console.error(`Error executing ${scriptName}:`, error)
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return { success: false, message: `Failed to execute ${path.basename(filePath)}: ${errorMessage}` }
+    return { success: false, message: `Failed to execute ${scriptName}: ${errorMessage}` }
   } finally {
     await pool.end()
   }
 }
 
+// --- Exported System Actions ---
+
 export async function createAdminTables() {
-  return executeSqlFile("scripts/create-admin-tables.sql")
+  return executeSqlScript(CREATE_TABLES_SQL, "Create Tables")
 }
 
 export async function initializeDatabase() {
-  return executeSqlFile("scripts/create-tables.sql")
-}
-
-export async function runSchemaV5Update() {
-  const sql = `
-    ALTER TABLE uploaded_files
-    ADD COLUMN IF NOT EXISTS pathname TEXT;
-    NOTIFY pgrst, 'reload schema';
-    `
-  return executeSql(sql)
+  return executeSqlScript(SEED_BRANDS_SQL, "Initialize Database (Seed Brands)")
 }
 
 export async function forceSchemaReload() {
-  return executeSqlFile("scripts/force-schema-reload.sql")
+  return executeSqlScript(FORCE_SCHEMA_RELOAD_SQL, "Force Schema Reload")
 }
 
 export async function runBrandSchemaCorrection() {
-  return executeSqlFile("scripts/correct-brands-schema.sql")
+  return executeSqlScript(CORRECT_BRANDS_SCHEMA_SQL, "Run Brand Schema Correction")
 }
 
 export async function runPrimaryColorFix() {
-  return executeSqlFile("scripts/fix-primary-color-issue.sql")
+  return executeSqlScript(FIX_PRIMARY_COLOR_SQL, "Run Primary Color Fix")
 }
 
 export async function runSubmissionsFKFix() {
-  return executeSqlFile("scripts/update-schema-v12.sql")
+  return executeSqlScript(SUBMISSIONS_FK_FIX_SQL, "Run Submissions FK Fix")
 }
 
 export async function seedPulseRadiologyForm() {
-  return executeSqlFile("scripts/seed-pulse-radiology-form.sql")
+  return executeSqlScript(SEED_PULSE_RADIOLOGY_FORM_SQL, "Seed Pulse Radiology Form")
 }
+
+// --- Other Server Actions (Unchanged) ---
 
 async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | null> {
   try {
@@ -96,7 +292,7 @@ async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | 
       return null
     }
     const imageBlob = await response.blob()
-    const originalName = path.basename(new URL(logoUrl).pathname) || `logo-${nanoid(5)}`
+    const originalName = new URL(logoUrl).pathname.split("/").pop() || `logo-${nanoid(5)}`
     const filename = `logos/${brandSlug}-${Date.now()}-${originalName}`
 
     const { pathname } = await put(filename, imageBlob, {
@@ -203,12 +399,9 @@ export async function importForm(
 
     const parsedForm = await parseFormWithAI(htmlContent)
 
-    // Start a transaction
-    // Step 1: Delete existing form data for the brand
     await supabase.from("product_items").delete().eq("brand_id", brandId)
     await supabase.from("product_sections").delete().eq("brand_id", brandId)
 
-    // Step 2: Insert new sections and items
     for (const [sectionIndex, section] of parsedForm.sections.entries()) {
       const { data: newSection, error: sectionError } = await supabase
         .from("product_sections")
