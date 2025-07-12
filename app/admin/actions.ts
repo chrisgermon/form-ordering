@@ -13,9 +13,9 @@ import { neon } from "@neondatabase/serverless"
 // It uses the Neon driver directly to bypass the Supabase client limitations for DDL.
 export async function createExecuteSqlFunction() {
   try {
-    // Ensure the environment variable is available.
-    if (!process.env.NEON_NEON_DATABASE_URL) {
-      return { success: false, message: "Neon database URL is not configured." }
+    // Ensure the correct environment variable is available.
+    if (!process.env.NEON_DATABASE_URL) {
+      return { success: false, message: "Neon database URL is not configured. Please check project environment variables." }
     }
     const sql = neon(process.env.NEON_DATABASE_URL)
     const createFunctionSql = `
@@ -30,6 +30,7 @@ export async function createExecuteSqlFunction() {
     return { success: true, message: "Helper function created successfully. You can now run other system actions." }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    console.error("Failed to create helper function:", error)
     return { success: false, message: `Failed to create helper function: ${errorMessage}` }
   }
 }
