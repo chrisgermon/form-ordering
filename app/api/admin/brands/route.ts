@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/utils/supabase/server"
+import { revalidatePath } from "next/cache"
 
 const slugify = (text: string) => {
   if (!text) return ""
@@ -65,6 +66,7 @@ export async function POST(request: NextRequest) {
       throw error
     }
 
+    revalidatePath("/admin")
     return NextResponse.json(brand)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Failed to create brand"
@@ -108,6 +110,8 @@ export async function PUT(request: NextRequest) {
       throw error
     }
 
+    revalidatePath("/admin")
+    revalidatePath(`/forms/${brand.slug}`)
     return NextResponse.json(brand)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Failed to update brand"
@@ -129,6 +133,7 @@ export async function DELETE(request: NextRequest) {
 
     if (error) throw error
 
+    revalidatePath("/admin")
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error deleting brand:", error)
