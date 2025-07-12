@@ -57,7 +57,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     resolver: zodResolver(brandFormSchema),
     defaultValues: {
       name: "",
-      logo: "", // Updated default value to be a non-empty string
+      logo: "",
       active: true,
       emails: [],
       clinicLocations: [],
@@ -75,7 +75,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     if (brand) {
       reset({
         name: brand.name,
-        logo: brand.logo || "", // This ensures null becomes an empty string for the form
+        logo: brand.logo || "",
         active: brand.active,
         emails: brand.emails.map((email) => ({ value: email })),
         clinicLocations: brand.clinic_locations || [],
@@ -83,7 +83,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     } else {
       reset({
         name: "",
-        logo: "", // Updated default value to be a non-empty string
+        logo: "",
         active: true,
         emails: [{ value: "" }],
         clinicLocations: [{ name: "", address: "", phone: "" }],
@@ -125,7 +125,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     const payload = {
       id: brand?.id,
       ...data,
-      logo: data.logo || null, // Convert empty string/falsy back to null
+      logo: data.logo || null,
       emails: data.emails.map((e) => e.value).filter(Boolean),
     }
     await onSave(payload)
@@ -174,14 +174,11 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
               control={control}
               render={({ field }) => (
                 <Select onValueChange={field.onChange} value={field.value || "default-logo"}>
-                  {" "}
-                  {/* Updated default value to be a non-empty string */}{" "}
-                  {/* Updated default value to be a non-empty string */}
                   <SelectTrigger>
                     <SelectValue placeholder="Select a logo from brand files" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default-logo">No Logo</SelectItem> {/* Updated value to be a non-empty string */}
+                    <SelectItem value="default-logo">No Logo</SelectItem>
                     {brandSpecificFiles
                       .filter((file) => file.content_type?.startsWith("image/"))
                       .map((file) => (

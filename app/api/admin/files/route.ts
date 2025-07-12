@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/utils/supabase/server"
 import { del } from "@vercel/blob"
+import { revalidatePath } from "next/cache"
+
+export const revalidate = 0
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,9 +29,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const supabase = createAdminClient()
   try {
-    const supabase = createAdminClient()
-    // Try to parse a JSON body for bulk delete, fall back for single delete via query param
     const body = await request.json().catch(() => null)
     const singleFileId = new URL(request.url).searchParams.get("id")
 
@@ -38,7 +40,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "File ID(s) are required" }, { status: 400 })
     }
 
-    // Step 1: Fetch file details (URLs) from the database before deleting them
+    // Step 1: Fetch file details (URLs) from the database
     const { data: filesToDelete, error: fetchError } = await supabase
       .from("uploaded_files")
       .select("url")
@@ -46,14 +48,19 @@ export async function DELETE(request: NextRequest) {
 
     if (fetchError) {
       console.error("Error fetching files for deletion:", fetchError)
-      throw fetchError
+      throw new Error(`Database error fetching files: ${fetchError.message}`)
     }
 
     // Step 2: Delete files from Vercel Blob storage
     if (filesToDelete && filesToDelete.length > 0) {
       const urlsToDelete = filesToDelete.map((file) => file.url).filter(Boolean)
       if (urlsToDelete.length > 0) {
-        await del(urlsToDelete)
+        try {
+          await del(urlsToDelete)
+        } catch (blobError) {
+          // Log blob deletion error but continue to attempt DB deletion
+          console.error("Error deleting files from Vercel Blob:", blobError)
+        }
       }
     }
 
@@ -62,13 +69,17 @@ export async function DELETE(request: NextRequest) {
 
     if (deleteError) {
       console.error("Error deleting file records from DB:", deleteError)
-      throw deleteError
+      throw new Error(`Database error deleting records: ${deleteError.message}`)
     }
+
+    // Step 4: Revalidate paths to clear caches
+    revalidatePath("/admin")
+    revalidatePath("/api/admin/files")
 
     return NextResponse.json({ success: true, message: `${fileIdsToDelete.length} files deleted successfully.` })
   } catch (error) {
-    console.error("Error deleting file(s):", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return NextResponse.json({ error: `Failed to delete file(s): ${errorMessage}` }, { status: 500 })
+    console.error("Error in DELETE /api/admin/files:", error)
+    const errorMessage = error instanceof Error ? error.message : "An unknown server error occurred"
+    return NextResponse.json({ error: `Failed to delete file(s).`, details: errorMessage }, { status: 500 })
   }
 }
