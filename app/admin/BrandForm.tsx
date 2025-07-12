@@ -365,7 +365,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
           </TabsContent>
           <TabsContent value="files" className="flex-grow overflow-y-auto mt-4">
             {brand && (
-              <div onClick={(e) => e.stopPropagation()}>
+              <div onPointerDown={(e) => e.stopPropagation()}>
                 <FileManager
                   initialFiles={brandSpecificFiles}
                   brands={brand ? [brand] : []}
