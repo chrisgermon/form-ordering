@@ -1,219 +1,257 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
-import { useForm, useFieldArray } from "react-hook-form"
+import { useForm, useFieldArray, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import type { Brand, ClinicLocation } from "@/lib/types"
-import { saveBrand, fetchBrandData } from "./actions"
+import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import type { Brand, UploadedFile } from "@/lib/types"
 import { toast } from "sonner"
-import { Trash2, PlusCircle, Loader2 } from "lucide-react"
-import Image from "next/image"
+import { Trash2, PlusCircle, Loader2, Upload } from "lucide-react"
 
-const brandSchema = z.object({
+const brandFormSchema = z.object({
   name: z.string().min(1, "Brand name is required"),
-  website_url: z.string().url("Invalid URL").optional().or(z.literal("")),
-  primary_color: z.string().optional(),
-  secondary_color: z.string().optional(),
-  logo_url: z.string().url("Invalid URL").optional().or(z.literal("")),
-  locations: z
-    .array(
-      z.object({
-        id: z.number().optional(),
-        name: z.string().min(1, "Location name is required"),
-        address: z.string().min(1, "Address is required"),
-      }),
-    )
-    .optional(),
+  logo: z.string().optional(),
+  active: z.boolean(),
+  emails: z.array(z.object({ value: z.string().email("Invalid email address") })),
+  clinicLocations: z.array(
+    z.object({
+      name: z.string().min(1, "Location name is required"),
+      address: z.string().optional(),
+      phone: z.string().optional(),
+    }),
+  ),
 })
 
-type BrandFormData = z.infer<typeof brandSchema>
+type BrandFormData = z.infer<typeof brandFormSchema>
 
 interface BrandFormProps {
-  isOpen: boolean
-  onClose: () => void
-  onSave: (brand: Brand) => void
-  brand?: Brand & { clinic_locations: ClinicLocation[] }
+  brand: Brand | null
+  uploadedFiles: UploadedFile[]
+  onSave: (data: any) => void
+  onCancel: () => void
+  onLogoUpload: () => void
 }
 
-export function BrandForm({ isOpen, onClose, onSave, brand }: BrandFormProps) {
+export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload }: BrandFormProps) {
   const [isSaving, setIsSaving] = useState(false)
-  const [isFetching, setIsFetching] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
 
-  const { register, handleSubmit, control, reset, watch, setValue } = useForm<BrandFormData>({
-    resolver: zodResolver(brandSchema),
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    setValue,
+    formState: { errors },
+  } = useForm<BrandFormData>({
+    resolver: zodResolver(brandFormSchema),
     defaultValues: {
       name: "",
-      website_url: "",
-      primary_color: "#000000",
-      secondary_color: "#ffffff",
-      logo_url: "",
-      locations: [],
+      logo: "defaultLogoPath", // Updated default value to be a non-empty string
+      active: true,
+      emails: [],
+      clinicLocations: [],
     },
   })
 
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: "locations",
-  })
-
-  const websiteUrl = watch("website_url")
-  const logoUrl = watch("logo_url")
+  const { fields: emailFields, append: appendEmail, remove: removeEmail } = useFieldArray({ control, name: "emails" })
+  const {
+    fields: locationFields,
+    append: appendLocation,
+    remove: removeLocation,
+  } = useFieldArray({ control, name: "clinicLocations" })
 
   useEffect(() => {
     if (brand) {
       reset({
         name: brand.name,
-        website_url: brand.website_url || "",
-        primary_color: brand.primary_color || "#000000",
-        secondary_color: brand.secondary_color || "#ffffff",
-        logo_url: brand.logo_url || "",
-        locations: brand.clinic_locations || [],
+        logo: brand.logo || "defaultLogoPath", // Updated default value to be a non-empty string
+        active: brand.active,
+        emails: brand.emails.map((email) => ({ value: email })),
+        clinicLocations: brand.clinic_locations || [],
       })
     } else {
       reset({
         name: "",
-        website_url: "",
-        primary_color: "#000000",
-        secondary_color: "#ffffff",
-        logo_url: "",
-        locations: [],
+        logo: "defaultLogoPath", // Updated default value to be a non-empty string
+        active: true,
+        emails: [{ value: "" }],
+        clinicLocations: [{ name: "", address: "", phone: "" }],
       })
     }
   }, [brand, reset])
 
-  const handleFetchData = async () => {
-    if (!websiteUrl) {
-      toast.error("Please enter a website URL to fetch data.")
-      return
-    }
-    setIsFetching(true)
-    const result = await fetchBrandData(websiteUrl, brand?.slug || "new-brand")
-    setIsFetching(false)
-
-    if (result.success && result.data) {
-      if (result.data.name) setValue("name", result.data.name)
-      if (result.data.logo_url) {
-        setValue("logo_url", result.data.logo_url)
-      }
-      if (result.data.locations && result.data.locations.length > 0) {
-        remove() // Clear existing locations
-        result.data.locations.forEach((loc) => append({ name: loc.name, address: loc.address }))
-      }
-      toast.success("Data fetched successfully!")
-    } else {
-      toast.error(result.error || "Failed to fetch data.")
-    }
-  }
-
   const onSubmitHandler = async (data: BrandFormData) => {
     setIsSaving(true)
-    const brandToSave = {
-      ...data,
+    const payload = {
       id: brand?.id,
-      slug: brand?.slug,
-      locations: data.locations || [],
+      ...data,
+      emails: data.emails.map((e) => e.value).filter(Boolean), // Convert back to string array
     }
-
-    const result = await saveBrand(brandToSave)
+    await onSave(payload)
     setIsSaving(false)
+  }
 
-    if (result.success && result.data) {
-      toast.success(`Brand ${brand ? "updated" : "created"} successfully!`)
-      onSave(result.data as Brand)
-      onClose()
-    } else {
-      toast.error(result.error || "Failed to save brand.")
+  const handleFileSelectAndUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setIsUploading(true)
+    const uploadFormData = new FormData()
+    uploadFormData.append("file", file)
+
+    try {
+      const response = await fetch(`/api/admin/upload?brandId=${brand?.id || ""}`, {
+        method: "POST",
+        body: uploadFormData,
+      })
+      if (response.ok) {
+        const newFile = await response.json()
+        setValue("logo", newFile.pathname, { shouldValidate: true })
+        toast.success("Logo uploaded and selected.")
+        onLogoUpload() // Refresh the file list in the parent
+      } else {
+        const errorData = await response.json()
+        toast.error(`Failed to upload logo: ${errorData.error}`)
+      }
+    } catch (error) {
+      toast.error("An error occurred during upload.")
+    } finally {
+      setIsUploading(false)
     }
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{brand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmitHandler)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="website_url">Website URL</Label>
-            <div className="flex gap-2">
-              <Input id="website_url" {...register("website_url")} placeholder="https://example.com" />
-              <Button type="button" onClick={handleFetchData} disabled={isFetching || !websiteUrl}>
-                {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Fetch Data"}
+    <form onSubmit={handleSubmit(onSubmitHandler)} className="space-y-6">
+      <div className="space-y-2">
+        <Label htmlFor="name">Brand Name</Label>
+        <Input id="name" {...register("name")} />
+        {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="logo">Logo</Label>
+        <div className="flex items-center gap-2">
+          <Controller
+            name="logo"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select an uploaded logo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="defaultLogoPath">No Logo</SelectItem>{" "}
+                  {/* Updated value to be a non-empty string */}
+                  {uploadedFiles.map((file) => (
+                    <SelectItem key={file.id} value={file.pathname}>
+                      {file.original_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+          <div className="relative">
+            <Button type="button" variant="outline" asChild disabled={isUploading}>
+              <label htmlFor="logo-upload" className="cursor-pointer flex items-center">
+                <Upload className="mr-2 h-4 w-4" /> {isUploading ? "Uploading..." : "Upload"}
+              </label>
+            </Button>
+            <Input
+              id="logo-upload"
+              type="file"
+              accept=".png,.jpg,.jpeg,.svg"
+              onChange={handleFileSelectAndUpload}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              disabled={isUploading}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <Controller
+          name="active"
+          control={control}
+          render={({ field }) => <Switch id="active" checked={field.value} onCheckedChange={field.onChange} />}
+        />
+        <Label htmlFor="active">Active</Label>
+        <p className="text-sm text-muted-foreground">(Inactive brands will not appear on the public homepage)</p>
+      </div>
+
+      <div className="space-y-3 p-4 border rounded-md">
+        <Label>Recipient Emails</Label>
+        <p className="text-sm text-muted-foreground">
+          These addresses will receive the order submission emails for this brand.
+        </p>
+        {emailFields.map((field, index) => (
+          <div key={field.id} className="flex items-center gap-2">
+            <Input {...register(`emails.${index}.value`)} placeholder="name@example.com" />
+            <Button type="button" variant="ghost" size="icon" onClick={() => removeEmail(index)}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+        <Button type="button" variant="outline" size="sm" onClick={() => appendEmail({ value: "" })}>
+          <PlusCircle className="mr-2 h-4 w-4" /> Add Email
+        </Button>
+      </div>
+
+      <div className="space-y-3 p-4 border rounded-md">
+        <Label>Clinic Locations</Label>
+        <p className="text-sm text-muted-foreground">
+          These locations will appear in the "Bill To" and "Deliver To" dropdowns on the order form.
+        </p>
+        {locationFields.map((field, index) => (
+          <div key={field.id} className="space-y-2 p-3 border rounded-md bg-gray-50/50">
+            <div className="flex justify-end">
+              <Button type="button" variant="ghost" size="icon" onClick={() => removeLocation(index)}>
+                <Trash2 className="h-4 w-4" />
               </Button>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="name">Brand Name</Label>
-            <Input id="name" {...register("name")} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="primary_color">Primary Color</Label>
-              <Input id="primary_color" type="color" {...register("primary_color")} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor={`clinicLocations.${index}.name`}>Location Name</Label>
+                <Input {...register(`clinicLocations.${index}.name`)} placeholder="Main Clinic" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor={`clinicLocations.${index}.phone`}>Phone Number</Label>
+                <Input {...register(`clinicLocations.${index}.phone`)} placeholder="e.g., (02) 1234 5678" />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="secondary_color">Secondary Color</Label>
-              <Input id="secondary_color" type="color" {...register("secondary_color")} />
+            <div className="space-y-1">
+              <Label htmlFor={`clinicLocations.${index}.address`}>Address</Label>
+              <Textarea {...register(`clinicLocations.${index}.address`)} placeholder="123 Health St, Wellness City" />
             </div>
           </div>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => appendLocation({ name: "", address: "", phone: "" })}
+        >
+          <PlusCircle className="mr-2 h-4 w-4" /> Add Location
+        </Button>
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="logo_url">Logo URL</Label>
-            <Input id="logo_url" {...register("logo_url")} placeholder="https://example.com/logo.png" />
-            {logoUrl && (
-              <div className="mt-2 p-2 border rounded-md flex justify-center bg-gray-50">
-                <Image
-                  src={logoUrl || "/placeholder.svg"}
-                  alt="Logo Preview"
-                  width={100}
-                  height={100}
-                  className="object-contain"
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="text-lg font-medium">Clinic Locations</h3>
-            {fields.map((field, index) => (
-              <div key={field.id} className="flex items-end gap-2 p-2 border rounded-md">
-                <div className="flex-grow grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label htmlFor={`locations.${index}.name`}>Location Name</Label>
-                    <Input {...register(`locations.${index}.name`)} placeholder="Main Clinic" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor={`locations.${index}.address`}>Address</Label>
-                    <Input {...register(`locations.${index}.address`)} placeholder="123 Health St, Wellness City" />
-                  </div>
-                </div>
-                <Button type="button" variant="destructive" size="icon" onClick={() => remove(index)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-            <Button type="button" variant="outline" onClick={() => append({ name: "", address: "" })}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Add Location
-            </Button>
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Brand"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <div className="flex justify-end gap-2 pt-4 border-t">
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isSaving}>
+          {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Brand"}
+        </Button>
+      </div>
+    </form>
   )
 }
