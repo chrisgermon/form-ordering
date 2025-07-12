@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, Database, ShieldCheck } from "lucide-react"
+import { Loader2, Database } from "lucide-react"
 import type { SystemActions as SystemActionsType } from "@/lib/types"
 
 export function SystemActions({ actions }: { actions: SystemActionsType }) {
@@ -26,18 +26,6 @@ export function SystemActions({ actions }: { actions: SystemActionsType }) {
   }
 
   const actionCards = [
-    {
-      key: "createExecuteSqlFunction",
-      title: "Step 0: Enable System Actions",
-      description:
-        "You must run this action once to enable all other system maintenance tasks. It installs a required helper function in your database.",
-      buttonText: "Enable System Actions",
-      confirmation:
-        "This will install a helper function in your database required for other actions. This is safe to run multiple times. Continue?",
-      variant: "default",
-      isPrimary: true,
-      Icon: ShieldCheck,
-    },
     {
       key: "runSubmissionsFKFix",
       title: "Step 1: Fix Admin Page Error",

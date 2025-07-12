@@ -2,7 +2,6 @@ import { createAdminClient } from "@/utils/supabase/server"
 import {
   createAdminTables,
   initializeDatabase,
-  createExecuteSqlFunction,
   runSchemaV5Update,
   forceSchemaReload,
   runBrandSchemaCorrection,
@@ -22,7 +21,6 @@ async function getDashboardData() {
   const actions = {
     createAdminTables,
     initializeDatabase,
-    createExecuteSqlFunction,
     runSchemaV5Update,
     forceSchemaReload,
     runBrandSchemaCorrection,

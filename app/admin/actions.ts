@@ -7,33 +7,6 @@ import { nanoid } from "nanoid"
 import { put } from "@vercel/blob"
 import { scrapeWebsiteForData } from "@/lib/scraping"
 import path from "path"
-import { neon } from "@neondatabase/serverless"
-
-// This is the new, corrected function to create the helper.
-// It uses the Neon driver directly to bypass the Supabase client limitations for DDL.
-export async function createExecuteSqlFunction() {
-  try {
-    // Ensure the correct environment variable is available.
-    if (!process.env.NEON_DATABASE_URL) {
-      return { success: false, message: "Neon database URL is not configured. Please check project environment variables." }
-    }
-    const sql = neon(process.env.NEON_DATABASE_URL)
-    const createFunctionSql = `
-      CREATE OR REPLACE FUNCTION execute_sql(sql_query TEXT)
-      RETURNS void AS $$
-      BEGIN
-          EXECUTE sql_query;
-      END;
-      $$ LANGUAGE plpgsql;
-    `
-    await sql.unsafe(createFunctionSql)
-    return { success: true, message: "Helper function created successfully. You can now run other system actions." }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    console.error("Failed to create helper function:", error)
-    return { success: false, message: `Failed to create helper function: ${errorMessage}` }
-  }
-}
 
 // This helper function uses the Supabase client and relies on the RPC function created above.
 async function executeSql(sql: string): Promise<{ success: boolean; message: string }> {
