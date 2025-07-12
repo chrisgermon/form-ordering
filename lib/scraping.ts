@@ -1,94 +1,123 @@
+import { generateText } from "ai"
+import { xai } from "@ai-sdk/xai"
 import * as cheerio from "cheerio"
-import { put } from "@vercel/blob"
-import { nanoid } from "nanoid"
-import path from "path"
+import { z } from "zod"
 
-export async function scrapeWebsiteForData(url: string) {
+// Define the expected JSON structure from the AI using Zod for validation
+const ScrapedDataSchema = z.object({
+  companyName: z.string().optional().nullable(),
+  logoUrl: z.string().url().optional().nullable(),
+  locations: z
+    .array(
+      z.object({
+        name: z.string().optional().nullable(),
+        address: z.string().optional().nullable(),
+        phone: z.string().optional().nullable(),
+      }),
+    )
+    .optional()
+    .nullable(),
+})
+
+export type ScrapedData = z.infer<typeof ScrapedDataSchema>
+
+// Fallback simple scraper for when AI is not needed or fails
+function simpleScrape(html: string, url: string): ScrapedData {
+  const $ = cheerio.load(html)
+  const baseUrl = new URL(url).origin
+
+  const companyName = $("title").first().text() || $('meta[property="og:title"]').attr("content") || ""
+
+  let logoUrl: string | null = null
+  const logoSelectors = [
+    'meta[property="og:logo"]',
+    'meta[property="og:image"]',
+    'link[rel="apple-touch-icon"]',
+    'link[rel="shortcut icon"]',
+    'link[rel="icon"]',
+    'img[id*="logo"]',
+    'img[class*="logo"]',
+    "header img",
+  ]
+
+  for (const selector of logoSelectors) {
+    const potentialLogoSrc = $(selector).attr("content") || $(selector).attr("src") || $(selector).attr("href")
+    if (potentialLogoSrc) {
+      try {
+        logoUrl = new URL(potentialLogoSrc, baseUrl).href
+        break
+      } catch (e) {
+        /* ignore invalid urls */
+      }
+    }
+  }
+
+  return {
+    companyName,
+    logoUrl,
+    locations: [], // Simple scraper won't find locations
+  }
+}
+
+export async function scrapeWebsiteWithAI(url: string): Promise<ScrapedData> {
   try {
-    const response = await fetch(url)
+    const response = await fetch(url, { headers: { "User-Agent": "V0-Scraper/1.0" } })
     if (!response.ok) {
       throw new Error(`Failed to fetch URL: ${response.statusText}`)
     }
     const html = await response.text()
     const $ = cheerio.load(html)
-    const baseUrl = new URL(url).origin
 
-    const title = $("title").first().text() || $('meta[property="og:title"]').attr("content") || ""
+    // Clean up the HTML to send to the AI - remove scripts, styles, etc.
+    $("script, style, link[rel='stylesheet'], noscript, footer, header").remove()
+    const mainContent = $("body").html()
 
-    let logoUrl: string | undefined
-    const logoSelectors = [
-      'meta[property="og:logo"]',
-      'meta[property="og:image"]',
-      'link[rel="apple-touch-icon"]',
-      'link[rel="shortcut icon"]',
-      'link[rel="icon"]',
-      'img[src*="logo"]',
-      'img[class*="logo"]',
-      "header img",
-    ]
+    if (!mainContent || mainContent.length < 100) {
+      console.log("Content too short, using simple scraper as fallback.")
+      return simpleScrape(html, url)
+    }
 
-    for (const selector of logoSelectors) {
-      const potentialLogoSrc = $(selector).attr("content") || $(selector).attr("src") || $(selector).attr("href")
-      if (potentialLogoSrc) {
-        try {
-          logoUrl = new URL(potentialLogoSrc, baseUrl).href
-          break
-        } catch (e) {
-          console.warn(`Invalid logo URL found: ${potentialLogoSrc}`)
-        }
+    const prompt = `
+      Analyze the following HTML content from the website at ${url}. Your task is to extract the company name, a full URL to their primary logo, and a list of their physical clinic/business locations.
+
+      For each location, provide its name, full address, and phone number. The location name should be the name of the branch or clinic (e.g., "Downtown Clinic").
+
+      Please return the data as a single, raw JSON object, and nothing else. Do not include any explanations, notes, or markdown formatting like \`\`\`json.
+
+      The JSON object must follow this exact structure:
+      {
+        "companyName": "string | null",
+        "logoUrl": "string | null",
+        "locations": [
+          { "name": "string | null", "address": "string | null", "phone": "string | null" }
+        ]
       }
-    }
 
-    // A simple heuristic to find locations - this is very basic
-    const locations: string[] = []
-    $('p:contains("Location"), p:contains("Address"), div:contains("Location"), div:contains("Address")').each(
-      (i, elem) => {
-        const text = $(elem).text().replace(/\s\s+/g, " ").trim()
-        if (text.length > 10 && text.length < 200) {
-          locations.push(text)
-        }
-      },
-    )
+      If you cannot find a specific piece of information (e.g., no phone number for a location), the value should be null. If no locations are found, "locations" should be an empty array [].
 
-    return {
-      title,
-      logoUrl,
-      locations: [...new Set(locations)], // Return unique locations
-    }
-  } catch (error) {
-    console.error("Error scraping website:", error)
-    const message = error instanceof Error ? error.message : "An unknown error occurred during scraping."
-    throw new Error(message)
-  }
-}
+      HTML Content to analyze:
+      ${mainContent.substring(0, 18000)}
+    `
 
-export async function fetchAndUploadLogo(
-  url: string,
-  brandSlug: string,
-): Promise<{ blobUrl: string; pathname: string } | null> {
-  try {
-    const { logoUrl } = await scrapeWebsiteForData(url)
-    if (!logoUrl) {
-      return null
-    }
-
-    const response = await fetch(logoUrl)
-    if (!response.ok) {
-      console.error(`Failed to fetch logo image from ${logoUrl}: ${response.statusText}`)
-      return null
-    }
-    const imageBlob = await response.blob()
-    const originalName = path.basename(new URL(logoUrl).pathname) || `logo-${nanoid(5)}`
-    const filename = `logos/${brandSlug}-${Date.now()}-${originalName}`
-
-    const { url: blobUrl, pathname } = await put(filename, imageBlob, {
-      access: "public",
-      contentType: response.headers.get("content-type") || undefined,
+    const { text } = await generateText({
+      model: xai("grok-3"),
+      prompt: prompt,
+      maxTokens: 2048,
     })
 
-    return { blobUrl, pathname }
+    const jsonString = text.trim()
+    const parsedData = JSON.parse(jsonString)
+    const validatedData = ScrapedDataSchema.parse(parsedData)
+
+    // Post-process logo URL to be absolute
+    if (validatedData.logoUrl && !validatedData.logoUrl.startsWith("http")) {
+      validatedData.logoUrl = new URL(validatedData.logoUrl, url).href
+    }
+
+    return validatedData
   } catch (error) {
-    console.error("Error fetching and uploading logo:", error)
-    return null
+    console.error("Error scraping website with AI:", error)
+    const message = error instanceof Error ? error.message : "An unknown error occurred during AI scraping."
+    throw new Error(message)
   }
 }

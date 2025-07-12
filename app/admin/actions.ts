@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import type { ClinicLocation } from "@/lib/types"
 import { nanoid } from "nanoid"
 import { put } from "@vercel/blob"
-import { scrapeWebsiteForData } from "@/lib/scraping"
+import { scrapeWebsiteWithAI } from "@/lib/scraping"
 import path from "path"
 
 // This helper function uses the Supabase client and relies on the RPC function created above.
@@ -213,7 +213,8 @@ async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | 
 
 export async function fetchBrandData(url: string, brandSlug: string) {
   try {
-    const scrapedData = await scrapeWebsiteForData(url)
+    const scrapedData = await scrapeWebsiteWithAI(url)
+
     let uploadedLogoPath: string | null = null
     if (scrapedData.logoUrl) {
       uploadedLogoPath = await uploadLogo(scrapedData.logoUrl, brandSlug)
@@ -222,14 +223,15 @@ export async function fetchBrandData(url: string, brandSlug: string) {
     return {
       success: true,
       data: {
-        name: scrapedData.title,
+        name: scrapedData.companyName || "",
         logo: uploadedLogoPath,
-        locations: scrapedData.locations.map((loc) => ({ name: loc, address: "", phone: "" })),
+        locations: scrapedData.locations || [],
       },
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return { success: false, error: errorMessage }
+    console.error("Failed to fetch brand data with AI:", errorMessage)
+    return { success: false, error: `AI scraping failed: ${errorMessage}` }
   }
 }
 

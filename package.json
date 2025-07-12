@@ -9,6 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ai-sdk/xai": "latest",
     "@dnd-kit/core": "latest",
     "@dnd-kit/sortable": "latest",
     "@dnd-kit/utilities": "latest",
@@ -44,6 +45,7 @@
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
     "@vercel/blob": "latest",
+    "ai": "latest",
     "autoprefixer": "^10.4.21",
     "cheerio": "latest",
     "class-variance-authority": "^0.7.1",
