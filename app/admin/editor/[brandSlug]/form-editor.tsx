@@ -21,6 +21,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -187,7 +188,6 @@ export function FormEditor({
   uploadedFiles: UploadedFile[]
 }) {
   const [brandData, setBrandData] = useState<Brand>(initialBrandData)
-  const [message, setMessage] = useState("")
   const [isSectionDialogOpen, setIsSectionDialogOpen] = useState(false)
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false)
   const [isImportFormDialogOpen, setIsImportFormDialogOpen] = useState(false)
@@ -213,7 +213,7 @@ export function FormEditor({
     setBrandData(initialBrandData)
   }, [initialBrandData])
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     if (!over || active.id === over.id) return
 
@@ -221,39 +221,47 @@ export function FormEditor({
     const overType = over.data.current?.type
 
     if (activeType === "section" && overType === "section") {
-      setBrandData((brand) => {
-        const oldIndex = brand.product_sections.findIndex((s) => s.id === active.id)
-        const newIndex = brand.product_sections.findIndex((s) => s.id === over.id)
-        if (oldIndex === -1 || newIndex === -1) return brand
-        const reorderedSections = arrayMove(brand.product_sections, oldIndex, newIndex)
-        updateSectionOrder(
-          brand.slug,
-          reorderedSections.map((s) => s.id),
-        )
-        return { ...brand, product_sections: reorderedSections }
+      const oldIndex = brandData.product_sections.findIndex((s) => s.id === active.id)
+      const newIndex = brandData.product_sections.findIndex((s) => s.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      const reorderedSections = arrayMove(brandData.product_sections, oldIndex, newIndex)
+      setBrandData((prev) => ({ ...prev, product_sections: reorderedSections }))
+
+      const promise = updateSectionOrder(
+        brandData.slug,
+        reorderedSections.map((s) => s.id),
+      )
+      toast.promise(promise, {
+        loading: "Saving section order...",
+        success: "Section order saved!",
+        error: "Failed to save section order.",
       })
     }
 
     if (activeType === "item" && overType === "item") {
       const sectionId = active.data.current?.sectionId
-      setBrandData((brand) => {
-        const sectionIndex = brand.product_sections.findIndex((s) => s.id === sectionId)
-        if (sectionIndex === -1) return brand
+      const sectionIndex = brandData.product_sections.findIndex((s) => s.id === sectionId)
+      if (sectionIndex === -1) return
 
-        const section = brand.product_sections[sectionIndex]
-        const oldIndex = section.product_items.findIndex((i) => i.id === active.id)
-        const newIndex = section.product_items.findIndex((i) => i.id === over.id)
-        if (oldIndex === -1 || newIndex === -1) return brand
-        const reorderedItems = arrayMove(section.product_items, oldIndex, newIndex)
+      const section = brandData.product_sections[sectionIndex]
+      const oldIndex = section.product_items.findIndex((i) => i.id === active.id)
+      const newIndex = section.product_items.findIndex((i) => i.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
 
-        updateItemOrder(
-          brand.slug,
-          reorderedItems.map((i) => i.id),
-        )
+      const reorderedItems = arrayMove(section.product_items, oldIndex, newIndex)
+      const newSections = [...brandData.product_sections]
+      newSections[sectionIndex] = { ...section, product_items: reorderedItems }
+      setBrandData((prev) => ({ ...prev, product_sections: newSections }))
 
-        const newSections = [...brand.product_sections]
-        newSections[sectionIndex] = { ...section, product_items: reorderedItems }
-        return { ...brand, product_sections: newSections }
+      const promise = updateItemOrder(
+        brandData.slug,
+        reorderedItems.map((i) => i.id),
+      )
+      toast.promise(promise, {
+        loading: "Saving item order...",
+        success: "Item order saved!",
+        error: "Failed to save item order.",
       })
     }
   }
@@ -261,6 +269,60 @@ export function FormEditor({
   const handleAddItemToSection = (sectionId: string, fieldType: ProductItem["field_type"]) => {
     setActiveItemOptions({ sectionId, brandId: brandData.id, fieldType })
     setIsItemDialogOpen(true)
+  }
+
+  const handleDeleteSection = (sectionId: string) => {
+    if (!confirm(`Are you sure you want to delete this section and all its items?`)) return
+
+    const originalSections = brandData.product_sections
+    setBrandData((prev) => ({
+      ...prev,
+      product_sections: prev.product_sections.filter((s) => s.id !== sectionId),
+    }))
+
+    const promise = fetch(`/api/admin/sections?id=${sectionId}`, { method: "DELETE" })
+    toast.promise(promise, {
+      loading: "Deleting section...",
+      success: (res) => {
+        if (!res.ok) throw new Error("Failed on server.")
+        onDataChange()
+        return "Section deleted successfully!"
+      },
+      error: () => {
+        setBrandData((prev) => ({ ...prev, product_sections: originalSections }))
+        return "Failed to delete section."
+      },
+    })
+  }
+
+  const handleDeleteItem = (itemId: string, sectionId: string) => {
+    if (!confirm(`Are you sure you want to delete this item?`)) return
+
+    const originalSections = brandData.product_sections
+    const newSections = originalSections.map((section) => {
+      if (section.id === sectionId) {
+        return {
+          ...section,
+          product_items: section.product_items.filter((item) => item.id !== itemId),
+        }
+      }
+      return section
+    })
+    setBrandData((prev) => ({ ...prev, product_sections: newSections }))
+
+    const promise = fetch(`/api/admin/items?id=${itemId}`, { method: "DELETE" })
+    toast.promise(promise, {
+      loading: "Deleting item...",
+      success: (res) => {
+        if (!res.ok) throw new Error("Failed on server.")
+        onDataChange()
+        return "Item deleted successfully!"
+      },
+      error: () => {
+        setBrandData((prev) => ({ ...prev, product_sections: originalSections }))
+        return "Failed to delete item."
+      },
+    })
   }
 
   return (
@@ -291,8 +353,6 @@ export function FormEditor({
           </CardHeader>
         </Card>
 
-        {message && <Alert className="mb-4">{message}</Alert>}
-
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
           <Toolbox onAddSectionClick={() => setIsSectionDialogOpen(true)} />
 
@@ -308,8 +368,8 @@ export function FormEditor({
                       <SortableSection
                         key={section.id}
                         section={section}
-                        onDataChange={onDataChange}
-                        uploadedFiles={uploadedFiles}
+                        onDeleteItem={handleDeleteItem}
+                        onDeleteSection={handleDeleteSection}
                         onAddItem={handleAddItemToSection}
                       >
                         <SortableContext
@@ -321,6 +381,7 @@ export function FormEditor({
                               <SortableItem
                                 key={item.id}
                                 item={item}
+                                onDelete={handleDeleteItem}
                                 onDataChange={onDataChange}
                                 uploadedFiles={uploadedFiles}
                               />
@@ -379,14 +440,14 @@ export function FormEditor({
 function SortableSection({
   section,
   children,
-  onDataChange,
-  uploadedFiles,
+  onDeleteSection,
+  onDeleteItem,
   onAddItem,
 }: {
   section: ProductSection
   children: React.ReactNode
-  onDataChange: () => void
-  uploadedFiles: UploadedFile[]
+  onDeleteSection: (sectionId: string) => void
+  onDeleteItem: (itemId: string, sectionId: string) => void
   onAddItem: (sectionId: string, fieldType: ProductItem["field_type"]) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -395,12 +456,6 @@ function SortableSection({
   })
   const style = { transform: CSS.Transform.toString(transform), transition }
   const [isSectionDialogOpen, setIsSectionDialogOpen] = useState(false)
-
-  const deleteSection = async () => {
-    if (!confirm(`Are you sure you want to delete section "${section.title}"?`)) return
-    await fetch(`/api/admin/sections?id=${section.id}`, { method: "DELETE" })
-    onDataChange()
-  }
 
   return (
     <Card ref={setNodeRef} style={style} className="bg-gray-50 border-2 border-dashed">
@@ -415,7 +470,7 @@ function SortableSection({
           <Button size="sm" variant="outline" onClick={() => setIsSectionDialogOpen(true)}>
             <Edit className="h-4 w-4" />
           </Button>
-          <Button size="sm" variant="destructive" onClick={deleteSection}>
+          <Button size="sm" variant="destructive" onClick={() => onDeleteSection(section.id)}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -441,7 +496,9 @@ function SortableSection({
         onOpenChange={setIsSectionDialogOpen}
         section={section}
         brandId={section.brand_id}
-        onDataChange={onDataChange}
+        onDataChange={() => {
+          /* onDataChange is now handled by toast in parent */
+        }}
       />
     </Card>
   )
@@ -450,10 +507,12 @@ function SortableSection({
 // Sortable Item Component
 function SortableItem({
   item,
+  onDelete,
   onDataChange,
   uploadedFiles,
 }: {
   item: ProductItem
+  onDelete: (itemId: string, sectionId: string) => void
   onDataChange: () => void
   uploadedFiles: UploadedFile[]
 }) {
@@ -463,12 +522,6 @@ function SortableItem({
   })
   const style = { transform: CSS.Transform.toString(transform), transition }
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false)
-
-  const deleteItem = async () => {
-    if (!confirm(`Are you sure you want to delete item "${item.name}"?`)) return
-    await fetch(`/api/admin/items?id=${item.id}`, { method: "DELETE" })
-    onDataChange()
-  }
 
   const fieldTypeLabel = fieldTypes.find((ft) => ft.value === item.field_type)?.label || "Item"
 
@@ -490,7 +543,7 @@ function SortableItem({
         <Button size="sm" variant="outline" onClick={() => setIsItemDialogOpen(true)}>
           <Edit className="h-4 w-4" />
         </Button>
-        <Button size="sm" variant="destructive" onClick={deleteItem}>
+        <Button size="sm" variant="destructive" onClick={() => onDelete(item.id, item.section_id)}>
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
@@ -523,6 +576,7 @@ function SectionDialog({
   onDataChange: () => void
 }) {
   const [title, setTitle] = useState("")
+  const router = useRouter()
 
   React.useEffect(() => {
     if (open) {
@@ -536,13 +590,22 @@ function SectionDialog({
       title,
       brandId,
     }
-    await fetch("/api/admin/sections", {
+    const promise = fetch("/api/admin/sections", {
       method: section ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
-    onDataChange()
-    onOpenChange(false)
+
+    toast.promise(promise, {
+      loading: "Saving section...",
+      success: (res) => {
+        if (!res.ok) throw new Error("Failed on server.")
+        router.refresh()
+        onOpenChange(false)
+        return "Section saved successfully!"
+      },
+      error: "Failed to save section.",
+    })
   }
 
   return (
@@ -601,6 +664,7 @@ function ItemDialog({
   })
   const [options, setOptions] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const router = useRouter()
 
   const brandSpecificFiles = useMemo(
     () => uploadedFiles.filter((file) => file.brand_id === brandId || file.brand_id === null),
@@ -659,15 +723,14 @@ function ItemDialog({
       })
       if (response.ok) {
         const newFile = await response.json()
-        // Automatically select the newly uploaded file's pathname
         setFormData((prev) => ({ ...prev, sample_link: newFile.pathname }))
-        // Trigger parent to refresh its file list
         onDataChange()
+        toast.success("File uploaded and selected.")
       } else {
-        console.error("Failed to upload file")
+        toast.error("Failed to upload file.")
       }
     } catch (error) {
-      console.error("Error uploading file:", error)
+      toast.error("Error uploading file.")
     } finally {
       setIsUploading(false)
     }
@@ -683,13 +746,22 @@ function ItemDialog({
       fieldType,
       is_required: formData.is_required,
     }
-    await fetch("/api/admin/items", {
+    const promise = fetch("/api/admin/items", {
       method: item ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
-    onDataChange()
-    onOpenChange(false)
+
+    toast.promise(promise, {
+      loading: "Saving item...",
+      success: (res) => {
+        if (!res.ok) throw new Error("Failed on server.")
+        router.refresh()
+        onOpenChange(false)
+        return "Item saved successfully!"
+      },
+      error: "Failed to save item.",
+    })
   }
 
   const fieldTypeLabel = fieldTypes.find((ft) => ft.value === fieldType)?.label || "Item"

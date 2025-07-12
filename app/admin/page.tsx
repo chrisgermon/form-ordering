@@ -1,7 +1,6 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import { AdminDashboard } from "./AdminDashboard"
 import type { Brand, FormSubmission, UploadedFile } from "@/lib/types"
-import { Toaster } from "@/components/ui/sonner"
 
 export const dynamic = "force-dynamic"
 
@@ -51,10 +50,5 @@ async function getDashboardData() {
 export default async function AdminPage() {
   const { brands, submissions, files, error } = await getDashboardData()
 
-  return (
-    <>
-      <AdminDashboard initialBrands={brands} initialSubmissions={submissions} initialFiles={files} error={error} />
-      <Toaster richColors />
-    </>
-  )
+  return <AdminDashboard initialBrands={brands} initialSubmissions={submissions} initialFiles={files} error={error} />
 }
