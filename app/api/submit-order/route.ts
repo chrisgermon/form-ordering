@@ -26,22 +26,40 @@ async function generateOrderPdf(order: OrderPayload, brand: Brand, logoUrl: stri
   const { orderInfo, items } = order
   let yPos = 20
 
-  if (logoUrl) {
+  const isSvg = logoUrl?.toLowerCase().endsWith(".svg")
+
+  // If we have a logo URL and it's NOT an SVG, try to embed it.
+  if (logoUrl && !isSvg) {
     try {
       const logoResponse = await fetch(logoUrl)
       const logoBuffer = await logoResponse.arrayBuffer()
-      const logoExtension = logoUrl.split(".").pop()?.toUpperCase() || "PNG"
-      doc.addImage(Buffer.from(logoBuffer), logoExtension, 15, 15, 50, 20) // x, y, w, h
-      yPos = 45 // Move down to make space for logo
+      // Extract extension and handle potential query params
+      const extension = (logoUrl.split(".").pop()?.split("?")[0] || "PNG").toUpperCase()
+
+      // jsPDF supports JPEG, PNG, WEBP.
+      if (["JPEG", "JPG", "PNG", "WEBP"].includes(extension)) {
+        doc.addImage(Buffer.from(logoBuffer), extension, 15, 15, 50, 20) // x, y, w, h
+        yPos = 45 // Move down to make space for logo
+      } else {
+        // If it's some other unsupported type, fall back to text.
+        doc.setFontSize(22)
+        doc.text(brand.name, 105, yPos, { align: "center" })
+        yPos += 10
+      }
     } catch (e) {
       console.error("Failed to fetch or add logo to PDF:", e)
-      yPos = 20 // Fallback position
+      // Fallback to text if image fetching fails
+      doc.setFontSize(22)
+      doc.text(brand.name, 105, yPos, { align: "center" })
+      yPos += 10
     }
+  } else {
+    // If there's no logo, or if the logo is an SVG, just print the brand name.
+    doc.setFontSize(22)
+    doc.text(brand.name, 105, yPos, { align: "center" })
+    yPos += 10
   }
 
-  doc.setFontSize(22)
-  doc.text(brand.name, 105, yPos, { align: "center" })
-  yPos += 10
   doc.setFontSize(16)
   doc.text("Printing Order Form", 105, yPos, { align: "center" })
   yPos += 15
