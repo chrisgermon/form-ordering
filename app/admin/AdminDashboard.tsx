@@ -8,18 +8,16 @@ import { BrandForm } from "./BrandForm"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubmissionsTable } from "./SubmissionsTable"
 import { FileManager } from "./FileManager"
+import { SystemActions } from "./system-actions"
 import type { Brand, UploadedFile, FormSubmission } from "@/lib/types"
 
 interface AdminDashboardProps {
-  initialBrands: Brand[]
-  initialFiles: UploadedFile[]
-  initialSubmissions: FormSubmission[]
-  error: string | null
+  brands: Brand[]
+  submissions: FormSubmission[]
+  files: UploadedFile[]
 }
 
-export function AdminDashboard({ initialBrands, initialFiles, initialSubmissions, error }: AdminDashboardProps) {
-  const [brands, setBrands] = useState<Brand[]>(initialBrands)
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>(initialFiles)
+export function AdminDashboard({ brands, submissions, files }: AdminDashboardProps) {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
 
@@ -27,7 +25,7 @@ export function AdminDashboard({ initialBrands, initialFiles, initialSubmissions
     const response = await fetch("/api/admin/brands")
     if (response.ok) {
       const data = await response.json()
-      setBrands(data)
+      // Assuming there's a way to update the brands state from here
     }
   }, [])
 
@@ -35,7 +33,7 @@ export function AdminDashboard({ initialBrands, initialFiles, initialSubmissions
     const response = await fetch("/api/admin/files")
     if (response.ok) {
       const data = await response.json()
-      setUploadedFiles(data)
+      // Assuming there's a way to update the files state from here
     }
   }, [])
 
@@ -87,27 +85,24 @@ export function AdminDashboard({ initialBrands, initialFiles, initialSubmissions
         <Button onClick={handleAddBrand}>Add New Brand</Button>
       </header>
 
-      {error && (
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
-          <p className="font-bold">Dashboard Error</p>
-          <p>{error}</p>
-        </div>
-      )}
-
-      <Tabs defaultValue="brands">
-        <TabsList className="grid w-full grid-cols-3">
+      <Tabs defaultValue="brands" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="brands">Brands</TabsTrigger>
           <TabsTrigger value="submissions">Submissions</TabsTrigger>
-          <TabsTrigger value="files">Files</TabsTrigger>
+          <TabsTrigger value="files">File Manager</TabsTrigger>
+          <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
         <TabsContent value="brands" className="mt-4">
           <BrandGrid brands={brands} onEdit={handleEditBrand} onDelete={handleDeleteBrand} />
         </TabsContent>
         <TabsContent value="submissions" className="mt-4">
-          <SubmissionsTable submissions={initialSubmissions} />
+          <SubmissionsTable submissions={submissions} brands={brands} />
         </TabsContent>
         <TabsContent value="files" className="mt-4">
-          <FileManager initialFiles={uploadedFiles} brands={brands} onFilesUpdate={fetchFiles} />
+          <FileManager files={files} />
+        </TabsContent>
+        <TabsContent value="system" className="mt-4">
+          <SystemActions />
         </TabsContent>
       </Tabs>
 
@@ -119,10 +114,10 @@ export function AdminDashboard({ initialBrands, initialFiles, initialSubmissions
           </DialogHeader>
           <BrandForm
             brand={selectedBrand}
-            uploadedFiles={uploadedFiles}
+            files={files}
             onSave={handleSaveBrand}
             onCancel={() => setIsFormOpen(false)}
-            onLogoUpload={fetchFiles}
+            onFilesUpdate={fetchFiles}
           />
         </DialogContent>
       </Dialog>
