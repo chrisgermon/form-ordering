@@ -8,7 +8,6 @@ import { BrandForm } from "./BrandForm"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubmissionsTable } from "./SubmissionsTable"
 import { FileManager } from "./FileManager"
-import { SystemActions } from "./system-actions"
 import type { Brand, UploadedFile, FormSubmission } from "@/lib/types"
 
 interface AdminDashboardProps {
@@ -93,11 +92,10 @@ export function AdminDashboard({
       </header>
 
       <Tabs defaultValue="brands" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="brands">Brands</TabsTrigger>
           <TabsTrigger value="submissions">Submissions</TabsTrigger>
           <TabsTrigger value="files">File Manager</TabsTrigger>
-          <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
         <TabsContent value="brands" className="mt-4">
           <BrandGrid brands={brands} onEdit={handleEditBrand} onDelete={handleDeleteBrand} />
@@ -107,9 +105,6 @@ export function AdminDashboard({
         </TabsContent>
         <TabsContent value="files" className="mt-4">
           <FileManager files={uploadedFiles} brands={brands} onFilesUpdate={fetchFiles} />
-        </TabsContent>
-        <TabsContent value="system" className="mt-4">
-          <SystemActions />
         </TabsContent>
       </Tabs>
 
