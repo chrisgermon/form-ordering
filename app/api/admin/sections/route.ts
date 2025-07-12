@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/utils/supabase/server"
+import { revalidatePath } from "next/cache"
 
 export async function GET() {
   try {
@@ -95,13 +96,33 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Section ID is required" }, { status: 400 })
     }
 
-    const { error } = await supabase.from("product_sections").delete().eq("id", id)
+    // First, get the brand slug for revalidation before deleting
+    const { data: sectionData, error: fetchError } = await supabase
+      .from("product_sections")
+      .select("brands(slug)")
+      .eq("id", id)
+      .single()
 
-    if (error) throw error
+    if (fetchError) {
+      // It's okay if it's not found, but other errors should be thrown
+      if (fetchError.code !== "PGRST116") throw fetchError
+    }
+
+    // Now, delete the section
+    const { error: deleteError } = await supabase.from("product_sections").delete().eq("id", id)
+
+    if (deleteError) throw deleteError
+
+    // Revalidate paths to ensure the UI updates
+    if (sectionData?.brands?.slug) {
+      revalidatePath(`/admin/editor/${sectionData.brands.slug}`)
+      revalidatePath(`/forms/${sectionData.brands.slug}`)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error deleting section:", error)
-    return NextResponse.json({ error: "Failed to delete section" }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : "Failed to delete section"
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
