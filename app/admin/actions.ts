@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache"
 import type { ClinicLocation } from "@/lib/types"
 import { nanoid } from "nanoid"
 import { put } from "@vercel/blob"
-import { scrapeWebsiteWithAI } from "@/lib/scraping"
+import { scrapeWebsiteWithAI, parseFormWithAI } from "@/lib/scraping"
 import path from "path"
+import * as cheerio from "cheerio"
 
 // This helper function uses the Supabase client and relies on the RPC function created above.
 async function executeSql(sql: string): Promise<{ success: boolean; message: string }> {
@@ -109,13 +110,64 @@ export async function createAdminTables() {
 
 export async function initializeDatabase() {
   const sql = `
-    TRUNCATE TABLE brands, product_sections, product_items, submissions, uploaded_files RESTART IDENTITY;
-    INSERT INTO brands (name, slug, emails) VALUES
-    ('Focus Radiology', 'focus-radiology', ARRAY['orders@focusradiology.com.au']),
-    ('Vision Radiology', 'vision-radiology', ARRAY['orders@visionradiology.com.au']),
-    ('Apex Radiology', 'apex-radiology', ARRAY['orders@apexradiology.com.au']),
-    ('Horizon Radiology', 'horizon-radiology', ARRAY['orders@horizonradiology.com.au']),
-    ('Pulse Radiology', 'pulse-radiology', ARRAY['orders@pulseradiology.com.au']);
+    -- Clear all data
+    TRUNCATE TABLE brands, product_sections, product_items, submissions, uploaded_files RESTART IDENTITY CASCADE;
+
+    -- Insert brands
+    INSERT INTO brands (name, slug, emails, logo) VALUES
+    ('Focus Radiology', 'focus-radiology', ARRAY['orders@focusradiology.com.au'], '/images/focus-radiology-logo.png'),
+    ('Vision Radiology', 'vision-radiology', ARRAY['orders@visionradiology.com.au'], NULL),
+    ('Apex Radiology', 'apex-radiology', ARRAY['orders@apexradiology.com.au'], NULL),
+    ('Horizon Radiology', 'horizon-radiology', ARRAY['orders@horizonradiology.com.au'], NULL),
+    ('Pulse Radiology', 'pulse-radiology', ARRAY['orders@pulseradiology.com.au'], NULL);
+
+    -- Seed form for Focus Radiology
+    WITH focus_brand AS (
+      SELECT id FROM brands WHERE slug = 'focus-radiology'
+    ),
+    -- Create sections
+    patient_details_section AS (
+      INSERT INTO product_sections (brand_id, title, sort_order)
+      SELECT id, 'Patient Details', 0 FROM focus_brand
+      RETURNING id
+    ),
+    referrer_details_section AS (
+      INSERT INTO product_sections (brand_id, title, sort_order)
+      SELECT id, 'Referrer Details', 1 FROM focus_brand
+      RETURNING id
+    ),
+    exam_requested_section AS (
+      INSERT INTO product_sections (brand_id, title, sort_order)
+      SELECT id, 'Examination Requested', 2 FROM focus_brand
+      RETURNING id
+    ),
+    clinical_notes_section AS (
+      INSERT INTO product_sections (brand_id, title, sort_order)
+      SELECT id, 'Clinical Notes & History', 3 FROM focus_brand
+      RETURNING id
+    )
+    -- Insert items into sections
+    INSERT INTO product_items (brand_id, section_id, code, name, field_type, is_required, placeholder, sort_order, options)
+    VALUES
+    -- Patient Details Items
+    ((SELECT id FROM focus_brand), (SELECT id FROM patient_details_section), 'PAT01', 'Patient Full Name', 'text', true, 'Enter patient''s full name', 0, '[]'::jsonb),
+    ((SELECT id FROM focus_brand), (SELECT id FROM patient_details_section), 'PAT02', 'Date of Birth', 'date', true, NULL, 1, '[]'::jsonb),
+    ((SELECT id FROM focus_brand), (SELECT id FROM patient_details_section), 'PAT03', 'Patient Phone', 'text', true, 'Enter patient''s phone number', 2, '[]'::jsonb),
+
+    -- Referrer Details Items
+    ((SELECT id FROM focus_brand), (SELECT id FROM referrer_details_section), 'REF01', 'Referring Doctor', 'text', true, 'Enter referrer name', 0, '[]'::jsonb),
+    ((SELECT id FROM focus_brand), (SELECT id FROM referrer_details_section), 'REF02', 'Provider Number', 'text', true, 'Enter provider number', 1, '[]'::jsonb),
+
+    -- Examination Requested Items
+    ((SELECT id FROM focus_brand), (SELECT id FROM exam_requested_section), 'EXAM01', 'X-Ray', 'checkbox_group', false, NULL, 0, '["Chest", "Spine", "Abdomen", "Pelvis", "Skull", "Other"]'::jsonb),
+    ((SELECT id FROM focus_brand), (SELECT id FROM exam_requested_section), 'EXAM02', 'Ultrasound', 'checkbox_group', false, NULL, 1, '["Abdomen", "Pelvis", "Renal", "Obstetric", "Other"]'::jsonb),
+    ((SELECT id FROM focus_brand), (SELECT id FROM exam_requested_section), 'EXAM03', 'CT Scan', 'checkbox_group', false, NULL, 2, '["Head", "Chest", "Abdomen/Pelvis", "Spine", "Other"]'::jsonb),
+    ((SELECT id FROM focus_brand), (SELECT id FROM exam_requested_section), 'EXAM04', 'MRI', 'select', false, 'Select MRI Type', 3, '["Brain", "Spine", "Knee", "Shoulder", "Other"]'::jsonb),
+
+    -- Clinical Notes Items
+    ((SELECT id FROM focus_brand), (SELECT id FROM clinical_notes_section), 'NOTE01', 'Clinical Notes', 'textarea', true, 'Please provide relevant clinical history, symptoms, and examination findings.', 0, '[]'::jsonb);
+
+    -- Force schema reload
     NOTIFY pgrst, 'reload schema';
     `
   return executeSql(sql)
@@ -285,9 +337,73 @@ export async function importForm(
   brandSlug: string,
   { htmlCode, url }: { htmlCode?: string; url?: string },
 ) {
-  console.log("Attempted to import form for brand:", brandId, "from url:", url)
-  return {
-    success: false,
-    message: "Form import feature is temporarily disabled due to a build issue. Please add fields manually.",
+  const supabase = createAdminClient()
+  let content = htmlCode
+
+  try {
+    if (url) {
+      const response = await fetch(url, { headers: { "User-Agent": "V0-Scraper/1.0" } })
+      if (!response.ok) throw new Error(`Failed to fetch URL: ${response.statusText}`)
+      content = await response.text()
+    }
+
+    if (!content) {
+      return { success: false, message: "No HTML content provided or fetched." }
+    }
+
+    // Clean up HTML to focus on the form
+    const $ = cheerio.load(content)
+    $("script, style, link, noscript, footer, header").remove()
+    const formHtml = $("form").first().html() || $("body").html()
+
+    if (!formHtml) {
+      return { success: false, message: "Could not find a form in the provided content." }
+    }
+
+    const parsedData = await parseFormWithAI(formHtml)
+
+    // Begin transaction to update database
+    // 1. Delete old items and sections for this brand to ensure a clean import
+    await supabase.from("product_items").delete().eq("brand_id", brandId)
+    await supabase.from("product_sections").delete().eq("brand_id", brandId)
+
+    // 2. Create a new section for the imported items
+    const sectionTitle = url ? `Imported from ${new URL(url).hostname}` : "Imported Form"
+    const { data: newSection, error: sectionError } = await supabase
+      .from("product_sections")
+      .insert({ brand_id: brandId, title: sectionTitle, sort_order: 0 })
+      .select()
+      .single()
+
+    if (sectionError) throw sectionError
+
+    // 3. Insert new items
+    if (parsedData.fields && parsedData.fields.length > 0) {
+      const itemsToInsert = parsedData.fields.map((field, index) => ({
+        brand_id: brandId,
+        section_id: newSection.id,
+        code: field.code || `IMP-${index + 1}`,
+        name: field.name,
+        field_type: field.field_type,
+        options: field.options || [],
+        placeholder: field.placeholder,
+        is_required: field.is_required || false,
+        sort_order: index,
+      }))
+
+      const { error: itemsError } = await supabase.from("product_items").insert(itemsToInsert)
+      if (itemsError) throw itemsError
+    }
+
+    revalidatePath(`/admin/editor/${brandSlug}`)
+
+    return {
+      success: true,
+      message: `Successfully imported ${parsedData.fields.length} fields. Please review them in the editor.`,
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    console.error("Error importing form:", errorMessage)
+    return { success: false, message: `Import failed: ${errorMessage}` }
   }
 }

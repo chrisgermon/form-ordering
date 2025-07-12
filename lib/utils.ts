@@ -17,6 +17,10 @@ export function resolveAssetUrl(pathOrUrl: string | null | undefined): string {
     // Return a placeholder if no path is provided
     return `/placeholder.svg?height=40&width=100&query=asset`
   }
+  // If it's a local static asset path, return it directly
+  if (pathOrUrl.startsWith("/")) {
+    return pathOrUrl
+  }
   // Check if it's already a full URL
   if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
     // If it's a blob storage URL, we prefer to proxy it.
