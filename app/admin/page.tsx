@@ -8,24 +8,18 @@ import {
   runBrandSchemaCorrection,
   runPrimaryColorFix,
   runSubmissionsFKFix,
+  saveBrand,
+  fetchBrandData,
+  importForm,
 } from "./actions"
 import { AdminDashboard } from "./AdminDashboard"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Terminal } from "lucide-react"
+import type { Brand, FormSubmission, UploadedFile } from "@/lib/types"
 
-export default async function AdminPage() {
+export const dynamic = "force-dynamic"
+
+async function getDashboardData() {
   const supabase = createAdminClient()
-
-  const { data: brands, error: brandsError } = await supabase.from("brands").select("*").order("name")
-  const { data: submissions, error: submissionsError } = await supabase
-    .from("submissions")
-    .select("*, brands(name)")
-    .order("created_at", { ascending: false })
-    .limit(100)
-
-  const error = brandsError || submissionsError
-
-  const systemActions = {
+  const actions = {
     createAdminTables,
     initializeDatabase,
     createExecuteSqlFunction,
@@ -35,33 +29,57 @@ export default async function AdminPage() {
     runPrimaryColorFix,
     runSubmissionsFKFix,
   }
+  const formActions = { saveBrand, fetchBrandData, importForm }
 
-  if (error) {
-    return (
-      <div className="p-4 md:p-8">
-        <Alert variant="destructive">
-          <Terminal className="h-4 w-4" />
-          <AlertTitle>Error loading dashboard data</AlertTitle>
-          <AlertDescription>
-            <p>There was a problem fetching initial data: "{error.message}"</p>
-            <p className="mt-2 font-semibold">
-              Please go to the System tab and run the recommended actions to resolve this.
-            </p>
-          </AlertDescription>
-        </Alert>
-        <div className="mt-4">
-          <AdminDashboard initialBrands={[]} initialSubmissions={[]} systemActions={systemActions} />
-        </div>
-      </div>
-    )
+  try {
+    const brandsQuery = supabase.from("brands").select("*").order("name")
+    const submissionsQuery = supabase
+      .from("form_submissions")
+      .select("*, brands(name)")
+      .order("submitted_at", { ascending: false })
+      .limit(100)
+    const filesQuery = supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false }).limit(100)
+
+    const [{ data: brands }, { data: submissions }, { data: files }] = await Promise.all([
+      brandsQuery,
+      submissionsQuery,
+      filesQuery,
+    ])
+
+    return {
+      brands: (brands as Brand[]) || [],
+      submissions: (submissions as FormSubmission[]) || [],
+      files: (files as UploadedFile[]) || [],
+      actions,
+      formActions,
+      error: null,
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    console.error("Error loading dashboard data:", errorMessage)
+    return {
+      brands: [],
+      submissions: [],
+      files: [],
+      actions,
+      formActions,
+      error: `There was a problem fetching initial data: "${errorMessage}"\nPlease go to the System tab and run the Fix Submissions Relationship action to resolve this.`,
+    }
   }
+}
+
+export default async function AdminPage() {
+  const { brands, submissions, files, actions, formActions, error } = await getDashboardData()
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="container mx-auto p-4">
       <AdminDashboard
-        initialBrands={brands || []}
-        initialSubmissions={submissions || []}
-        systemActions={systemActions}
+        initialBrands={brands}
+        initialSubmissions={submissions}
+        initialFiles={files}
+        actions={actions}
+        formActions={formActions}
+        error={error}
       />
     </div>
   )
