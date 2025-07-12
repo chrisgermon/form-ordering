@@ -158,12 +158,33 @@ export async function runPrimaryColorFix() {
 
 export async function runSubmissionsFKFix() {
   const sql = `
+    -- Ensure the submissions table exists before trying to alter it.
+    CREATE TABLE IF NOT EXISTS submissions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        created_at TIMESTAMPTZ DEFAULT now()
+    );
+
+    -- Add brand_id column if it doesn't exist.
     ALTER TABLE public.submissions ADD COLUMN IF NOT EXISTS brand_id UUID;
+
+    -- Drop the old, possibly misnamed constraint if it exists.
     ALTER TABLE public.submissions DROP CONSTRAINT IF EXISTS form_submissions_brand_id_fkey;
-    ALTER TABLE public.submissions ADD CONSTRAINT form_submissions_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES public.brands(id) ON DELETE SET NULL;
-    CREATE INDEX IF NOT EXISTS idx_form_submissions_brand_id ON public.submissions(brand_id);
+    
+    -- Drop the correctly named constraint if it exists, to allow re-creation.
+    ALTER TABLE public.submissions DROP CONSTRAINT IF EXISTS submissions_brand_id_fkey;
+
+    -- Add the correctly named foreign key constraint.
+    ALTER TABLE public.submissions 
+    ADD CONSTRAINT submissions_brand_id_fkey 
+    FOREIGN KEY (brand_id) REFERENCES public.brands(id) ON DELETE SET NULL;
+
+    -- Drop old index and create correctly named index.
+    DROP INDEX IF EXISTS idx_form_submissions_brand_id;
+    CREATE INDEX IF NOT EXISTS idx_submissions_brand_id ON public.submissions(brand_id);
+
+    -- Force schema reload.
     NOTIFY pgrst, 'reload schema';
-    `
+  `
   return executeSql(sql)
 }
 

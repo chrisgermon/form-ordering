@@ -31,10 +31,13 @@ export interface UploadedFile {
 
 export interface FormSubmission {
   id: string
-  brand_id: string
-  form_data: any
-  submitted_at: string
-  brands: { name: string } | null // from the join
+  created_at: string
+  ordered_by: string | null
+  email: string | null
+  status: string | null
+  pdf_url: string | null
+  ip_address: string | null
+  brands: { name: string } | null
 }
 
 export interface SystemActions {

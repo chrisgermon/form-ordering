@@ -32,9 +32,9 @@ async function getDashboardData() {
   try {
     const brandsQuery = supabase.from("brands").select("*").order("name")
     const submissionsQuery = supabase
-      .from("form_submissions")
+      .from("submissions") // <-- Corrected table name
       .select("*, brands(name)")
-      .order("submitted_at", { ascending: false })
+      .order("created_at", { ascending: false }) // <-- Corrected column name
       .limit(100)
     const filesQuery = supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false }).limit(100)
 
