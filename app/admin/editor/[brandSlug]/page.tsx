@@ -14,7 +14,7 @@ async function getBrandData(slug: string): Promise<BrandData> {
   // Step 1: Fetch the brand details
   const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select("id, name, slug, logo_url, emails, clinic_locations, active")
+    .select("id, name, slug, logo, emails, clinic_locations, active")
     .eq("slug", slug)
     .single()
 
