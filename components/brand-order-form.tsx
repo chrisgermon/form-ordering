@@ -30,9 +30,14 @@ const createFormSchema = (brandData: BrandData) => {
     items: z.record(z.any()).optional(),
   })
 
+  // Defensive check: If sections are missing, return a basic schema to prevent crash.
+  if (!brandData?.sections) {
+    console.warn("Form schema created without sections. Validation will be limited.")
+    return baseSchema
+  }
+
   return baseSchema.superRefine((data, ctx) => {
     let hasItems = false
-    // This uses brandData.sections, which is correct.
     brandData.sections.forEach((section) => {
       section.items.forEach((item) => {
         const value = data.items?.[item.id]
@@ -318,11 +323,14 @@ function SelectionSidebar({
   )
 }
 
-export function OrderForm({ brandData }: { brandData: BrandData }) {
+export function BrandOrderForm({ brandData }: { brandData: BrandData }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submissionStatus, setSubmissionStatus] = useState<"success" | "error" | null>(null)
   const [submissionMessage, setSubmissionMessage] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
+
+  // Defensive check: If brandData or its sections are missing, show a loading/error state.
+  const loadingState = !brandData || !brandData.sections
 
   const formSchema = useMemo(() => createFormSchema(brandData), [brandData])
 
@@ -401,7 +409,6 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
       return brandData.sections
     }
     const lowercasedFilter = searchTerm.toLowerCase()
-    // This uses brandData.sections, which is correct.
     return brandData.sections
       .map((section) => {
         const filteredItems = section.items.filter(
@@ -412,6 +419,20 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
       })
       .filter((section) => section.items.length > 0)
   }, [searchTerm, brandData.sections])
+
+  if (loadingState) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="text-center p-8 bg-white rounded-lg shadow-md">
+          <Loader2 className="mx-auto h-12 w-12 animate-spin text-blue-500" />
+          <h2 className="mt-4 text-xl font-semibold text-gray-800">Loading Form Data...</h2>
+          <p className="mt-2 text-gray-600">
+            Please wait a moment. If this message persists, the form may be configured incorrectly.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#f9f9f9] p-4 sm:p-6 md:p-8 font-work-sans">
@@ -553,7 +574,6 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                 </div>
 
                 <div className="space-y-4">
-                  {/* This uses filteredSections, which is derived from brandData.sections. Correct. */}
                   {filteredSections.map((section) => (
                     <Collapsible
                       key={section.id}

@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
-import { OrderForm } from "@/components/order-form"
+import { BrandOrderForm } from "@/components/brand-order-form"
 import type { BrandData, Section, Item } from "@/lib/types"
 
 export const revalidate = 0 // Revalidate data on every request
@@ -37,7 +37,6 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
 
   if (sectionsError) {
     console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
-    // Return brand data but with empty sections to avoid a 404
     return { ...brand, sections: [] } as BrandData
   }
 
@@ -54,10 +53,6 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     sections: sections,
   } as BrandData
 
-  // Definitive check: This log will show up in your deployment's runtime logs.
-  // It proves that the object being returned has "sections" and not "product_sections".
-  console.log(`[getBrandData for '${slug}'] Final object keys:`, Object.keys(finalBrandData).join(", "))
-
   return finalBrandData
 }
 
@@ -68,5 +63,5 @@ export default async function BrandFormPage({ params }: { params: { brand: strin
     notFound()
   }
 
-  return <OrderForm brandData={brandData} />
+  return <BrandOrderForm brandData={brandData} />
 }
