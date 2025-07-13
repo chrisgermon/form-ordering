@@ -16,7 +16,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ChevronDown, ArrowLeft, Search, X } from "lucide-react"
 import { format } from "date-fns"
 import { cn, resolveAssetUrl } from "@/lib/utils"
-import type { BrandData, ProductItem } from "@/lib/types"
+import type { BrandData, Item } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
 
@@ -32,8 +32,8 @@ const createFormSchema = (brandData: BrandData) => {
 
   return baseSchema.superRefine((data, ctx) => {
     let hasItems = false
-    brandData.product_sections.forEach((section) => {
-      section.product_items.forEach((item) => {
+    brandData.sections.forEach((section) => {
+      section.items.forEach((item) => {
         const value = data.items?.[item.id]
         if (value && value.quantity !== "") {
           hasItems = true
@@ -68,7 +68,7 @@ const FormField = ({
   setValue,
   errors,
 }: {
-  item: ProductItem
+  item: Item
   control: any
   getValues: any
   setValue: any
@@ -393,19 +393,19 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
 
   const filteredSections = useMemo(() => {
     if (!searchTerm) {
-      return brandData.product_sections
+      return brandData.sections
     }
     const lowercasedFilter = searchTerm.toLowerCase()
-    return brandData.product_sections
+    return brandData.sections
       .map((section) => {
-        const filteredItems = section.product_items.filter(
+        const filteredItems = section.items.filter(
           (item) =>
             item.name.toLowerCase().includes(lowercasedFilter) || item.code.toLowerCase().includes(lowercasedFilter),
         )
-        return { ...section, product_items: filteredItems }
+        return { ...section, items: filteredItems }
       })
-      .filter((section) => section.product_items.length > 0)
-  }, [searchTerm, brandData.product_sections])
+      .filter((section) => section.items.length > 0)
+  }, [searchTerm, brandData.sections])
 
   return (
     <div className="min-h-screen bg-[#f9f9f9] p-4 sm:p-6 md:p-8 font-work-sans">
@@ -556,7 +556,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                       <CollapsibleContent>
                         <div className="p-4 pt-0">
                           <div className="space-y-4">
-                            {section.product_items.map((item) => (
+                            {section.items.map((item) => (
                               <FormField
                                 key={item.id}
                                 item={item}

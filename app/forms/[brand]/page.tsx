@@ -1,9 +1,17 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
 import { OrderForm } from "@/components/order-form"
-import type { BrandData } from "@/lib/types"
+import type { BrandData, Section, Item } from "@/lib/types"
 
 export const revalidate = 0 // Revalidate data on every request
+
+// These types represent the raw data from Supabase before we process it
+interface RawItem extends Omit<Item, "options"> {
+  options: { value: string }[]
+}
+interface RawSection extends Omit<Section, "items"> {
+  items: RawItem[]
+}
 
 async function getBrandData(slug: string): Promise<BrandData | null> {
   const supabase = createAdminClient()
@@ -16,49 +24,38 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     .eq("active", true)
     .maybeSingle()
 
-  // If no active brand is found, or there's an error, return null
   if (brandError || !brand) {
-    if (brandError) {
-      console.error(`Error fetching brand:`, JSON.stringify(brandError, null, 2))
-    }
+    if (brandError) console.error(`Error fetching brand:`, brandError.message)
     return null
   }
 
-  // Step 2: Fetch all product sections for this brand
-  const { data: sections, error: sectionsError } = await supabase
-    .from("product_sections")
-    .select("*")
+  // Step 2: Fetch all sections and their items with options for this brand
+  const { data: rawSections, error: sectionsError } = await supabase
+    .from("sections")
+    .select("*, items(*, options(value))")
     .eq("brand_id", brand.id)
-    .order("sort_order")
+    .order("position", { ascending: true })
+    .order("position", { foreignTable: "items", ascending: true })
 
   if (sectionsError) {
     console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
-    // Return the brand but with empty sections, preventing a 404
-    return { ...brand, product_sections: [] } as BrandData
+    return { ...brand, sections: [] } as BrandData
   }
 
-  // Step 3: For each section, fetch its product items
-  const sectionsWithItems = await Promise.all(
-    (sections || []).map(async (section) => {
-      const { data: items, error: itemsError } = await supabase
-        .from("product_items")
-        .select("*")
-        .eq("section_id", section.id)
-        .order("sort_order")
-
-      if (itemsError) {
-        console.error(`Error fetching items for section '${section.title}':`, itemsError.message)
-        // If items fail to load, return the section with an empty item list
-        return { ...section, product_items: [] }
-      }
-      return { ...section, product_items: items || [] }
-    }),
-  )
+  // Step 3: Process the raw data to match the expected `BrandData` type
+  // This involves converting the nested options objects into a simple string array
+  const sections: Section[] = (rawSections as RawSection[]).map((section) => ({
+    ...section,
+    items: section.items.map((item) => ({
+      ...item,
+      options: item.options.map((opt) => opt.value),
+    })),
+  }))
 
   // Step 4: Assemble and return the final BrandData object
   return {
     ...brand,
-    product_sections: sectionsWithItems,
+    sections: sections,
   } as BrandData
 }
 
