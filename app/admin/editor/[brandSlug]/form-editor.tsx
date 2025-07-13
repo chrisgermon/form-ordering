@@ -3,7 +3,6 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import {
   DndContext,
   closestCenter,
@@ -14,7 +13,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core"
 import {
-  arrayMove as dndKitArrayMove, // renamed to avoid conflict
+  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -39,7 +38,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert } from "@/components/ui/alert"
 import {
-  ArrowLeft,
   Edit,
   Plus,
   Trash2,
@@ -50,15 +48,13 @@ import {
   Type,
   Calendar,
   MousePointerClick,
-  Upload,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 
 import { updateSectionOrder, updateItemOrder } from "./actions"
 import { clearFormForBrand, importForm } from "../../actions"
-import type { Brand, Section as ProductSection, Item as ProductItem } from "@/lib/types"
-import { FileManager } from "@/app/admin/FileManager"
+import type { BrandData, Section as ProductSection, Item as ProductItem } from "@/lib/types"
 
 const fieldTypes = [
   { value: "checkbox_group", label: "Checkbox Group", icon: CheckSquare },
@@ -68,7 +64,6 @@ const fieldTypes = [
   { value: "date", label: "Date Picker", icon: Calendar },
 ]
 
-// Toolbox Component
 function Toolbox({ onAddSectionClick }: { onAddSectionClick: () => void }) {
   return (
     <Card>
@@ -90,7 +85,6 @@ function Toolbox({ onAddSectionClick }: { onAddSectionClick: () => void }) {
   )
 }
 
-// Jotform Import Dialog
 function ImportFormDialog({
   open,
   onOpenChange,
@@ -187,13 +181,8 @@ function ImportFormDialog({
   )
 }
 
-// Main Editor Component
-export default function FormEditor({
-  initialBrandData,
-}: {
-  initialBrandData: Brand
-}) {
-  const [brandData, setBrandData] = useState<Brand>(initialBrandData)
+export function FormEditor({ initialBrandData }: { initialBrandData: BrandData }) {
+  const [brandData, setBrandData] = useState<BrandData>(initialBrandData)
   const [sections, setSections] = useState<ProductSection[]>(initialBrandData.sections || [])
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false)
   const [isImportFormDialogOpen, setIsImportFormDialogOpen] = useState(false)
@@ -225,7 +214,7 @@ export default function FormEditor({
       const newIndex = sections.findIndex((s) => s.id === over.id)
       if (oldIndex === -1 || newIndex === -1) return
 
-      const reorderedSections = dndKitArrayMove(sections, oldIndex, newIndex)
+      const reorderedSections = arrayMove(sections, oldIndex, newIndex)
       setSections(reorderedSections)
 
       const promise = updateSectionOrder(
@@ -249,7 +238,7 @@ export default function FormEditor({
       const newIndex = section.items.findIndex((i) => i.id === over.id)
       if (oldIndex === -1 || newIndex === -1) return
 
-      const reorderedItems = dndKitArrayMove(section.items, oldIndex, newIndex)
+      const reorderedItems = arrayMove(section.items, oldIndex, newIndex)
       const newSections = [...sections]
       newSections[sectionIndex] = { ...section, items: reorderedItems }
       setSections(newSections)
@@ -422,84 +411,48 @@ export default function FormEditor({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-6 flex justify-between items-center">
-          <Button onClick={() => router.push("/admin")} variant="outline" className="flex items-center gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Dashboard
-          </Button>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive bg-transparent"
-              onClick={handleClearForm}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Clear Form
-            </Button>
-            <Button variant="outline" onClick={() => setIsImportFormDialogOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" />
-              Import Form
-            </Button>
-            <Button asChild>
-              <Link href={`/forms/${brandData.slug}`} target="_blank">
-                Preview Form
-              </Link>
-            </Button>
-          </div>
+    <>
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
+        <div className="space-y-6 lg:sticky lg:top-6">
+          <Toolbox onAddSectionClick={handleAddSection} />
         </div>
 
-        <Card className="mb-6 bg-white shadow-sm">
-          <CardHeader>
-            <p className="text-sm text-gray-500">Form Editor</p>
-            <CardTitle className="text-3xl">{brandData.name}</CardTitle>
-          </CardHeader>
-        </Card>
-
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
-          <div className="space-y-6">
-            <Toolbox onAddSectionClick={handleAddSection} />
-            <FileManager brandId={brandData.id} />
-          </div>
-
-          <div className="bg-white p-4 rounded-lg shadow-sm min-h-[400px]">
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-4">
-                  {sections.length > 0 ? (
-                    sections.map((section) => (
-                      <SortableSection
-                        key={section.id}
-                        section={section}
-                        onUpdateTitle={handleUpdateSectionTitle}
-                        onDelete={handleDeleteSection}
-                        onAddItem={openItemDialog}
-                      >
-                        <SortableContext items={section.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                          <div className="space-y-2 p-4">
-                            {section.items.map((item) => (
-                              <SortableItem
-                                key={item.id}
-                                item={item}
-                                onEdit={openItemDialog}
-                                onDelete={handleDeleteItem}
-                              />
-                            ))}
-                          </div>
-                        </SortableContext>
-                      </SortableSection>
-                    ))
-                  ) : (
-                    <div className="text-center py-16 text-gray-500">
-                      <p>Your form is empty.</p>
-                      <p>Click 'Add Section' in the toolbox to get started.</p>
-                    </div>
-                  )}
-                </div>
-              </SortableContext>
-            </DndContext>
-          </div>
+        <div className="bg-white p-4 rounded-lg shadow-sm min-h-[400px]">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-4">
+                {sections.length > 0 ? (
+                  sections.map((section) => (
+                    <SortableSection
+                      key={section.id}
+                      section={section}
+                      onUpdateTitle={handleUpdateSectionTitle}
+                      onDelete={handleDeleteSection}
+                      onAddItem={openItemDialog}
+                    >
+                      <SortableContext items={section.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                        <div className="space-y-2 p-4">
+                          {section.items.map((item) => (
+                            <SortableItem
+                              key={item.id}
+                              item={item}
+                              onEdit={openItemDialog}
+                              onDelete={handleDeleteItem}
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </SortableSection>
+                  ))
+                ) : (
+                  <div className="text-center py-16 text-gray-500">
+                    <p>Your form is empty.</p>
+                    <p>Click 'Add Section' in the toolbox to get started.</p>
+                  </div>
+                )}
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
       </div>
       <ImportFormDialog
@@ -517,11 +470,10 @@ export default function FormEditor({
         onSave={handleSaveItem}
         setCurrentItem={setCurrentItem}
       />
-    </div>
+    </>
   )
 }
 
-// Sortable Section Component
 function SortableSection({
   section,
   children,
@@ -568,7 +520,6 @@ function SortableSection({
   )
 }
 
-// Sortable Item Component
 function SortableItem({
   item,
   onEdit,
@@ -612,7 +563,6 @@ function SortableItem({
   )
 }
 
-// Item Dialog
 function ItemDialog({
   open,
   onOpenChange,
@@ -672,7 +622,6 @@ function ItemDialog({
 
   const handleSave = () => {
     setCurrentItem(formData as ProductItem)
-    // Use a timeout to ensure state is updated before saving
     setTimeout(onSave, 0)
   }
 
