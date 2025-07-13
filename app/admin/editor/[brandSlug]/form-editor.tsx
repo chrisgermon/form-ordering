@@ -196,6 +196,7 @@ export default function FormEditor({
     sectionId: string
     brandId: string
     fieldType: ProductItem["field_type"]
+    item?: ProductItem
   } | null>(null)
   const router = useRouter()
 
@@ -267,8 +268,18 @@ export default function FormEditor({
     }
   }
 
-  const handleAddItemToSection = (sectionId: string, fieldType: ProductItem["field_type"]) => {
+  const handleAddItemClick = (sectionId: string, fieldType: ProductItem["field_type"]) => {
     setActiveItemOptions({ sectionId, brandId: brandData.id, fieldType })
+    setIsItemDialogOpen(true)
+  }
+
+  const handleEditItemClick = (item: ProductItem) => {
+    setActiveItemOptions({
+      sectionId: item.section_id,
+      brandId: item.brand_id,
+      fieldType: item.field_type,
+      item: item,
+    })
     setIsItemDialogOpen(true)
   }
 
@@ -339,7 +350,7 @@ export default function FormEditor({
       loading: "Clearing form...",
       success: (result) => {
         if (result.success) {
-          onDataChange() // This calls router.refresh()
+          onDataChange()
           return result.message
         } else {
           throw new Error(result.message)
@@ -347,6 +358,50 @@ export default function FormEditor({
       },
       error: (err) => err.message || "Failed to clear form.",
     })
+  }
+
+  const handleSectionCreated = (newSection: ProductSection) => {
+    setBrandData((prev) => ({
+      ...prev,
+      product_sections: [...prev.product_sections, newSection],
+    }))
+  }
+
+  const handleSectionUpdated = (updatedSection: ProductSection) => {
+    setBrandData((prev) => ({
+      ...prev,
+      product_sections: prev.product_sections.map((s) => (s.id === updatedSection.id ? updatedSection : s)),
+    }))
+  }
+
+  const handleItemCreated = (newItem: ProductItem) => {
+    setBrandData((prev) => ({
+      ...prev,
+      product_sections: prev.product_sections.map((section) => {
+        if (section.id === newItem.section_id) {
+          return {
+            ...section,
+            product_items: [...section.product_items, newItem],
+          }
+        }
+        return section
+      }),
+    }))
+  }
+
+  const handleItemUpdated = (updatedItem: ProductItem) => {
+    setBrandData((prev) => ({
+      ...prev,
+      product_sections: prev.product_sections.map((section) => {
+        if (section.id === updatedItem.section_id) {
+          return {
+            ...section,
+            product_items: section.product_items.map((item) => (item.id === updatedItem.id ? updatedItem : item)),
+          }
+        }
+        return section
+      }),
+    }))
   }
 
   return (
@@ -403,9 +458,9 @@ export default function FormEditor({
                       <SortableSection
                         key={section.id}
                         section={section}
-                        onDeleteItem={handleDeleteItem}
                         onDeleteSection={handleDeleteSection}
-                        onAddItem={handleAddItemToSection}
+                        onAddItem={handleAddItemClick}
+                        onSectionUpdated={handleSectionUpdated}
                       >
                         <SortableContext
                           items={section.product_items.map((i) => i.id)}
@@ -417,8 +472,7 @@ export default function FormEditor({
                                 key={item.id}
                                 item={item}
                                 onDelete={handleDeleteItem}
-                                onDataChange={onDataChange}
-                                uploadedFiles={uploadedFiles}
+                                onEdit={handleEditItemClick}
                               />
                             ))}
                           </div>
@@ -441,11 +495,11 @@ export default function FormEditor({
         open={isSectionDialogOpen}
         onOpenChange={setIsSectionDialogOpen}
         brandId={brandData.id}
-        onDataChange={onDataChange}
+        onSectionCreated={handleSectionCreated}
       />
       {activeItemOptions && (
         <ItemDialog
-          key={activeItemOptions.fieldType + (activeItemOptions as any).id}
+          key={activeItemOptions.item?.id || "new"}
           open={isItemDialogOpen}
           onOpenChange={(open) => {
             if (!open) {
@@ -453,10 +507,9 @@ export default function FormEditor({
             }
             setIsItemDialogOpen(open)
           }}
-          sectionId={activeItemOptions.sectionId}
-          brandId={activeItemOptions.brandId}
-          fieldType={activeItemOptions.fieldType}
-          onDataChange={onDataChange}
+          {...activeItemOptions}
+          onItemCreated={handleItemCreated}
+          onItemUpdated={handleItemUpdated}
           uploadedFiles={uploadedFiles}
         />
       )}
@@ -476,14 +529,14 @@ function SortableSection({
   section,
   children,
   onDeleteSection,
-  onDeleteItem,
   onAddItem,
+  onSectionUpdated,
 }: {
   section: ProductSection
   children: React.ReactNode
   onDeleteSection: (sectionId: string) => void
-  onDeleteItem: (itemId: string, sectionId: string) => void
   onAddItem: (sectionId: string, fieldType: ProductItem["field_type"]) => void
+  onSectionUpdated: (updatedSection: ProductSection) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: section.id,
@@ -531,9 +584,7 @@ function SortableSection({
         onOpenChange={setIsSectionDialogOpen}
         section={section}
         brandId={section.brand_id}
-        onDataChange={() => {
-          /* onDataChange is now handled by toast in parent */
-        }}
+        onSectionUpdated={onSectionUpdated}
       />
     </Card>
   )
@@ -543,20 +594,17 @@ function SortableSection({
 function SortableItem({
   item,
   onDelete,
-  onDataChange,
-  uploadedFiles,
+  onEdit,
 }: {
   item: ProductItem
   onDelete: (itemId: string, sectionId: string) => void
-  onDataChange: () => void
-  uploadedFiles: UploadedFile[]
+  onEdit: (item: ProductItem) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: item.id,
     data: { type: "item", sectionId: item.section_id },
   })
   const style = { transform: CSS.Transform.toString(transform), transition }
-  const [isItemDialogOpen, setIsItemDialogOpen] = useState(false)
 
   const fieldTypeLabel = fieldTypes.find((ft) => ft.value === item.field_type)?.label || "Item"
 
@@ -575,23 +623,13 @@ function SortableItem({
         </p>
       </div>
       <div className="flex items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => setIsItemDialogOpen(true)}>
+        <Button size="sm" variant="outline" onClick={() => onEdit(item)}>
           <Edit className="h-4 w-4" />
         </Button>
         <Button size="sm" variant="destructive" onClick={() => onDelete(item.id, item.section_id)}>
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-      <ItemDialog
-        open={isItemDialogOpen}
-        onOpenChange={setIsItemDialogOpen}
-        item={item}
-        sectionId={item.section_id}
-        brandId={item.brand_id}
-        onDataChange={onDataChange}
-        uploadedFiles={uploadedFiles}
-        fieldType={item.field_type}
-      />
     </div>
   )
 }
@@ -602,16 +640,17 @@ function SectionDialog({
   onOpenChange,
   section,
   brandId,
-  onDataChange,
+  onSectionCreated,
+  onSectionUpdated,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   section?: ProductSection
   brandId: string
-  onDataChange: () => void
+  onSectionCreated?: (newSection: ProductSection) => void
+  onSectionUpdated?: (updatedSection: ProductSection) => void
 }) {
   const [title, setTitle] = useState("")
-  const router = useRouter()
 
   React.useEffect(() => {
     if (open) {
@@ -633,13 +672,21 @@ function SectionDialog({
 
     toast.promise(promise, {
       loading: "Saving section...",
-      success: (res) => {
-        if (!res.ok) throw new Error("Failed on server.")
-        router.refresh()
+      success: async (res) => {
+        if (!res.ok) {
+          const errorData = await res.json()
+          throw new Error(errorData.error || "Failed on server.")
+        }
+        const savedSection = await res.json()
+        if (section && onSectionUpdated) {
+          onSectionUpdated(savedSection)
+        } else if (!section && onSectionCreated) {
+          onSectionCreated(savedSection)
+        }
         onOpenChange(false)
         return "Section saved successfully!"
       },
-      error: "Failed to save section.",
+      error: (err) => err.message || "Failed to save section.",
     })
   }
 
@@ -676,18 +723,20 @@ function ItemDialog({
   item,
   sectionId,
   brandId,
-  onDataChange,
   uploadedFiles,
   fieldType,
+  onItemCreated,
+  onItemUpdated,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   item?: ProductItem
   sectionId: string
   brandId: string
-  onDataChange: () => void
   uploadedFiles: UploadedFile[]
   fieldType: ProductItem["field_type"]
+  onItemCreated?: (newItem: ProductItem) => void
+  onItemUpdated?: (updatedItem: ProductItem) => void
 }) {
   const [formData, setFormData] = useState({
     code: "",
@@ -699,7 +748,6 @@ function ItemDialog({
   })
   const [options, setOptions] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
-  const router = useRouter()
 
   const brandSpecificFiles = useMemo(
     () => uploadedFiles.filter((file) => file.brand_id === brandId || file.brand_id === null),
@@ -759,7 +807,6 @@ function ItemDialog({
       if (response.ok) {
         const newFile = await response.json()
         setFormData((prev) => ({ ...prev, sample_link: newFile.pathname }))
-        onDataChange()
         toast.success("File uploaded and selected.")
       } else {
         toast.error("Failed to upload file.")
@@ -789,13 +836,21 @@ function ItemDialog({
 
     toast.promise(promise, {
       loading: "Saving item...",
-      success: (res) => {
-        if (!res.ok) throw new Error("Failed on server.")
-        router.refresh()
+      success: async (res) => {
+        if (!res.ok) {
+          const errorData = await res.json()
+          throw new Error(errorData.error || "Failed on server.")
+        }
+        const savedItem = await res.json()
+        if (item && onItemUpdated) {
+          onItemUpdated(savedItem)
+        } else if (!item && onItemCreated) {
+          onItemCreated(savedItem)
+        }
         onOpenChange(false)
         return "Item saved successfully!"
       },
-      error: "Failed to save item.",
+      error: (err) => err.message || "Failed to save item.",
     })
   }
 
