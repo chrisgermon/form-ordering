@@ -18,6 +18,8 @@ function slugify(text: string) {
 export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | null; error: string | null }> {
   const supabase = createClient()
   try {
+    // This simplified query relies on the foreign key relationships
+    // being correctly defined in the database, which `08-fix-relationships.sql` ensures.
     const { data: brand, error } = await supabase
       .from("brands")
       .select(
@@ -30,7 +32,7 @@ export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | 
         active,
         sections (
           *,
-          items:form_items (
+          items (
             *,
             options (*)
           )
@@ -43,8 +45,13 @@ export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | 
     if (error) {
       console.error(`Database error fetching brand '${slug}' for editor:`, error.message)
       if (error.code === "PGRST116") {
-        // "PGRST116" means no rows found
         return { brand: null, error: `No brand with the slug '${slug}' could be found. Please check the URL.` }
+      }
+      if (error.message.includes("relationship")) {
+        return {
+          brand: null,
+          error: `Database schema error: A relationship between tables is missing. Please run the latest database script to fix.`,
+        }
       }
       return { brand: null, error: "A database error occurred while fetching the brand. Please check the server logs." }
     }
@@ -53,11 +60,11 @@ export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | 
       return { brand: null, error: `No brand with the slug '${slug}' could be found. Please check the URL.` }
     }
 
-    // Sort sections and items by the 'order' column
-    const sortedSections = (brand.sections || []).sort((a, b) => a.order - b.order)
+    // Sort the nested arrays in JavaScript to ensure consistent order.
+    const sortedSections = (brand.sections || []).sort((a, b) => a.position - b.position)
     sortedSections.forEach((section) => {
       if (section.items) {
-        section.items.sort((a, b) => a.order - b.order)
+        section.items.sort((a, b) => a.position - b.position)
         section.items.forEach((item) => {
           if (item.options) {
             item.options.sort((a, b) => a.sort_order - b.sort_order)
@@ -79,9 +86,9 @@ export async function addSection(brandId: number, title: string) {
   try {
     const { data: maxOrderData, error: maxOrderError } = await supabase
       .from("sections")
-      .select("order")
+      .select("position")
       .eq("brand_id", brandId)
-      .order("order", { ascending: false })
+      .order("position", { ascending: false })
       .limit(1)
       .single()
 
@@ -89,13 +96,12 @@ export async function addSection(brandId: number, title: string) {
       throw maxOrderError
     }
 
-    const newOrder = (maxOrderData?.order ?? 0) + 1
+    const newPosition = (maxOrderData?.position ?? -1) + 1
 
     const { error } = await supabase.from("sections").insert({
       brand_id: brandId,
       title: title,
-      slug: slugify(title),
-      order: newOrder,
+      position: newPosition,
     })
 
     if (error) throw error
@@ -126,11 +132,11 @@ export async function importFormFromURL(brandId: number, url: string) {
   return { success: true, message: "Import process started (placeholder)." }
 }
 
-export async function updateSectionOrder(brandId: number, sections: { id: number; order: number }[]) {
+export async function updateSectionOrder(brandId: number, sections: { id: number; position: number }[]) {
   const supabase = createClient()
   try {
     const updates = sections.map((section) =>
-      supabase.from("sections").update({ order: section.order }).eq("id", section.id),
+      supabase.from("sections").update({ position: section.position }).eq("id", section.id),
     )
     const results = await Promise.all(updates)
     const error = results.find((res) => res.error)
@@ -143,10 +149,10 @@ export async function updateSectionOrder(brandId: number, sections: { id: number
   }
 }
 
-export async function updateItemOrder(sectionId: number, items: { id: number; order: number }[]) {
+export async function updateItemOrder(sectionId: number, items: { id: number; position: number }[]) {
   const supabase = createClient()
   try {
-    const updates = items.map((item) => supabase.from("form_items").update({ order: item.order }).eq("id", item.id))
+    const updates = items.map((item) => supabase.from("items").update({ position: item.position }).eq("id", item.id))
     const results = await Promise.all(updates)
     const error = results.find((res) => res.error)
     if (error) throw error.error
