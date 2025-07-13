@@ -37,14 +37,14 @@ export interface BrandData {
   id: string
   name: string
   slug: string
-  logo: string | null // This was logo_url
+  logo: string | null
   emails: string[]
   clinic_locations: ClinicLocation[]
   active: boolean
-  sections: Section[] // This was product_sections
+  sections: Section[]
 }
 
-export interface UploadedFile {
+export interface FileRecord {
   id: string
   pathname: string
   url: string
@@ -77,4 +77,4 @@ export type OrderPayload = {
   }
 }
 
-export type Brand = BrandData // Alias for consistency
+export type Brand = BrandData

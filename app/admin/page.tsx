@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import { AdminDashboard } from "./AdminDashboard"
-import type { Brand, FormSubmission, UploadedFile } from "@/lib/types"
+import type { Brand, FormSubmission, FileRecord } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
 
@@ -17,7 +17,7 @@ async function getDashboardData() {
       .select("*, brands(name)")
       .order("created_at", { ascending: false })
       .limit(100)
-    const filesQuery = supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false })
+    const filesQuery = supabase.from("files").select("*").order("uploaded_at", { ascending: false })
 
     const [brandsResult, submissionsResult, filesResult] = await Promise.all([
       brandsQuery,
@@ -32,7 +32,7 @@ async function getDashboardData() {
     return {
       brands: (brandsResult.data as Brand[]) || [],
       submissions: (submissionsResult.data as FormSubmission[]) || [],
-      files: (filesResult.data as UploadedFile[]) || [],
+      files: (filesResult.data as FileRecord[]) || [],
       error: null,
     }
   } catch (error) {
@@ -42,7 +42,7 @@ async function getDashboardData() {
       brands: [],
       submissions: [],
       files: [],
-      error: `There was a problem fetching dashboard data. This is likely due to a database schema issue. Please run the schema correction script provided in the chat to resolve this. Error: "${errorMessage}"`,
+      error: `There was a problem fetching dashboard data. This is likely due to a database schema issue. Please check the database logs for more details. Error: "${errorMessage}"`,
     }
   }
 }
