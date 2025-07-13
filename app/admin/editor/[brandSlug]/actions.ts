@@ -4,11 +4,9 @@ import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 import type { Brand, Item, Option, Section } from "@/lib/types"
 
-// Reverted to the more stable, multi-query version to avoid schema relationship issues.
 export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | null; error: string | null }> {
   const supabase = createClient()
   try {
-    // 1. Fetch the brand
     const { data: brandData, error: brandError } = await supabase.from("brands").select("*").eq("slug", slug).single()
 
     if (brandError) {
@@ -20,67 +18,20 @@ export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | 
     }
 
     const brand: Brand = brandData
-
-    // 2. Fetch sections for the brand
     const { data: sectionsData, error: sectionsError } = await supabase
       .from("sections")
-      .select("*")
+      .select("*, items(*, options(*))")
       .eq("brand_id", brand.id)
       .order("position", { ascending: true })
+      .order("position", { foreignTable: "items", ascending: true })
+      .order("sort_order", { foreignTable: "items.options", ascending: true })
 
     if (sectionsError) {
       console.error(`Database error fetching sections for brand '${brand.id}':`, sectionsError.message)
       return { brand: null, error: "Could not fetch form sections." }
     }
 
-    const sections: Section[] = sectionsData || []
-    const sectionIds = sections.map((s) => s.id)
-
-    if (sectionIds.length > 0) {
-      // 3. Fetch all items for all sections
-      const { data: itemsData, error: itemsError } = await supabase
-        .from("items")
-        .select("*")
-        .in("section_id", sectionIds)
-        .order("position", { ascending: true })
-
-      if (itemsError) {
-        console.error(`Database error fetching items for sections '${sectionIds.join(",")}':`, itemsError.message)
-        return { brand: null, error: "Could not fetch form items." }
-      }
-
-      const items: Item[] = itemsData || []
-      const itemIds = items.map((i) => i.id)
-
-      if (itemIds.length > 0) {
-        // 4. Fetch all options for all items
-        const { data: optionsData, error: optionsError } = await supabase
-          .from("options")
-          .select("*")
-          .in("item_id", itemIds)
-          .order("sort_order", { ascending: true })
-
-        if (optionsError) {
-          console.error(`Database error fetching options for items '${itemIds.join(",")}':`, optionsError.message)
-          return { brand: null, error: "Could not fetch item options." }
-        }
-
-        const options: Option[] = optionsData || []
-
-        // 5. Assemble the data structure
-        items.forEach((item) => {
-          item.options = options.filter((opt) => opt.item_id === item.id)
-        })
-      } else {
-        items.forEach((item) => (item.options = []))
-      }
-
-      sections.forEach((section) => {
-        section.items = items.filter((item) => item.section_id === section.id)
-      })
-    }
-
-    brand.sections = sections
+    brand.sections = sectionsData || []
     return { brand, error: null }
   } catch (e: any) {
     console.error("Unexpected error in getBrandForEditor:", e.message)
@@ -97,7 +48,7 @@ export async function saveFormChanges(
   const supabase = createClient()
 
   try {
-    // 1. Handle Deletions
+    // 1. Handle Deletions first to avoid constraint errors
     if (deletedItemIds.length > 0) {
       const { error } = await supabase.from("items").delete().in("id", deletedItemIds)
       if (error) throw new Error(`Failed to delete items: ${error.message}`)
@@ -175,6 +126,7 @@ export async function saveFormChanges(
             i.options.forEach((o, index) => {
               allOptions.push({
                 item_id: finalItemId,
+                brand_id: brandId,
                 value: o.value,
                 label: o.label,
                 sort_order: index,
@@ -192,8 +144,8 @@ export async function saveFormChanges(
 
     const { data: brandData } = await supabase.from("brands").select("slug").eq("id", brandId).single()
     if (brandData?.slug) {
-      revalidatePath(`/admin/editor/${brandData.slug}`)
-      revalidatePath(`/forms/${brandData.slug}`)
+      revalidatePath(`/admin/editor/${brandData.slug}`, "page")
+      revalidatePath(`/forms/${brandData.slug}`, "page")
     }
 
     return { success: true, message: "Form saved successfully!" }
