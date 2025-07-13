@@ -22,6 +22,16 @@ export function AdminDashboard({
   submissions: initialSubmissions,
 }: AdminDashboardProps) {
   const [isBrandFormOpen, setIsBrandFormOpen] = useState(false)
+  const [brands, setBrands] = useState(initialBrands)
+
+  // This function will be passed to the BrandForm to update the brand list on creation/update
+  const onBrandChange = async () => {
+    const response = await fetch("/api/admin/brands")
+    if (response.ok) {
+      const updatedBrands = await response.json()
+      setBrands(updatedBrands)
+    }
+  }
 
   return (
     <>
@@ -40,17 +50,19 @@ export function AdminDashboard({
           <TabsTrigger value="submissions">Submissions</TabsTrigger>
         </TabsList>
         <TabsContent value="brands" className="mt-4">
-          <BrandGrid brands={initialBrands} />
+          <BrandGrid brands={brands} onBrandChange={onBrandChange} />
         </TabsContent>
         <TabsContent value="files" className="mt-4">
-          <FileManager brands={initialBrands} />
+          <FileManager brands={brands} />
         </TabsContent>
         <TabsContent value="submissions" className="mt-4">
-          <SubmissionsTable submissions={initialSubmissions} brands={initialBrands} />
+          <SubmissionsTable submissions={initialSubmissions} brands={brands} />
         </TabsContent>
       </Tabs>
 
-      {isBrandFormOpen && <BrandForm isOpen={isBrandFormOpen} onClose={() => setIsBrandFormOpen(false)} />}
+      {isBrandFormOpen && (
+        <BrandForm isOpen={isBrandFormOpen} onClose={() => setIsBrandFormOpen(false)} onBrandChange={onBrandChange} />
+      )}
     </>
   )
 }

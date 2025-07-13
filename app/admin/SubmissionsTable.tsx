@@ -1,117 +1,76 @@
 "use client"
+
 import { useState, useMemo } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { ExternalLink, RefreshCw, Loader2 } from "lucide-react"
-import type { FormSubmission } from "@/lib/types"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import type { Submission, Brand } from "@/lib/types"
+import { format } from "date-fns"
 
-export function SubmissionsTable({
-  submissions,
-  onRefresh,
-}: {
-  submissions: FormSubmission[]
-  onRefresh: () => Promise<void>
-}) {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [isRefreshing, setIsRefreshing] = useState(false)
+interface SubmissionsTableProps {
+  submissions: Submission[]
+  brands: Brand[]
+}
 
-  const filteredSubmissions = useMemo(() => {
-    if (!submissions) return []
-    if (!searchTerm) return submissions
+export function SubmissionsTable({ submissions, brands }: SubmissionsTableProps) {
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
 
-    const term = searchTerm.toLowerCase()
-    return submissions.filter(
-      (sub) =>
-        sub.ordered_by?.toLowerCase().includes(term) ||
-        sub.email?.toLowerCase().includes(term) ||
-        sub.brands?.name?.toLowerCase().includes(term),
-    )
-  }, [submissions, searchTerm])
+  const brandMap = useMemo(() => {
+    if (!brands) return new Map()
+    return new Map(brands.map((brand) => [brand.id, brand.name]))
+  }, [brands])
 
-  const handleRefreshClick = async () => {
-    setIsRefreshing(true)
-    await onRefresh()
-    setIsRefreshing(false)
-  }
-
-  const getStatusVariant = (status: string | null) => {
-    switch (status) {
-      case "sent":
-        return "default"
-      case "failed":
-        return "destructive"
-      default:
-        return "secondary"
-    }
+  if (!submissions || submissions.length === 0) {
+    return <p className="text-center py-8 text-gray-500">No submissions yet.</p>
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Input
-          placeholder="Search by name, email, or brand..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
-        <Button onClick={handleRefreshClick} disabled={isRefreshing} variant="outline">
-          {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-          Refresh
-        </Button>
-      </div>
-      <div className="border rounded-lg overflow-hidden bg-white">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Brand</TableHead>
-              <TableHead>Ordered By</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>PDF</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredSubmissions.length > 0 ? (
-              filteredSubmissions.map((sub) => (
-                <TableRow key={sub.id}>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {new Date(sub.created_at).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{sub.brands?.name || "N/A"}</Badge>
-                  </TableCell>
-                  <TableCell>{sub.ordered_by || "N/A"}</TableCell>
-                  <TableCell>{sub.email || "N/A"}</TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusVariant(sub.status)}>{sub.status || "pending"}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {sub.pdf_url ? (
-                      <Button asChild variant="outline" size="sm">
-                        <a href={sub.pdf_url} target="_blank" rel="noopener noreferrer">
-                          View PDF
-                          <ExternalLink className="ml-2 h-3 w-3" />
-                        </a>
-                      </Button>
-                    ) : (
-                      "No PDF"
+    <div className="border rounded-lg bg-white shadow-sm">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Brand</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {submissions.map((submission) => (
+            <TableRow key={submission.id}>
+              <TableCell>{format(new Date(submission.created_at), "dd MMM yyyy, h:mm a")}</TableCell>
+              <TableCell>{brandMap.get(submission.brand_id) || "Unknown Brand"}</TableCell>
+              <TableCell className="text-right">
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" onClick={() => setSelectedSubmission(submission)}>
+                      View Details
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                      <DialogTitle>Submission Details</DialogTitle>
+                    </DialogHeader>
+                    {selectedSubmission && (
+                      <div className="mt-4 space-y-4 max-h-[70vh] overflow-y-auto">
+                        {Object.entries(selectedSubmission.form_data).map(([key, value]) => (
+                          <div key={key} className="grid grid-cols-3 gap-4">
+                            <span className="font-semibold text-gray-600 capitalize col-span-1">
+                              {key.replace(/_/g, " ")}
+                            </span>
+                            <span className="text-gray-800 col-span-2">
+                              {Array.isArray(value) ? value.join(", ") : String(value)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     )}
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-gray-500">
-                  No submissions found.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                  </DialogContent>
+                </Dialog>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   )
 }

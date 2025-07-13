@@ -1,232 +1,184 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useRef } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
+import { useState, useEffect, useCallback } from "react"
 import { toast } from "sonner"
-import { Upload, Trash2, Copy, FileIcon, AlertCircle, Loader2 } from "lucide-react"
-import { upload, del } from "@vercel/blob/client"
-import type { FileRecord, Brand } from "@/lib/types"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Upload, Trash2, Copy, ExternalLink } from "lucide-react"
+import type { Brand, FileRecord } from "@/lib/types"
 import { format } from "date-fns"
-import Image from "next/image"
 
 interface FileManagerProps {
   brands: Brand[]
 }
 
 export function FileManager({ brands }: FileManagerProps) {
-  const inputFileRef = useRef<HTMLInputElement>(null)
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null)
   const [files, setFiles] = useState<FileRecord[]>([])
-  const [selectedBrandId, setSelectedBrandId] = useState<string>(brands[0]?.id.toString() || "")
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
-  const fetchFiles = async (brandId: string) => {
-    if (!brandId) {
-      setFiles([])
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    setError(null)
+  const fetchFiles = useCallback(async (brandId: string) => {
+    if (!brandId) return
+    setIsLoading(true)
     try {
       const response = await fetch(`/api/admin/files?brandId=${brandId}`)
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to fetch files.")
-      }
+      if (!response.ok) throw new Error("Failed to fetch files")
       const data = await response.json()
       setFiles(data)
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "An unknown error occurred."
-      setError(errorMessage)
-      toast.error(`Error fetching files: ${errorMessage}`)
+    } catch (error) {
+      toast.error("Error fetching files.")
+      console.error(error)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    if (brands && brands.length > 0 && !selectedBrandId) {
+      setSelectedBrandId(String(brands[0].id))
+    }
+  }, [brands, selectedBrandId])
 
   useEffect(() => {
     if (selectedBrandId) {
       fetchFiles(selectedBrandId)
-    } else {
-      setLoading(false)
-      setFiles([])
     }
-  }, [selectedBrandId])
+  }, [selectedBrandId, fetchFiles])
 
-  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    event.preventDefault()
-    if (!inputFileRef.current?.files) {
-      toast.error("No file selected.")
-      return
-    }
-    if (!selectedBrandId) {
-      toast.error("Please select a brand before uploading.")
-      return
-    }
+  const handleBrandChange = (brandId: string) => {
+    setSelectedBrandId(brandId)
+  }
 
-    const file = inputFileRef.current.files[0]
-    const toastId = toast.loading(`Uploading ${file.name}...`)
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files || !selectedBrandId) return
+    const file = event.target.files[0]
+    if (!file) return
+
+    setUploading(true)
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("brandId", selectedBrandId)
 
     try {
-      await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: `/api/admin/upload?brandId=${selectedBrandId}`,
+      const response = await fetch("/api/admin/upload", {
+        method: "POST",
+        body: formData,
       })
-
-      await fetchFiles(selectedBrandId)
-      toast.success("File uploaded successfully!", { id: toastId })
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Upload failed."
-      toast.error(errorMessage, { id: toastId })
+      if (!response.ok) throw new Error("Upload failed")
+      toast.success("File uploaded successfully.")
+      fetchFiles(selectedBrandId)
+    } catch (error) {
+      toast.error("File upload failed.")
+      console.error(error)
     } finally {
-      if (inputFileRef.current) {
-        inputFileRef.current.value = ""
-      }
+      setUploading(false)
+      // Reset file input
+      event.target.value = ""
     }
   }
 
-  const handleDelete = async (file: FileRecord) => {
-    if (!confirm("Are you sure you want to delete this file? This action cannot be undone.")) return
-
-    const toastId = toast.loading("Deleting file...")
+  const handleDeleteFile = async (fileUrl: string) => {
+    if (!confirm("Are you sure you want to delete this file?")) return
     try {
-      await del(file.url)
-
-      const response = await fetch(`/api/admin/files?id=${file.id}`, {
+      const response = await fetch(`/api/admin/files?url=${encodeURIComponent(fileUrl)}`, {
         method: "DELETE",
       })
-
-      if (!response.ok) {
-        const { error } = await response.json()
-        throw new Error(error || "Failed to delete file from database.")
-      }
-
-      toast.success("File deleted successfully.", { id: toastId })
-      setFiles(files.filter((f) => f.id !== file.id))
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "An unknown error occurred."
-      toast.error(errorMessage, { id: toastId })
+      if (!response.ok) throw new Error("Failed to delete file")
+      toast.success("File deleted successfully.")
+      if (selectedBrandId) fetchFiles(selectedBrandId)
+    } catch (error) {
+      toast.error("Failed to delete file.")
+      console.error(error)
     }
   }
 
-  const copyToClipboard = (url: string) => {
-    if (url) {
-      navigator.clipboard.writeText(url)
-      toast.success("URL copied to clipboard!")
-    } else {
-      toast.error("Could not resolve file URL.")
-    }
-  }
-
-  const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center p-8">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-          <p className="ml-2 text-gray-500">Loading files...</p>
-        </div>
-      )
-    }
-
-    if (error) {
-      return (
-        <div className="flex flex-col items-center justify-center p-8 text-red-600 bg-red-50 rounded-md">
-          <AlertCircle className="h-8 w-8" />
-          <p className="mt-2 font-semibold">Failed to load files</p>
-          <p className="text-sm">{error}</p>
-          <Button
-            onClick={() => fetchFiles(selectedBrandId)}
-            variant="outline"
-            size="sm"
-            className="mt-4 bg-transparent"
-          >
-            Try Again
-          </Button>
-        </div>
-      )
-    }
-
-    if (files.length === 0) {
-      return (
-        <div className="text-center text-sm text-gray-500 py-8">
-          <p>No files uploaded for this brand yet.</p>
-        </div>
-      )
-    }
-
-    return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {files.map((file) => (
-          <div key={file.id} className="border rounded-lg p-2 flex flex-col gap-2 group relative">
-            <div className="relative h-32 w-full bg-gray-100 rounded-md flex items-center justify-center overflow-hidden">
-              {file.content_type?.startsWith("image/") ? (
-                <Image
-                  src={file.url || "/placeholder.svg"}
-                  alt={file.original_name}
-                  fill
-                  sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 20vw"
-                  className="object-contain"
-                />
-              ) : (
-                <FileIcon className="h-16 w-16 text-gray-400" />
-              )}
-            </div>
-            <div className="flex flex-col flex-grow">
-              <p className="text-sm font-medium truncate flex-grow" title={file.original_name}>
-                {file.original_name}
-              </p>
-              <p className="text-xs text-gray-500">{format(new Date(file.uploaded_at), "dd MMM yyyy")}</p>
-            </div>
-            <div className="flex gap-1 mt-1">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-7 w-7 bg-transparent"
-                onClick={() => copyToClipboard(file.url)}
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="destructive" size="icon" className="h-7 w-7" onClick={() => handleDelete(file)}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-    )
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    toast.success("URL copied to clipboard!")
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <CardTitle>Global File Manager</CardTitle>
-          <div className="flex items-center gap-2">
-            <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select a brand" />
-              </SelectTrigger>
-              <SelectContent>
-                {brands.map((brand) => (
-                  <SelectItem key={brand.id} value={brand.id.toString()}>
-                    {brand.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button size="sm" onClick={() => inputFileRef.current?.click()} disabled={!selectedBrandId}>
-              <Upload className="mr-2 h-4 w-4" />
-              Upload
-            </Button>
-            <input type="file" ref={inputFileRef} onChange={handleUpload} className="hidden" />
-          </div>
+    <div className="border rounded-lg p-4 bg-white shadow-sm">
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-center mb-4">
+        <div className="w-full sm:w-auto">
+          <Select onValueChange={handleBrandChange} value={selectedBrandId || ""}>
+            <SelectTrigger className="w-full sm:w-[280px]">
+              <SelectValue placeholder="Select a brand..." />
+            </SelectTrigger>
+            <SelectContent>
+              {(brands || []).map((brand) => (
+                <SelectItem key={brand.id} value={String(brand.id)}>
+                  {brand.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      </CardHeader>
-      <CardContent>{renderContent()}</CardContent>
-    </Card>
+        <div className="w-full sm:w-auto">
+          <Button asChild className="w-full">
+            <label htmlFor="file-upload" className="cursor-pointer">
+              <Upload className="mr-2 h-4 w-4" />
+              {uploading ? "Uploading..." : "Upload File"}
+              <Input
+                id="file-upload"
+                type="file"
+                className="hidden"
+                onChange={handleFileUpload}
+                disabled={!selectedBrandId || uploading}
+              />
+            </label>
+          </Button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <p className="text-center py-8">Loading files...</p>
+      ) : files.length === 0 ? (
+        <p className="text-center py-8 text-gray-500">No files found for this brand.</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Filename</TableHead>
+              <TableHead>Uploaded</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {files.map((file) => (
+              <TableRow key={file.id}>
+                <TableCell className="font-medium truncate max-w-xs">{file.pathname.split("/").pop()}</TableCell>
+                <TableCell>{format(new Date(file.created_at), "dd MMM yyyy")}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" size="icon" onClick={() => copyToClipboard(file.url)}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <a href={file.url} target="_blank" rel="noopener noreferrer">
+                      <Button variant="ghost" size="icon">
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-red-500 hover:text-red-600"
+                      onClick={() => handleDeleteFile(file.url)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
   )
 }

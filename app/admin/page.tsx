@@ -1,48 +1,51 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import { AdminDashboard } from "./AdminDashboard"
-import type { Brand, FormSubmission, FileRecord } from "@/lib/types"
+import type { Brand, Submission, FileRecord } from "@/lib/types"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AlertCircle } from "lucide-react"
 
-export const dynamic = "force-dynamic"
-
-async function getDashboardData() {
-  const supabase = createAdminClient()
-
+async function getDashboardData(): Promise<{
+  brands: Brand[]
+  submissions: Submission[]
+  files: FileRecord[]
+  error?: string | null
+}> {
   try {
-    const brandsQuery = supabase
-      .from("brands")
-      .select("id, name, slug, logo, active, emails, clinic_locations, created_at")
-      .order("name")
-    const submissionsQuery = supabase
-      .from("submissions")
-      .select("*, brands(name)")
-      .order("created_at", { ascending: false })
-      .limit(100)
-    const filesQuery = supabase.from("files").select("*").order("uploaded_at", { ascending: false })
-
-    const [brandsResult, submissionsResult, filesResult] = await Promise.all([
-      brandsQuery,
-      submissionsQuery,
-      filesQuery,
+    const supabase = createAdminClient()
+    // Use Promise.all for concurrent fetching
+    const [brandsRes, submissionsRes, filesRes] = await Promise.all([
+      supabase.from("brands").select("*").order("name"),
+      supabase.from("submissions").select("*").order("created_at", { ascending: false }),
+      supabase.from("files").select("*").order("created_at", { ascending: false }),
     ])
 
-    if (brandsResult.error) throw brandsResult.error
-    if (submissionsResult.error) throw submissionsResult.error
-    if (filesResult.error) throw filesResult.error
+    if (brandsRes.error || submissionsRes.error || filesRes.error) {
+      console.error("Dashboard data fetch error:", {
+        brandsError: brandsRes.error,
+        submissionsError: submissionsRes.error,
+        filesError: filesRes.error,
+      })
+      throw new Error(
+        brandsRes.error?.message ||
+          submissionsRes.error?.message ||
+          filesRes.error?.message ||
+          "An unknown database error occurred.",
+      )
+    }
 
     return {
-      brands: (brandsResult.data as Brand[]) || [],
-      submissions: (submissionsResult.data as FormSubmission[]) || [],
-      files: (filesResult.data as FileRecord[]) || [],
+      brands: brandsRes.data || [],
+      submissions: submissionsRes.data || [],
+      files: filesRes.data || [],
       error: null,
     }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    console.error("Error loading dashboard data:", errorMessage)
+  } catch (error: any) {
+    console.error("Error in getDashboardData:", error)
     return {
       brands: [],
       submissions: [],
       files: [],
-      error: `There was a problem fetching dashboard data. This is likely due to a database schema issue. Please check the database logs for more details. Error: "${errorMessage}"`,
+      error: `Failed to load dashboard data: ${error.message}`,
     }
   }
 }
@@ -50,5 +53,23 @@ async function getDashboardData() {
 export default async function AdminPage() {
   const { brands, submissions, files, error } = await getDashboardData()
 
-  return <AdminDashboard initialBrands={brands} initialSubmissions={submissions} initialFiles={files} error={error} />
+  if (error) {
+    return (
+      <div className="container mx-auto p-4 sm:p-6 lg:p-8">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto p-4 sm:p-6 lg:p-8">
+        <AdminDashboard brands={brands} submissions={submissions} files={files} />
+      </div>
+    </div>
+  )
 }

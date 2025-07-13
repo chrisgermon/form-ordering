@@ -15,10 +15,10 @@ import { BrandForm } from "./BrandForm"
 
 interface BrandGridProps {
   brands: Brand[]
+  onBrandChange: () => void
 }
 
-export function BrandGrid({ brands: initialBrands }: BrandGridProps) {
-  const [brands, setBrands] = useState(initialBrands)
+export function BrandGrid({ brands, onBrandChange }: BrandGridProps) {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
 
@@ -34,7 +34,7 @@ export function BrandGrid({ brands: initialBrands }: BrandGridProps) {
     const result = await deleteBrand(id)
     if (result.success) {
       toast.success("Brand deleted successfully.")
-      setBrands(brands.filter((b) => b.id !== id))
+      onBrandChange() // Notify parent to refetch brands
     } else {
       toast.error("Failed to delete brand.", { description: result.error })
     }
@@ -43,6 +43,14 @@ export function BrandGrid({ brands: initialBrands }: BrandGridProps) {
   const handleFormClose = () => {
     setIsFormOpen(false)
     setSelectedBrand(null)
+  }
+
+  // Add a safe check for the brands prop
+  if (!brands) {
+    return <p className="text-center text-gray-500 mt-8">Loading brands...</p>
+  }
+  if (brands.length === 0) {
+    return <p className="text-center text-gray-500 mt-8">No brands found. Add one to get started.</p>
   }
 
   return (
@@ -103,7 +111,9 @@ export function BrandGrid({ brands: initialBrands }: BrandGridProps) {
           </div>
         ))}
       </div>
-      {isFormOpen && <BrandForm isOpen={isFormOpen} onClose={handleFormClose} brand={selectedBrand} />}
+      {isFormOpen && (
+        <BrandForm isOpen={isFormOpen} onClose={handleFormClose} brand={selectedBrand} onBrandChange={onBrandChange} />
+      )}
     </>
   )
 }
