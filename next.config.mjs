@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -9,14 +10,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  async rewrites() {
-    return [
-      {
-        source: '/favicon.ico',
-        destination: '/favicon.png',
-      },
-    ]
-  },
-};
+}
 
-export default nextConfig;
+export default nextConfig

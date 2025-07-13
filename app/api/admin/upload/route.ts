@@ -1,49 +1,51 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { put } from "@vercel/blob"
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client"
+import { NextResponse } from "next/server"
+import { createAdminClient } from "@/utils/supabase/server"
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request): Promise<NextResponse> {
+  const body = (await request.json()) as HandleUploadBody
+  const supabase = createAdminClient()
+
   try {
-    const formData = await request.formData()
-    const file = formData.get("file") as File
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async (pathname: string, clientPayload?: string) => {
+        const payload = clientPayload ? JSON.parse(clientPayload) : {}
+        const { brandId } = payload
 
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 })
-    }
+        if (!brandId) {
+          throw new Error("Brand ID is required for upload.")
+        }
 
-    // Validate file type
-    const allowedTypes = ["application/pdf", "image/png", "image/jpeg", "image/svg+xml"]
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ error: "Only PDF, PNG, JPG, and SVG files are allowed" }, { status: 400 })
-    }
+        return {
+          allowedContentTypes: ["image/jpeg", "image/png", "image/gif", "application/pdf"],
+          tokenPayload: JSON.stringify({
+            pathname,
+            brandId,
+          }),
+        }
+      },
+      onUploadCompleted: async ({ blob, tokenPayload }) => {
+        const { brandId } = JSON.parse(tokenPayload)
 
-    // Upload to Vercel Blob
-    const filename = `admin-uploads/${Date.now()}-${file.name}`
-    const blob = await put(filename, file, {
-      access: "public",
-      contentType: file.type,
+        const { error } = await supabase.from("files").insert({
+          pathname: blob.pathname,
+          url: blob.url,
+          content_type: blob.contentType,
+          brand_id: brandId,
+        })
+
+        if (error) {
+          console.error("Error inserting file into Supabase:", error)
+          throw new Error("Failed to save file metadata.")
+        }
+      },
     })
 
-    // Save file info to database
-    const supabase = createAdminClient()
-    const { data: uploadedFile, error } = await supabase
-      .from("uploaded_files")
-      .insert({
-        filename: filename,
-        original_name: file.name,
-        url: blob.url,
-        pathname: blob.pathname, // Store the pathname
-        size: file.size,
-        content_type: file.type,
-      })
-      .select()
-      .single()
-
-    if (error) throw error
-
-    return NextResponse.json(uploadedFile)
+    return NextResponse.json(jsonResponse)
   } catch (error) {
-    console.error("Error uploading file:", error)
-    return NextResponse.json({ error: "Failed to upload file" }, { status: 500 })
+    const message = error instanceof Error ? error.message : "An unknown error occurred."
+    return NextResponse.json({ error: message }, { status: 400 })
   }
 }

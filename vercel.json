@@ -1,0 +1,14 @@
+{
+  "installCommand": "rm -f pnpm-lock.yaml && pnpm install --no-frozen-lockfile",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ]
+}

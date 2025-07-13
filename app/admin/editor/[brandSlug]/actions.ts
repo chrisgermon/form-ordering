@@ -1,107 +1,103 @@
 "use server"
 
+import { createAdminClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
-import { createAdminClient } from "@/lib/supabase/admin"
-import type { BrandData } from "@/lib/types"
-import { generateText } from "ai"
-import { xai } from "@ai-sdk/openai"
+import type { Brand, UploadedFile } from "./types"
 
-export async function getBrand(slug: string): Promise<BrandData | null> {
+export async function getBrand(slug: string): Promise<Brand | null> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
+  const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select(
-      `
-      *,
-      product_sections (
-        *,
-        product_items (
-          *
-        )
-      )
-    `,
-    )
+    .select("id, name, slug, logo, emails, clinic_locations, active")
     .eq("slug", slug)
     .single()
 
-  if (error) {
-    console.error("Error fetching brand:", error)
+  if (brandError || !brand) {
+    console.error(`Error fetching brand for editor '${slug}':`, brandError?.message)
     return null
   }
-  if (!data) return null
 
-  // Sort sections and items by their order property
-  const sortedSections = data.product_sections?.sort((a, b) => a.sort_order - b.sort_order) || []
-  const sectionsWithSortedItems = sortedSections.map((section) => ({
-    ...section,
-    product_items: section.product_items?.sort((a, b) => a.sort_order - b.sort_order) || [],
-  }))
+  const { data: sections, error: sectionsError } = await supabase
+    .from("product_sections")
+    .select("*")
+    .eq("brand_id", brand.id)
+    .order("sort_order")
 
-  return { ...data, product_sections: sectionsWithSortedItems } as BrandData
+  if (sectionsError) {
+    console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
+    return { ...brand, product_sections: [] } as Brand
+  }
+
+  const sectionsWithItems = await Promise.all(
+    (sections || []).map(async (section) => {
+      const { data: items, error: itemsError } = await supabase
+        .from("product_items")
+        .select("*")
+        .eq("section_id", section.id)
+        .order("sort_order")
+
+      if (itemsError) {
+        console.error(`Error fetching items for section '${section.title}':`, itemsError.message)
+        return { ...section, product_items: [] }
+      }
+      return { ...section, product_items: items || [] }
+    }),
+  )
+
+  return {
+    ...brand,
+    product_sections: sectionsWithItems,
+  } as Brand
 }
 
-export async function getUploadedFiles() {
+export async function getUploadedFiles(): Promise<UploadedFile[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase.from("uploaded_files").select("id, original_name, pathname")
+  const { data, error } = await supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false })
   if (error) {
-    console.error("Error fetching files:", error)
+    console.error("Error fetching uploaded files:", error)
     return []
   }
-  return data
+  return data || []
 }
 
-export async function saveForm(prevState: any, formData: FormData) {
-  const supabase = createAdminClient()
-
-  const brandId = formData.get("id") as string
-  const brandSlug = formData.get("slug") as string
-
-  const brandUpdateData = {
-    name: formData.get("name") as string,
-    initials: formData.get("initials") as string,
-    to_emails: formData.get("to_emails") as string,
-    cc_emails: formData.get("cc_emails") as string,
-    bcc_emails: formData.get("bcc_emails") as string,
-    subject_line: formData.get("subject_line") as string,
-    form_title: formData.get("form_title") as string,
-    form_subtitle: formData.get("form_subtitle") as string,
-    logo_url: formData.get("logo_url") as string,
-    header_image_url: formData.get("header_image_url") as string,
-  }
-
-  const sectionsJson = formData.get("product_sections_json") as string
-  const sectionsData = sectionsJson ? JSON.parse(sectionsJson) : []
-
-  const { error } = await supabase.rpc("save_brand_form", {
-    brand_id_in: brandId,
-    brand_data: brandUpdateData,
-    sections_data: sectionsData,
-  })
-
-  if (error) {
-    console.error("Error saving form:", error)
-    return { success: false, message: `Failed to save form: ${error.message}` }
-  }
-
-  revalidatePath(`/admin/editor/${brandSlug}`)
-  revalidatePath(`/forms/${brandSlug}`)
-  revalidatePath(`/admin/dashboard`)
-  return { success: true, message: "Form saved successfully!" }
-}
-
-export async function generateDescription(itemName: string): Promise<{ description: string } | { error: string }> {
-  if (!itemName) {
-    return { error: "Item name cannot be empty." }
-  }
-
+export async function updateSectionOrder(brandSlug: string, orderedSectionIds: string[]) {
   try {
-    const { text } = await generateText({
-      model: xai("grok-3"),
-      prompt: `Generate a brief, one-sentence description for a medical printing order form item named '${itemName}'. The description should be neutral and informative.`,
-    })
-    return { description: text }
+    const supabase = createAdminClient()
+    const updates = orderedSectionIds.map((id, index) =>
+      supabase.from("product_sections").update({ sort_order: index }).eq("id", id),
+    )
+
+    const results = await Promise.all(updates)
+    const error = results.find((res) => res.error)
+
+    if (error) throw error.error
+
+    revalidatePath(`/admin/editor/${brandSlug}`)
+    revalidatePath(`/forms/${brandSlug}`)
+    return { success: true }
   } catch (error) {
-    console.error("Grok AI error:", error)
-    return { error: "Failed to generate description." }
+    console.error("Error updating section order:", error)
+    return { success: false, error: "Failed to update section order." }
+  }
+}
+
+export async function updateItemOrder(brandSlug: string, orderedItemIds: string[]) {
+  try {
+    const supabase = createAdminClient()
+    const updates = orderedItemIds.map((id, index) =>
+      supabase.from("product_items").update({ sort_order: index }).eq("id", id),
+    )
+
+    const results = await Promise.all(updates)
+    const error = results.find((res) => res.error)
+
+    if (error) throw error.error
+
+    revalidatePath(`/admin/editor/${brandSlug}`)
+    revalidatePath(`/forms/${brandSlug}`)
+    return { success: true }
+  } catch (error) {
+    console.error("Error updating item order:", error)
+    return { success: false, error: "Failed to update item order." }
   }
 }
