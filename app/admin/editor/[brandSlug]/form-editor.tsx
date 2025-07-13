@@ -11,14 +11,14 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core"
-import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable"
 import { toast } from "sonner"
-import { updateSectionOrder } from "./actions"
+import { updateSectionOrder, addSection, clearForm } from "./actions"
+import { SortableSection } from "./SortableSection"
 import EditorHeader from "./editor-header"
-import SortableSection from "./SortableSection"
 
 export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
-  const [brand, setBrand] = useState(initialBrand)
+  const [brand, setBrand] = useState<Brand>(initialBrand)
   const [isPending, startTransition] = useTransition()
 
   const sensors = useSensors(
@@ -30,55 +30,67 @@ export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
-    if (!over || active.id === over.id) return
 
-    const oldIndex = brand.sections.findIndex((s) => s.id === active.id)
-    const newIndex = brand.sections.findIndex((s) => s.id === over.id)
+    if (!over || active.id === over.id) {
+      return
+    }
 
-    const reorderedSections = [...brand.sections]
-    const [movedSection] = reorderedSections.splice(oldIndex, 1)
-    reorderedSections.splice(newIndex, 0, movedSection)
+    if (active.data.current?.type !== "section" || over.data.current?.type !== "section") {
+      return
+    }
 
-    setBrand({ ...brand, sections: reorderedSections })
+    setBrand((prevBrand) => {
+      const oldIndex = prevBrand.sections.findIndex((s) => s.id === active.id)
+      const newIndex = prevBrand.sections.findIndex((s) => s.id === over.id)
+      const reorderedSections = arrayMove(prevBrand.sections, oldIndex, newIndex)
 
-    startTransition(async () => {
-      const sectionOrder = reorderedSections.map((s, index) => ({ id: s.id, order: index }))
-      const result = await updateSectionOrder(brand.id, sectionOrder)
-      if (result.success) {
-        toast.success("Section order saved.")
-      } else {
-        toast.error(result.message)
-        // Revert state on failure
-        setBrand(initialBrand)
-      }
+      startTransition(async () => {
+        const sectionOrder = reorderedSections.map((section, index) => ({ id: section.id, order: index }))
+        const result = await updateSectionOrder(brand.id, sectionOrder)
+        if (result.success) {
+          toast.success("Section order saved.")
+        } else {
+          toast.error(result.message)
+          setBrand(prevBrand)
+        }
+      })
+
+      return { ...prevBrand, sections: reorderedSections }
     })
   }
 
-  const onSectionUpdate = (updatedSection: Section) => {
-    setBrand((prevBrand) => ({
-      ...prevBrand,
-      sections: prevBrand.sections.map((s) => (s.id === updatedSection.id ? updatedSection : s)),
-    }))
+  const handleSectionUpdate = (updatedSection: Section) => {
+    setBrand((prevBrand) => {
+      const newSections = prevBrand.sections.map((s) => (s.id === updatedSection.id ? updatedSection : s))
+      return { ...prevBrand, sections: newSections }
+    })
   }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 lg:p-8">
-      <EditorHeader brand={brand} />
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={brand.sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-4">
-            {brand.sections.map((section) => (
-              <SortableSection key={section.id} section={section} onSectionUpdate={onSectionUpdate} />
-            ))}
+    <>
+      <EditorHeader
+        brandName={brand.name}
+        brandId={brand.id}
+        onAddSection={(title) => addSection(brand.id, title)}
+        onClearForm={(id) => clearForm(id)}
+      />
+      <div className="container mx-auto py-10">
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={brand.sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+            <div className="space-y-6">
+              {brand.sections.map((section) => (
+                <SortableSection key={section.id} section={section} onSectionUpdate={handleSectionUpdate} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+        {brand.sections.length === 0 && (
+          <div className="text-center py-12 border-2 border-dashed rounded-lg">
+            <h3 className="text-lg font-medium">This form is empty</h3>
+            <p className="text-muted-foreground mt-1">Click "Add Section" to get started.</p>
           </div>
-        </SortableContext>
-      </DndContext>
-      {brand.sections.length === 0 && (
-        <div className="text-center py-12 border-2 border-dashed rounded-lg mt-4">
-          <h3 className="text-lg font-medium text-gray-500">This form is empty.</h3>
-          <p className="text-sm text-gray-400">Click "Add Section" to get started.</p>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   )
 }

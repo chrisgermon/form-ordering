@@ -1,11 +1,11 @@
 "use client"
 
-import type { Section } from "@/lib/types"
-import { useSortable } from "@dnd-kit/sortable"
+import type { Section, Item } from "@/lib/types"
+import { useSortable, SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { GripVertical, Plus } from "lucide-react"
+import { GripVertical, Plus, Pencil, Trash2 } from "lucide-react"
 import {
   DndContext,
   type DragEndEvent,
@@ -15,35 +15,35 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
-import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { useState, useTransition } from "react"
 import { toast } from "sonner"
 import { updateItemOrder } from "./actions"
-import SectionItem from "./SectionItem"
+import { SectionItem } from "./SectionItem"
 
-export default function SortableSection({
-  section,
-  onSectionUpdate,
-}: {
+interface SortableSectionProps {
   section: Section
   onSectionUpdate: (section: Section) => void
-}) {
-  const [items, setItems] = useState(section.items || [])
+}
+
+export function SortableSection({ section, onSectionUpdate }: SortableSectionProps) {
+  const [items, setItems] = useState<Item[]>(section.items || [])
   const [isPending, startTransition] = useTransition()
 
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: section.id })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: section.id,
+    data: {
+      type: "section",
+    },
+  })
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : "auto",
   }
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  )
+  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor))
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
@@ -52,10 +52,7 @@ export default function SortableSection({
     const oldIndex = items.findIndex((i) => i.id === active.id)
     const newIndex = items.findIndex((i) => i.id === over.id)
 
-    const reorderedItems = [...items]
-    const [movedItem] = reorderedItems.splice(oldIndex, 1)
-    reorderedItems.splice(newIndex, 0, movedItem)
-
+    const reorderedItems = arrayMove(items, oldIndex, newIndex)
     setItems(reorderedItems)
     onSectionUpdate({ ...section, items: reorderedItems })
 
@@ -66,7 +63,6 @@ export default function SortableSection({
         toast.success("Item order saved.")
       } else {
         toast.error(result.message)
-        // Revert on failure
         setItems(section.items)
         onSectionUpdate(section)
       }
@@ -74,23 +70,24 @@ export default function SortableSection({
   }
 
   return (
-    <Card ref={setNodeRef} style={style} className="bg-slate-50/50">
-      <CardHeader className="flex flex-row items-center justify-between p-4">
+    <Card ref={setNodeRef} style={style} {...attributes} className="overflow-hidden">
+      <CardHeader className="flex flex-row items-center justify-between p-4 border-b bg-muted/40">
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing"
-          >
+          <button {...listeners} className="cursor-grab p-1 -ml-1">
             <GripVertical className="h-5 w-5 text-muted-foreground" />
-          </Button>
-          <CardTitle className="text-lg">{section.title}</CardTitle>
+          </button>
+          <CardTitle className="text-lg font-semibold">{section.title}</CardTitle>
         </div>
-        {/* Add Edit/Delete Section buttons here if needed */}
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon">
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent className="p-4 pt-0">
+      <CardContent className="p-4">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-2">
@@ -100,15 +97,13 @@ export default function SortableSection({
             </div>
           </SortableContext>
         </DndContext>
-        {items.length === 0 && (
-          <div className="text-center py-6 border-2 border-dashed rounded-lg">
-            <p className="text-sm text-gray-500">This section is empty.</p>
-          </div>
-        )}
-        <Button variant="outline" className="mt-4 w-full bg-transparent">
-          <Plus className="mr-2 h-4 w-4" />
-          Add Item
-        </Button>
+        {items.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">This section is empty.</p>}
+        <div className="mt-4 pt-4 border-t">
+          <Button variant="secondary" size="sm">
+            <Plus className="mr-2 h-4 w-4" />
+            Add Item
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )

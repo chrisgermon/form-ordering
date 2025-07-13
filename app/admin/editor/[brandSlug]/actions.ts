@@ -2,164 +2,168 @@
 
 import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
-import type { Brand } from "@/lib/types"
-
-function slugify(text: string) {
-  return text
-    .toString()
-    .toLowerCase()
-    .replace(/\s+/g, "-") // Replace spaces with -
-    .replace(/[^\w-]+/g, "") // Remove all non-word chars
-    .replace(/--+/g, "-") // Replace multiple - with single -
-    .replace(/^-+/, "") // Trim - from start of text
-    .replace(/-+$/, "") // Trim - from end of text
-}
+import type { Brand, Item, Option, Section } from "@/lib/types"
 
 export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | null; error: string | null }> {
   const supabase = createClient()
+
   try {
-    // This simplified query relies on the foreign key relationships
-    // being correctly defined in the database, which `08-fix-relationships.sql` ensures.
-    const { data: brand, error } = await supabase
-      .from("brands")
-      .select(
-        `
-        id,
-        name,
-        slug,
-        logo,
-        emails,
-        active,
-        sections (
-          *,
-          items (
-            *,
-            options (*)
-          )
-        )
-      `,
-      )
-      .eq("slug", slug)
-      .single()
+    // 1. Fetch the brand
+    const { data: brandData, error: brandError } = await supabase.from("brands").select("*").eq("slug", slug).single()
 
-    if (error) {
-      console.error(`Database error fetching brand '${slug}' for editor:`, error.message)
-      if (error.code === "PGRST116") {
-        return { brand: null, error: `No brand with the slug '${slug}' could be found. Please check the URL.` }
+    if (brandError || !brandData) {
+      console.error(`Database error fetching brand data for slug '${slug}':`, brandError?.message)
+      if (brandError?.code === "PGRST116") {
+        // This code means no rows were found
+        return { brand: null, error: `Could not find a brand with slug "${slug}". Please check the URL.` }
       }
-      if (error.message.includes("relationship")) {
-        return {
-          brand: null,
-          error: `Database schema error: A relationship between tables is missing. Please run the latest database script to fix.`,
+      return {
+        brand: null,
+        error:
+          "Database schema error: A relationship between tables is missing. Please run the latest database script to fix.",
+      }
+    }
+
+    const brand: Brand = brandData
+
+    // 2. Fetch sections for the brand
+    const { data: sectionsData, error: sectionsError } = await supabase
+      .from("sections")
+      .select("*")
+      .eq("brand_id", brand.id)
+      .order("order", { ascending: true })
+
+    if (sectionsError) {
+      console.error(`Database error fetching sections for brand '${brand.id}':`, sectionsError.message)
+      return { brand: null, error: "Could not fetch form sections." }
+    }
+
+    const sections: Section[] = sectionsData || []
+    const sectionIds = sections.map((s) => s.id)
+
+    if (sectionIds.length > 0) {
+      // 3. Fetch all items for all sections
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("items")
+        .select("*")
+        .in("section_id", sectionIds)
+        .order("order", { ascending: true })
+
+      if (itemsError) {
+        console.error(`Database error fetching items for sections '${sectionIds.join(",")}':`, itemsError.message)
+        return { brand: null, error: "Could not fetch form items." }
+      }
+
+      const items: Item[] = itemsData || []
+      const itemIds = items.map((i) => i.id)
+
+      if (itemIds.length > 0) {
+        // 4. Fetch all options for all items
+        const { data: optionsData, error: optionsError } = await supabase
+          .from("options")
+          .select("*")
+          .in("item_id", itemIds)
+          .order("order", { ascending: true })
+
+        if (optionsError) {
+          console.error(`Database error fetching options for items '${itemIds.join(",")}':`, optionsError.message)
+          return { brand: null, error: "Could not fetch item options." }
         }
-      }
-      return { brand: null, error: "A database error occurred while fetching the brand. Please check the server logs." }
-    }
 
-    if (!brand) {
-      return { brand: null, error: `No brand with the slug '${slug}' could be found. Please check the URL.` }
-    }
+        const options: Option[] = optionsData || []
 
-    // Sort the nested arrays in JavaScript to ensure consistent order.
-    const sortedSections = (brand.sections || []).sort((a, b) => a.position - b.position)
-    sortedSections.forEach((section) => {
-      if (section.items) {
-        section.items.sort((a, b) => a.position - b.position)
-        section.items.forEach((item) => {
-          if (item.options) {
-            item.options.sort((a, b) => a.sort_order - b.sort_order)
-          }
+        // 5. Assemble the data structure
+        // Add options to their respective items
+        items.forEach((item) => {
+          item.options = options.filter((opt) => opt.item_id === item.id)
         })
+      } else {
+        items.forEach((item) => (item.options = []))
       }
-    })
 
-    const finalBrand = { ...brand, sections: sortedSections } as Brand
-    return { brand: finalBrand, error: null }
+      // Add items to their respective sections
+      sections.forEach((section) => {
+        section.items = items.filter((item) => item.section_id === section.id)
+      })
+    }
+
+    brand.sections = sections
+    return { brand, error: null }
   } catch (e: any) {
-    console.error(`Unexpected error in getBrandForEditor for slug '${slug}':`, e.message)
+    console.error("Unexpected error in getBrandForEditor:", e.message)
     return { brand: null, error: "An unexpected server error occurred." }
   }
 }
 
+export async function updateSectionOrder(brandId: number, sections: { id: number; order: number }[]) {
+  const supabase = createClient()
+  const updates = sections.map(({ id, order }) => supabase.from("sections").update({ order }).eq("id", id))
+
+  const results = await Promise.all(updates)
+  const error = results.find((res) => res.error)
+
+  if (error) {
+    return { success: false, message: "Failed to update section order." }
+  }
+
+  revalidatePath(`/admin/editor/${brandId}`, "page")
+  return { success: true }
+}
+
+export async function updateItemOrder(sectionId: number, items: { id: number; order: number }[]) {
+  const supabase = createClient()
+  const updates = items.map(({ id, order }) => supabase.from("items").update({ order }).eq("id", id))
+
+  const results = await Promise.all(updates)
+  const error = results.find((res) => res.error)
+
+  if (error) {
+    return { success: false, message: "Failed to update item order." }
+  }
+
+  revalidatePath(`/admin/editor/section/${sectionId}`, "page")
+  return { success: true }
+}
+
 export async function addSection(brandId: number, title: string) {
   const supabase = createClient()
-  try {
-    const { data: maxOrderData, error: maxOrderError } = await supabase
-      .from("sections")
-      .select("position")
-      .eq("brand_id", brandId)
-      .order("position", { ascending: false })
-      .limit(1)
-      .single()
 
-    if (maxOrderError && maxOrderError.code !== "PGRST116") {
-      throw maxOrderError
-    }
+  const { data: maxOrderData, error: maxOrderError } = await supabase
+    .from("sections")
+    .select("order")
+    .eq("brand_id", brandId)
+    .order("order", { ascending: false })
+    .limit(1)
+    .single()
 
-    const newPosition = (maxOrderData?.position ?? -1) + 1
-
-    const { error } = await supabase.from("sections").insert({
-      brand_id: brandId,
-      title: title,
-      position: newPosition,
-    })
-
-    if (error) throw error
-
-    revalidatePath(`/admin/editor/.*`, "layout")
-    return { success: true, message: `Section "${title}" added successfully.` }
-  } catch (error: any) {
-    return { success: false, message: error.message }
+  if (maxOrderError && maxOrderError.code !== "PGRST116") {
+    return { success: false, message: "Could not determine section order." }
   }
+
+  const newOrder = (maxOrderData?.order ?? -1) + 1
+
+  const { error } = await supabase.from("sections").insert({
+    brand_id: brandId,
+    title,
+    order: newOrder,
+  })
+
+  if (error) {
+    return { success: false, message: "Failed to add new section." }
+  }
+
+  revalidatePath(`/admin/editor/${brandId}`, "page")
+  return { success: true, message: `Section "${title}" added.` }
 }
 
 export async function clearForm(brandId: number) {
   const supabase = createClient()
-  try {
-    const { error } = await supabase.from("sections").delete().eq("brand_id", brandId)
-    if (error) throw error
+  const { error } = await supabase.from("sections").delete().eq("brand_id", brandId)
 
-    revalidatePath(`/admin/editor/.*`, "layout")
-    return { success: true, message: "Form has been cleared." }
-  } catch (error: any) {
-    return { success: false, message: error.message }
+  if (error) {
+    return { success: false, message: "Failed to clear the form." }
   }
-}
 
-export async function importFormFromURL(brandId: number, url: string) {
-  console.log(`Importing form for brand ${brandId} from ${url}`)
-  await new Promise((resolve) => setTimeout(resolve, 1500))
-  return { success: true, message: "Import process started (placeholder)." }
-}
-
-export async function updateSectionOrder(brandId: number, sections: { id: number; position: number }[]) {
-  const supabase = createClient()
-  try {
-    const updates = sections.map((section) =>
-      supabase.from("sections").update({ position: section.position }).eq("id", section.id),
-    )
-    const results = await Promise.all(updates)
-    const error = results.find((res) => res.error)
-    if (error) throw error.error
-
-    revalidatePath(`/admin/editor/.*`, "layout")
-    return { success: true, message: "Section order saved." }
-  } catch (error: any) {
-    return { success: false, message: error.message }
-  }
-}
-
-export async function updateItemOrder(sectionId: number, items: { id: number; position: number }[]) {
-  const supabase = createClient()
-  try {
-    const updates = items.map((item) => supabase.from("items").update({ position: item.position }).eq("id", item.id))
-    const results = await Promise.all(updates)
-    const error = results.find((res) => res.error)
-    if (error) throw error.error
-
-    revalidatePath(`/admin/editor/.*`, "layout")
-    return { success: true, message: "Item order saved." }
-  } catch (error: any) {
-    return { success: false, message: error.message }
-  }
+  revalidatePath(`/admin/editor/${brandId}`, "page")
+  return { success: true, message: "Form has been cleared." }
 }
