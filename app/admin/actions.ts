@@ -234,7 +234,7 @@ export async function revalidateAllData() {
 }
 
 // Scraping and Data Fetching
-async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | null> {
+async function uploadLogoFromUrl(logoUrl: string, brandSlug: string): Promise<string | null> {
   try {
     const response = await fetch(logoUrl)
     if (!response.ok) {
@@ -263,7 +263,7 @@ export async function fetchBrandData(url: string) {
 
     let uploadedLogoUrl: string | null = null
     if (scrapedData.logoUrl) {
-      uploadedLogoUrl = await uploadLogo(scrapedData.logoUrl, brandSlug)
+      uploadedLogoUrl = await uploadLogoFromUrl(scrapedData.logoUrl, brandSlug)
     }
 
     return {

@@ -4,25 +4,28 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Upload, Trash2, Copy, FileIcon, AlertCircle, Loader2 } from "lucide-react"
 import { upload, del } from "@vercel/blob/client"
-import type { FileRecord } from "@/lib/types"
+import type { FileRecord, Brand } from "@/lib/types"
 import { format } from "date-fns"
+import Image from "next/image"
 
 interface FileManagerProps {
-  brandId: string
+  brands: Brand[]
 }
 
-export function FileManager({ brandId }: FileManagerProps) {
+export function FileManager({ brands }: FileManagerProps) {
   const inputFileRef = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<FileRecord[]>([])
+  const [selectedBrandId, setSelectedBrandId] = useState<string>(brands[0]?.id.toString() || "")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchFiles = async () => {
+  const fetchFiles = async (brandId: string) => {
     if (!brandId) {
-      setError("No Brand ID provided.")
+      setFiles([])
       setLoading(false)
       return
     }
@@ -46,13 +49,22 @@ export function FileManager({ brandId }: FileManagerProps) {
   }
 
   useEffect(() => {
-    fetchFiles()
-  }, [brandId])
+    if (selectedBrandId) {
+      fetchFiles(selectedBrandId)
+    } else {
+      setLoading(false)
+      setFiles([])
+    }
+  }, [selectedBrandId])
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     event.preventDefault()
-    if (!inputFileRef.current?.files || !brandId) {
-      toast.error("No file selected or brand ID is missing.")
+    if (!inputFileRef.current?.files) {
+      toast.error("No file selected.")
+      return
+    }
+    if (!selectedBrandId) {
+      toast.error("Please select a brand before uploading.")
       return
     }
 
@@ -62,10 +74,10 @@ export function FileManager({ brandId }: FileManagerProps) {
     try {
       await upload(file.name, file, {
         access: "public",
-        handleUploadUrl: `/api/admin/upload?brandId=${brandId}`,
+        handleUploadUrl: `/api/admin/upload?brandId=${selectedBrandId}`,
       })
 
-      await fetchFiles()
+      await fetchFiles(selectedBrandId)
       toast.success("File uploaded successfully!", { id: toastId })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Upload failed."
@@ -126,7 +138,12 @@ export function FileManager({ brandId }: FileManagerProps) {
           <AlertCircle className="h-8 w-8" />
           <p className="mt-2 font-semibold">Failed to load files</p>
           <p className="text-sm">{error}</p>
-          <Button onClick={fetchFiles} variant="outline" size="sm" className="mt-4 bg-transparent">
+          <Button
+            onClick={() => fetchFiles(selectedBrandId)}
+            variant="outline"
+            size="sm"
+            className="mt-4 bg-transparent"
+          >
             Try Again
           </Button>
         </div>
@@ -134,34 +151,47 @@ export function FileManager({ brandId }: FileManagerProps) {
     }
 
     if (files.length === 0) {
-      return <p className="text-center text-sm text-gray-500 py-8">No files uploaded for this brand yet.</p>
+      return (
+        <div className="text-center text-sm text-gray-500 py-8">
+          <p>No files uploaded for this brand yet.</p>
+        </div>
+      )
     }
 
     return (
-      <div className="space-y-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {files.map((file) => (
-          <div key={file.id} className="flex items-center justify-between rounded-md border p-2 hover:bg-gray-50">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <FileIcon className="h-5 w-5 flex-shrink-0 text-gray-500" />
-              <div className="flex-grow overflow-hidden">
-                <a
-                  href={file.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="truncate text-sm font-medium text-gray-800 hover:underline"
-                  title={file.original_name}
-                >
-                  {file.original_name}
-                </a>
-                <p className="text-xs text-gray-500">{format(new Date(file.uploaded_at), "dd MMM yyyy")}</p>
-              </div>
+          <div key={file.id} className="border rounded-lg p-2 flex flex-col gap-2 group relative">
+            <div className="relative h-32 w-full bg-gray-100 rounded-md flex items-center justify-center overflow-hidden">
+              {file.content_type?.startsWith("image/") ? (
+                <Image
+                  src={file.url || "/placeholder.svg"}
+                  alt={file.original_name}
+                  fill
+                  sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 20vw"
+                  className="object-contain"
+                />
+              ) : (
+                <FileIcon className="h-16 w-16 text-gray-400" />
+              )}
             </div>
-            <div className="flex flex-shrink-0 items-center gap-1">
-              <Button size="icon" variant="ghost" onClick={() => copyToClipboard(file.url)}>
-                <Copy className="h-4 w-4" />
+            <div className="flex flex-col flex-grow">
+              <p className="text-sm font-medium truncate flex-grow" title={file.original_name}>
+                {file.original_name}
+              </p>
+              <p className="text-xs text-gray-500">{format(new Date(file.uploaded_at), "dd MMM yyyy")}</p>
+            </div>
+            <div className="flex gap-1 mt-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7 bg-transparent"
+                onClick={() => copyToClipboard(file.url)}
+              >
+                <Copy className="h-3.5 w-3.5" />
               </Button>
-              <Button size="icon" variant="ghost" onClick={() => handleDelete(file)}>
-                <Trash2 className="h-4 w-4 text-red-500" />
+              <Button variant="destructive" size="icon" className="h-7 w-7" onClick={() => handleDelete(file)}>
+                <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </div>
           </div>
@@ -172,13 +202,29 @@ export function FileManager({ brandId }: FileManagerProps) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>File Manager</CardTitle>
-        <Button size="sm" onClick={() => inputFileRef.current?.click()}>
-          <Upload className="mr-2 h-4 w-4" />
-          Upload File
-        </Button>
-        <input type="file" ref={inputFileRef} onChange={handleUpload} className="hidden" />
+      <CardHeader>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <CardTitle>Global File Manager</CardTitle>
+          <div className="flex items-center gap-2">
+            <Select value={selectedBrandId} onValueChange={setSelectedBrandId}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select a brand" />
+              </SelectTrigger>
+              <SelectContent>
+                {brands.map((brand) => (
+                  <SelectItem key={brand.id} value={brand.id.toString()}>
+                    {brand.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button size="sm" onClick={() => inputFileRef.current?.click()} disabled={!selectedBrandId}>
+              <Upload className="mr-2 h-4 w-4" />
+              Upload
+            </Button>
+            <input type="file" ref={inputFileRef} onChange={handleUpload} className="hidden" />
+          </div>
+        </div>
       </CardHeader>
       <CardContent>{renderContent()}</CardContent>
     </Card>

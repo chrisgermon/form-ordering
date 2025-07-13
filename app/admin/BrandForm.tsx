@@ -1,11 +1,10 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useFormState } from "react-dom"
-import { useToast } from "@/components/ui/use-toast"
+import { toast } from "sonner"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -20,19 +19,15 @@ interface BrandFormProps {
   brand?: Brand | null
   isOpen: boolean
   onClose: () => void
-  onBrandCreated: (newBrand: Brand) => void
-  onBrandUpdated: (updatedBrand: Brand) => void
 }
 
-const initialState = {
+const initialState: { message: string; success: boolean; brand?: Brand } = {
   message: "",
-  errors: null,
   success: false,
 }
 
-export function BrandForm({ brand, isOpen, onClose, onBrandCreated, onBrandUpdated }: BrandFormProps) {
+export function BrandForm({ brand, isOpen, onClose }: BrandFormProps) {
   const router = useRouter()
-  const { toast } = useToast()
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
 
   const action = brand ? updateBrand.bind(null, brand.id) : createBrand
@@ -47,28 +42,16 @@ export function BrandForm({ brand, isOpen, onClose, onBrandCreated, onBrandUpdat
   }, [brand])
 
   useEffect(() => {
-    if (state.success) {
-      toast({
-        title: "Success!",
-        description: state.message,
-      })
-      if (state.brand) {
-        if (brand) {
-          onBrandUpdated(state.brand)
-        } else {
-          onBrandCreated(state.brand)
-        }
+    if (state.message) {
+      if (state.success) {
+        toast.success("Success!", { description: state.message })
+        onClose()
+        router.refresh()
+      } else {
+        toast.error("Error", { description: state.message })
       }
-      onClose()
-      router.refresh()
-    } else if (state.message) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: state.message,
-      })
     }
-  }, [state, brand, onClose, router, toast, onBrandCreated, onBrandUpdated])
+  }, [state, onClose, router])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -115,7 +98,7 @@ export function BrandForm({ brand, isOpen, onClose, onBrandCreated, onBrandUpdat
                     alt="Logo preview"
                     width={100}
                     height={100}
-                    className="object-contain border rounded-md"
+                    className="object-contain border rounded-md bg-gray-50"
                   />
                 </div>
               </div>
