@@ -1,112 +1,148 @@
 "use server"
 
-import { createAdminClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
-import type { ClinicLocation } from "@/lib/types"
+import { createClient } from "@/utils/supabase/server"
+import { put, del } from "@vercel/blob"
+import type { Brand } from "@/lib/types"
+import { parseFormWithAI, scrapeWebsiteWithAI } from "@/lib/scraping"
 import { nanoid } from "nanoid"
-import { put } from "@vercel/blob"
-import { scrapeWebsiteWithAI, parseFormWithAI } from "@/lib/scraping"
+import slugify from "slugify"
 
-// --- Other Server Actions (Unchanged) ---
-
-async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | null> {
-  try {
-    const response = await fetch(logoUrl)
-    if (!response.ok) {
-      console.error(`Failed to fetch logo image: ${response.statusText}`)
-      return null
-    }
-    const imageBlob = await response.blob()
-    const originalName = new URL(logoUrl).pathname.split("/").pop() || `logo-${nanoid(5)}`
-    const filename = `logos/${brandSlug}-${Date.now()}-${originalName}`
-
-    const { pathname } = await put(filename, imageBlob, {
-      access: "public",
-      contentType: response.headers.get("content-type") || undefined,
-    })
-
-    return pathname
-  } catch (error) {
-    console.error("Error uploading logo:", error)
-    return null
-  }
+type FormState = {
+  message: string
+  errors?: Record<string, string> | null
+  success: boolean
+  brand?: Brand
 }
 
-export async function fetchBrandData(url: string, brandSlug: string) {
-  try {
-    const scrapedData = await scrapeWebsiteWithAI(url)
-
-    let uploadedLogoPath: string | null = null
-    if (scrapedData.logoUrl) {
-      uploadedLogoPath = await uploadLogo(scrapedData.logoUrl, brandSlug)
-    }
-
-    return {
-      success: true,
-      data: {
-        name: scrapedData.companyName || "",
-        logo: uploadedLogoPath,
-        locations: scrapedData.locations || [],
-      },
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    console.error("Failed to fetch brand data with AI:", errorMessage)
-    return { success: false, error: `AI scraping failed: ${errorMessage}` }
-  }
-}
-
-export async function saveBrand(formData: FormData) {
-  const supabase = createAdminClient()
-  const id = formData.get("id") as string | null
+// Brand Management Actions
+export async function createBrand(prevState: FormState, formData: FormData): Promise<FormState> {
+  const supabase = createClient()
   const name = formData.get("name") as string
   const slug = formData.get("slug") as string
-  const logo = formData.get("logo") as string
-  const emails = (formData.get("emails") as string)
-    .split(",")
-    .map((e) => e.trim())
-    .filter(Boolean)
-  const clinic_locations = JSON.parse((formData.get("clinic_locations") as string) || "[]") as ClinicLocation[]
+  const logoFile = formData.get("logo") as File
 
   if (!name || !slug) {
-    return { success: false, error: "Brand name and slug are required." }
+    return { message: "Name and slug are required.", success: false }
   }
 
-  const brandData = {
-    name,
-    slug,
-    logo,
-    emails,
-    clinic_locations,
-    updated_at: new Date().toISOString(),
+  let logoUrl: string | null = null
+  if (logoFile && logoFile.size > 0) {
+    try {
+      const blob = await put(`logos/${slug}/${logoFile.name}`, logoFile, {
+        access: "public",
+      })
+      logoUrl = blob.url
+    } catch (error) {
+      console.error("Error uploading logo:", error)
+      return { message: "Failed to upload logo.", success: false }
+    }
   }
 
-  let error
-  if (id) {
-    const { error: updateError } = await supabase.from("brands").update(brandData).eq("id", id)
-    error = updateError
-  } else {
-    const { error: insertError } = await supabase
-      .from("brands")
-      .insert({ ...brandData, created_at: new Date().toISOString() })
-    error = insertError
-  }
+  const { data, error } = await supabase
+    .from("brands")
+    .insert([{ name, slug, logo: logoUrl }])
+    .select()
+    .single()
 
   if (error) {
-    console.error("Error saving brand:", error)
-    return { success: false, error: error.message }
+    console.error("Error creating brand:", error)
+    return { message: error.message, success: false }
+  }
+
+  revalidatePath("/admin")
+  return {
+    message: `Brand "${data.name}" created successfully.`,
+    success: true,
+    brand: data,
+  }
+}
+
+export async function updateBrand(id: number, prevState: FormState, formData: FormData): Promise<FormState> {
+  const supabase = createClient()
+  const name = formData.get("name") as string
+  const slug = formData.get("slug") as string
+  const logoFile = formData.get("logo") as File
+
+  const { data: existingBrand } = await supabase.from("brands").select("logo").eq("id", id).single()
+
+  if (!existingBrand) {
+    return { message: "Brand not found.", success: false }
+  }
+
+  let logoUrl: string | null = existingBrand.logo
+  if (logoFile && logoFile.size > 0) {
+    try {
+      if (existingBrand.logo) {
+        await del(existingBrand.logo)
+      }
+      const blob = await put(`logos/${slug}/${logoFile.name}`, logoFile, {
+        access: "public",
+      })
+      logoUrl = blob.url
+    } catch (error) {
+      console.error("Error uploading new logo:", error)
+      return { message: "Failed to upload new logo.", success: false }
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("brands")
+    .update({ name, slug, logo: logoUrl })
+    .eq("id", id)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("Error updating brand:", error)
+    return { message: error.message, success: false }
+  }
+
+  revalidatePath("/admin")
+  revalidatePath(`/admin/editor/${slug}`)
+  return {
+    message: `Brand "${data.name}" updated successfully.`,
+    success: true,
+    brand: data,
+  }
+}
+
+export async function deleteBrand(id: number) {
+  const supabase = createClient()
+
+  const { data: brand, error: fetchError } = await supabase.from("brands").select("logo").eq("id", id).single()
+
+  if (fetchError || !brand) {
+    console.error("Error fetching brand for deletion:", fetchError)
+    return { error: "Could not find brand to delete." }
+  }
+
+  if (brand.logo) {
+    try {
+      await del(brand.logo)
+    } catch (error) {
+      console.error("Could not delete logo from blob storage:", error)
+    }
+  }
+
+  const { error } = await supabase.from("brands").delete().eq("id", id)
+
+  if (error) {
+    console.error("Error deleting brand:", error)
+    return { error: error.message }
   }
 
   revalidatePath("/admin")
   return { success: true }
 }
 
+// Form Management Actions
 export async function importForm(
   brandId: string,
   brandSlug: string,
   { htmlCode, url }: { htmlCode?: string; url?: string },
 ) {
-  const supabase = createAdminClient()
+  const supabase = createClient()
 
   try {
     let htmlContent = htmlCode
@@ -124,16 +160,16 @@ export async function importForm(
 
     const parsedForm = await parseFormWithAI(htmlContent)
 
-    await supabase.from("product_items").delete().eq("brand_id", brandId)
-    await supabase.from("product_sections").delete().eq("brand_id", brandId)
+    await supabase.from("items").delete().eq("brand_id", brandId)
+    await supabase.from("sections").delete().eq("brand_id", brandId)
 
     for (const [sectionIndex, section] of parsedForm.sections.entries()) {
       const { data: newSection, error: sectionError } = await supabase
-        .from("product_sections")
+        .from("sections")
         .insert({
           brand_id: brandId,
           title: section.title,
-          sort_order: sectionIndex,
+          position: sectionIndex,
         })
         .select("id")
         .single()
@@ -150,10 +186,10 @@ export async function importForm(
           options: item.options || [],
           placeholder: item.placeholder,
           is_required: item.isRequired || false,
-          sort_order: itemIndex,
+          position: itemIndex,
         }))
 
-        const { error: itemsError } = await supabase.from("product_items").insert(itemsToInsert)
+        const { error: itemsError } = await supabase.from("items").insert(itemsToInsert)
         if (itemsError) throw new Error(`Failed to insert items for section "${section.title}": ${itemsError.message}`)
       }
     }
@@ -170,13 +206,10 @@ export async function importForm(
 }
 
 export async function clearFormForBrand(brandId: string, brandSlug: string) {
-  const supabase = createAdminClient()
-
+  const supabase = createClient()
   try {
-    // Deleting sections will cascade and delete all items within them
-    // due to the foreign key constraint with ON DELETE CASCADE.
-    const { error } = await supabase.from("product_sections").delete().eq("brand_id", brandId)
-
+    await supabase.from("items").delete().eq("brand_id", brandId)
+    const { error } = await supabase.from("sections").delete().eq("brand_id", brandId)
     if (error) throw error
 
     revalidatePath(`/admin/editor/${brandSlug}`)
@@ -189,17 +222,63 @@ export async function clearFormForBrand(brandId: string, brandSlug: string) {
   }
 }
 
+// General Actions
 export async function revalidateAllData() {
   try {
-    // Revalidate the main pages and all admin API routes
     revalidatePath("/", "layout")
-    revalidatePath("/admin")
-    revalidatePath("/api/admin/brands")
-    revalidatePath("/api/admin/files")
-    revalidatePath("/api/admin/submissions")
     return { success: true, message: "Data revalidated successfully." }
   } catch (error) {
     console.error("Revalidation failed:", error)
     return { success: false, message: "An error occurred during revalidation." }
+  }
+}
+
+// Scraping and Data Fetching
+async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | null> {
+  try {
+    const response = await fetch(logoUrl)
+    if (!response.ok) {
+      console.error(`Failed to fetch logo image: ${response.statusText}`)
+      return null
+    }
+    const imageBlob = await response.blob()
+    const originalName = new URL(logoUrl).pathname.split("/").pop() || `logo-${nanoid(5)}`
+    const filename = `logos/${brandSlug}-${Date.now()}-${originalName}`
+
+    const { url } = await put(filename, imageBlob, {
+      access: "public",
+    })
+
+    return url
+  } catch (error) {
+    console.error("Error uploading logo:", error)
+    return null
+  }
+}
+
+export async function fetchBrandData(url: string) {
+  try {
+    const scrapedData = await scrapeWebsiteWithAI(url)
+    const brandSlug = slugify(scrapedData.companyName || nanoid(8), { lower: true, strict: true })
+
+    let uploadedLogoUrl: string | null = null
+    if (scrapedData.logoUrl) {
+      uploadedLogoUrl = await uploadLogo(scrapedData.logoUrl, brandSlug)
+    }
+
+    return {
+      success: true,
+      data: {
+        name: scrapedData.companyName || "",
+        slug: brandSlug,
+        logo: uploadedLogoUrl,
+        locations: scrapedData.locations || [],
+        emails: scrapedData.emails || [],
+      },
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    console.error("Failed to fetch brand data with AI:", errorMessage)
+    return { success: false, error: `AI scraping failed: ${errorMessage}` }
   }
 }

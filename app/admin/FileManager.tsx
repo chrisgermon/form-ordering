@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
 import { Upload, Trash2, Copy, FileIcon, AlertCircle, Loader2 } from "lucide-react"
-import { upload } from "@vercel/blob/client"
-import type { UploadedFile } from "@/lib/types"
-import { resolveAssetUrl } from "@/lib/utils"
+import { upload, del } from "@vercel/blob/client"
+import type { FileRecord } from "@/lib/types"
 import { format } from "date-fns"
 
 interface FileManagerProps {
@@ -17,7 +16,7 @@ interface FileManagerProps {
 
 export function FileManager({ brandId }: FileManagerProps) {
   const inputFileRef = useRef<HTMLInputElement>(null)
-  const [files, setFiles] = useState<UploadedFile[]>([])
+  const [files, setFiles] = useState<FileRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -61,13 +60,11 @@ export function FileManager({ brandId }: FileManagerProps) {
     const toastId = toast.loading(`Uploading ${file.name}...`)
 
     try {
-      const newBlob = await upload(file.name, file, {
+      await upload(file.name, file, {
         access: "public",
         handleUploadUrl: `/api/admin/upload?brandId=${brandId}`,
       })
 
-      // After successful upload to blob, we need to refetch the files list
-      // as the server-side handleUploadUrl creates the DB record.
       await fetchFiles()
       toast.success("File uploaded successfully!", { id: toastId })
     } catch (err) {
@@ -80,32 +77,31 @@ export function FileManager({ brandId }: FileManagerProps) {
     }
   }
 
-  const handleDelete = async (fileId: string) => {
+  const handleDelete = async (file: FileRecord) => {
     if (!confirm("Are you sure you want to delete this file? This action cannot be undone.")) return
 
     const toastId = toast.loading("Deleting file...")
     try {
-      const response = await fetch("/api/admin/files", {
+      await del(file.url)
+
+      const response = await fetch(`/api/admin/files?id=${file.id}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileIds: [fileId] }),
       })
 
       if (!response.ok) {
         const { error } = await response.json()
-        throw new Error(error || "Failed to delete file.")
+        throw new Error(error || "Failed to delete file from database.")
       }
 
       toast.success("File deleted successfully.", { id: toastId })
-      setFiles(files.filter((f) => f.id !== fileId))
+      setFiles(files.filter((f) => f.id !== file.id))
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An unknown error occurred."
       toast.error(errorMessage, { id: toastId })
     }
   }
 
-  const copyToClipboard = (pathname: string) => {
-    const url = resolveAssetUrl(pathname)
+  const copyToClipboard = (url: string) => {
     if (url) {
       navigator.clipboard.writeText(url)
       toast.success("URL copied to clipboard!")
@@ -149,7 +145,7 @@ export function FileManager({ brandId }: FileManagerProps) {
               <FileIcon className="h-5 w-5 flex-shrink-0 text-gray-500" />
               <div className="flex-grow overflow-hidden">
                 <a
-                  href={resolveAssetUrl(file.pathname) || "#"}
+                  href={file.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="truncate text-sm font-medium text-gray-800 hover:underline"
@@ -161,10 +157,10 @@ export function FileManager({ brandId }: FileManagerProps) {
               </div>
             </div>
             <div className="flex flex-shrink-0 items-center gap-1">
-              <Button size="icon" variant="ghost" onClick={() => copyToClipboard(file.pathname)}>
+              <Button size="icon" variant="ghost" onClick={() => copyToClipboard(file.url)}>
                 <Copy className="h-4 w-4" />
               </Button>
-              <Button size="icon" variant="ghost" onClick={() => handleDelete(file.id)}>
+              <Button size="icon" variant="ghost" onClick={() => handleDelete(file)}>
                 <Trash2 className="h-4 w-4 text-red-500" />
               </Button>
             </div>
