@@ -1,7 +1,21 @@
 "use client"
 
+import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, Plus, Trash2, Upload } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { PlusCircle, Trash2, RefreshCw } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,58 +27,43 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { toast } from "sonner"
-import { useRouter } from "next/navigation"
-import { useTransition } from "react"
 
-interface EditorHeaderProps {
+type EditorHeaderProps = {
   brandName: string
   brandId: number
   onAddSection: (title: string) => Promise<{ success: boolean; message: string }>
-  onClearForm: (brandId: number) => Promise<{ success: boolean; message: string }>
+  onClearForm: (id: number) => Promise<{ success: boolean; message: string }>
 }
 
 export default function EditorHeader({ brandName, brandId, onAddSection, onClearForm }: EditorHeaderProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const [sectionTitle, setSectionTitle] = useState("")
 
-  const handleRefresh = () => {
-    startTransition(() => {
-      router.refresh()
-      toast.info("Data refreshed.")
+  const handleAddSection = () => {
+    if (!sectionTitle.trim()) {
+      toast.error("Section title cannot be empty.")
+      return
+    }
+    startTransition(async () => {
+      const result = await onAddSection(sectionTitle)
+      if (result.success) {
+        toast.success(result.message)
+        setSectionTitle("")
+        document.getElementById("close-add-section-dialog")?.click()
+        router.refresh()
+      } else {
+        toast.error(result.message)
+      }
     })
   }
 
-  const handleAddSection = async () => {
-    const title = prompt("Enter a title for the new section:")
-    if (title) {
-      startTransition(async () => {
-        const result = await onAddSection(title)
-        if (result.success) {
-          toast.success(result.message)
-        } else {
-          toast.error(result.message)
-        }
-      })
-    }
-  }
-
-  const handleClearForm = async () => {
+  const handleClearForm = () => {
     startTransition(async () => {
       const result = await onClearForm(brandId)
       if (result.success) {
         toast.success(result.message)
+        router.refresh()
       } else {
         toast.error(result.message)
       }
@@ -72,56 +71,52 @@ export default function EditorHeader({ brandName, brandId, onAddSection, onClear
   }
 
   return (
-    <div className="bg-background border-b sticky top-0 z-10 p-4">
-      <div className="container mx-auto flex justify-between items-center">
-        <h1 className="text-2xl font-bold">
-          Editing: <span className="text-primary">{brandName}</span>
-        </h1>
+    <div className="bg-background border-b sticky top-0 z-10">
+      <div className="container mx-auto flex items-center justify-between py-4">
+        <h1 className="text-2xl font-bold">Editing: {brandName}</h1>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isPending}>
-            <RefreshCw className="mr-2 h-4 w-4" />
+          <Button variant="outline" size="sm" onClick={() => router.refresh()} className="bg-transparent">
+            <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
 
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Upload className="mr-2 h-4 w-4" />
-                Import Form
+              <Button variant="outline" size="sm" className="bg-transparent">
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Add Section
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Import Form from URL</DialogTitle>
-                <DialogDescription>
-                  Paste a URL to a form and we'll try to import it using AI. (This feature is coming soon).
-                </DialogDescription>
+                <DialogTitle>Add New Section</DialogTitle>
               </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="url" className="text-right">
-                    URL
-                  </Label>
-                  <Input id="url" placeholder="https://example.com/form" className="col-span-3" />
-                </div>
+              <div className="py-4">
+                <Label htmlFor="section-title">Section Title</Label>
+                <Input
+                  id="section-title"
+                  value={sectionTitle}
+                  onChange={(e) => setSectionTitle(e.target.value)}
+                  placeholder="e.g., Patient Details"
+                />
               </div>
               <DialogFooter>
-                <Button type="submit" disabled>
-                  Import
+                <DialogClose asChild>
+                  <Button id="close-add-section-dialog" type="button" variant="secondary">
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button onClick={handleAddSection} disabled={isPending}>
+                  {isPending ? "Adding..." : "Add Section"}
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
 
-          <Button variant="secondary" size="sm" onClick={handleAddSection} disabled={isPending}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Section
-          </Button>
-
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={isPending}>
-                <Trash2 className="mr-2 h-4 w-4" />
+              <Button variant="destructive" size="sm">
+                <Trash2 className="h-4 w-4 mr-2" />
                 Clear Form
               </Button>
             </AlertDialogTrigger>
@@ -134,7 +129,9 @@ export default function EditorHeader({ brandName, brandId, onAddSection, onClear
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleClearForm}>Continue</AlertDialogAction>
+                <AlertDialogAction onClick={handleClearForm} disabled={isPending}>
+                  {isPending ? "Clearing..." : "Yes, clear form"}
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

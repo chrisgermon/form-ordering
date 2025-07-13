@@ -6,22 +6,16 @@ import type { Brand, Item, Option, Section } from "@/lib/types"
 
 export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | null; error: string | null }> {
   const supabase = createClient()
-
   try {
     // 1. Fetch the brand
     const { data: brandData, error: brandError } = await supabase.from("brands").select("*").eq("slug", slug).single()
 
-    if (brandError || !brandData) {
-      console.error(`Database error fetching brand data for slug '${slug}':`, brandError?.message)
-      if (brandError?.code === "PGRST116") {
-        // This code means no rows were found
+    if (brandError) {
+      console.error(`Database error fetching brand data for slug '${slug}':`, brandError.message)
+      if (brandError.code === "PGRST116") {
         return { brand: null, error: `Could not find a brand with slug "${slug}". Please check the URL.` }
       }
-      return {
-        brand: null,
-        error:
-          "Database schema error: A relationship between tables is missing. Please run the latest database script to fix.",
-      }
+      return { brand: null, error: "A database error occurred while fetching the brand." }
     }
 
     const brand: Brand = brandData
@@ -31,7 +25,7 @@ export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | 
       .from("sections")
       .select("*")
       .eq("brand_id", brand.id)
-      .order("order", { ascending: true })
+      .order("position", { ascending: true })
 
     if (sectionsError) {
       console.error(`Database error fetching sections for brand '${brand.id}':`, sectionsError.message)
@@ -47,7 +41,7 @@ export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | 
         .from("items")
         .select("*")
         .in("section_id", sectionIds)
-        .order("order", { ascending: true })
+        .order("position", { ascending: true })
 
       if (itemsError) {
         console.error(`Database error fetching items for sections '${sectionIds.join(",")}':`, itemsError.message)
@@ -63,7 +57,7 @@ export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | 
           .from("options")
           .select("*")
           .in("item_id", itemIds)
-          .order("order", { ascending: true })
+          .order("sort_order", { ascending: true })
 
         if (optionsError) {
           console.error(`Database error fetching options for items '${itemIds.join(",")}':`, optionsError.message)
@@ -73,7 +67,6 @@ export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | 
         const options: Option[] = optionsData || []
 
         // 5. Assemble the data structure
-        // Add options to their respective items
         items.forEach((item) => {
           item.options = options.filter((opt) => opt.item_id === item.id)
         })
@@ -81,7 +74,6 @@ export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | 
         items.forEach((item) => (item.options = []))
       }
 
-      // Add items to their respective sections
       sections.forEach((section) => {
         section.items = items.filter((item) => item.section_id === section.id)
       })
@@ -95,9 +87,9 @@ export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | 
   }
 }
 
-export async function updateSectionOrder(brandId: number, sections: { id: number; order: number }[]) {
+export async function updateSectionOrder(brandId: number, sections: { id: number; position: number }[]) {
   const supabase = createClient()
-  const updates = sections.map(({ id, order }) => supabase.from("sections").update({ order }).eq("id", id))
+  const updates = sections.map(({ id, position }) => supabase.from("sections").update({ position }).eq("id", id))
 
   const results = await Promise.all(updates)
   const error = results.find((res) => res.error)
@@ -107,12 +99,12 @@ export async function updateSectionOrder(brandId: number, sections: { id: number
   }
 
   revalidatePath(`/admin/editor/${brandId}`, "page")
-  return { success: true }
+  return { success: true, message: "Section order saved." }
 }
 
-export async function updateItemOrder(sectionId: number, items: { id: number; order: number }[]) {
+export async function updateItemOrder(sectionId: number, items: { id: number; position: number }[]) {
   const supabase = createClient()
-  const updates = items.map(({ id, order }) => supabase.from("items").update({ order }).eq("id", id))
+  const updates = items.map(({ id, position }) => supabase.from("items").update({ position }).eq("id", id))
 
   const results = await Promise.all(updates)
   const error = results.find((res) => res.error)
@@ -122,30 +114,30 @@ export async function updateItemOrder(sectionId: number, items: { id: number; or
   }
 
   revalidatePath(`/admin/editor/section/${sectionId}`, "page")
-  return { success: true }
+  return { success: true, message: "Item order saved." }
 }
 
 export async function addSection(brandId: number, title: string) {
   const supabase = createClient()
 
-  const { data: maxOrderData, error: maxOrderError } = await supabase
+  const { data: maxPosData, error: maxPosError } = await supabase
     .from("sections")
-    .select("order")
+    .select("position")
     .eq("brand_id", brandId)
-    .order("order", { ascending: false })
+    .order("position", { ascending: false })
     .limit(1)
     .single()
 
-  if (maxOrderError && maxOrderError.code !== "PGRST116") {
-    return { success: false, message: "Could not determine section order." }
+  if (maxPosError && maxPosError.code !== "PGRST116") {
+    return { success: false, message: "Could not determine section position." }
   }
 
-  const newOrder = (maxOrderData?.order ?? -1) + 1
+  const newPosition = (maxPosData?.position ?? -1) + 1
 
   const { error } = await supabase.from("sections").insert({
     brand_id: brandId,
     title,
-    order: newOrder,
+    position: newPosition,
   })
 
   if (error) {

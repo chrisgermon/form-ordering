@@ -45,10 +45,10 @@ export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
       const reorderedSections = arrayMove(prevBrand.sections, oldIndex, newIndex)
 
       startTransition(async () => {
-        const sectionOrder = reorderedSections.map((section, index) => ({ id: section.id, order: index }))
-        const result = await updateSectionOrder(brand.id, sectionOrder)
+        const sectionPositions = reorderedSections.map((section, index) => ({ id: section.id, position: index }))
+        const result = await updateSectionOrder(brand.id, sectionPositions)
         if (result.success) {
-          toast.success("Section order saved.")
+          toast.success(result.message)
         } else {
           toast.error(result.message)
           setBrand(prevBrand)
