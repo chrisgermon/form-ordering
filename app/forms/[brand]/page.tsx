@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
-import { BrandOrderForm } from "@/components/brand-order-form"
+import { PublicOrderForm } from "@/components/public-order-form"
 import type { BrandData, Section, Item } from "@/lib/types"
 
 export const revalidate = 0 // Revalidate data on every request
@@ -63,5 +63,5 @@ export default async function BrandFormPage({ params }: { params: { brand: strin
     notFound()
   }
 
-  return <BrandOrderForm brandData={brandData} />
+  return <PublicOrderForm brandData={brandData} />
 }

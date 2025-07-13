@@ -13,7 +13,18 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ChevronDown, ArrowLeft, Search, X } from "lucide-react"
+import {
+  CalendarIcon,
+  Loader2,
+  Send,
+  CheckCircle,
+  XCircle,
+  ChevronDown,
+  ArrowLeft,
+  Search,
+  X,
+  AlertTriangle,
+} from "lucide-react"
 import { format } from "date-fns"
 import { cn, resolveAssetUrl } from "@/lib/utils"
 import type { BrandData, Item } from "@/lib/types"
@@ -30,9 +41,8 @@ const createFormSchema = (brandData: BrandData) => {
     items: z.record(z.any()).optional(),
   })
 
-  // Defensive check: If sections are missing, return a basic schema to prevent crash.
-  if (!brandData?.sections) {
-    console.warn("Form schema created without sections. Validation will be limited.")
+  // Defensive check: If sections are missing, return a basic schema.
+  if (!Array.isArray(brandData?.sections)) {
     return baseSchema
   }
 
@@ -323,16 +333,34 @@ function SelectionSidebar({
   )
 }
 
-export function BrandOrderForm({ brandData }: { brandData: BrandData }) {
+export function PublicOrderForm({ brandData }: { brandData: BrandData }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submissionStatus, setSubmissionStatus] = useState<"success" | "error" | null>(null)
   const [submissionMessage, setSubmissionMessage] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
 
-  // Defensive check: If brandData or its sections are missing, show a loading/error state.
-  const loadingState = !brandData || !brandData.sections
-
   const formSchema = useMemo(() => createFormSchema(brandData), [brandData])
+
+  // **CRITICAL DEFENSIVE CHECK**
+  // If the sections data is missing or not an array, render an error state instead of crashing.
+  const sectionsCheck = Array.isArray(brandData?.sections)
+  if (!brandData || !sectionsCheck) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="text-center p-8 bg-white rounded-lg shadow-md max-w-lg">
+          <AlertTriangle className="mx-auto h-12 w-12 text-red-500" />
+          <h2 className="mt-4 text-xl font-semibold text-gray-800">Form Data Error</h2>
+          <p className="mt-2 text-gray-600">
+            There was a problem loading the form's structure. The data received from the server was incomplete or
+            malformed. This is likely due to a caching issue or a misconfiguration.
+          </p>
+          <p className="mt-2 text-xs text-gray-400">
+            (Developer note: The 'brandData.sections' property was missing or not an array.)
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   const {
     register,
@@ -419,20 +447,6 @@ export function BrandOrderForm({ brandData }: { brandData: BrandData }) {
       })
       .filter((section) => section.items.length > 0)
   }, [searchTerm, brandData.sections])
-
-  if (loadingState) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        <div className="text-center p-8 bg-white rounded-lg shadow-md">
-          <Loader2 className="mx-auto h-12 w-12 animate-spin text-blue-500" />
-          <h2 className="mt-4 text-xl font-semibold text-gray-800">Loading Form Data...</h2>
-          <p className="mt-2 text-gray-600">
-            Please wait a moment. If this message persists, the form may be configured incorrectly.
-          </p>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-[#f9f9f9] p-4 sm:p-6 md:p-8 font-work-sans">
