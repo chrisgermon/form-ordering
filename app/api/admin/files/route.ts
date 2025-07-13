@@ -1,7 +1,7 @@
 import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
-import { delete as deleteFromBlob } from "@vercel/blob"
+import { del } from "@vercel/blob"
 
 export async function GET(request: Request) {
   const supabase = createClient()
@@ -41,18 +41,15 @@ export async function DELETE(request: Request) {
 
   try {
     // First, get the pathnames to delete from Vercel Blob
-    const { data: filesToDelete, error: selectError } = await supabase
-      .from("files")
-      .select("pathname")
-      .in("id", fileIds)
+    const { data: filesToDelete, error: selectError } = await supabase.from("files").select("url").in("id", fileIds)
 
     if (selectError) {
       throw new Error(selectError.message)
     }
 
-    const blobUrls = filesToDelete.map((file) => file.pathname).filter(Boolean) as string[]
+    const blobUrls = filesToDelete.map((file) => file.url).filter(Boolean) as string[]
     if (blobUrls.length > 0) {
-      await deleteFromBlob(blobUrls)
+      await del(blobUrls)
     }
 
     // Then, delete the records from the database
