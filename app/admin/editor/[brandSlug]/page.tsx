@@ -9,11 +9,12 @@ export default async function BrandEditorPage({ params }: { params: { brandSlug:
   const supabase = createClient()
   const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select("*, locations(*)")
+    .select("id, name, slug")
     .eq("slug", params.brandSlug)
     .single()
 
   if (brandError || !brand) {
+    console.error("Error fetching brand:", brandError)
     notFound()
   }
 
@@ -26,7 +27,7 @@ export default async function BrandEditorPage({ params }: { params: { brandSlug:
 
   if (sectionsError) {
     console.error("Error fetching sections:", sectionsError)
-    // In a real app, you might want to show an error message to the user
+    // We can still render the page with an empty array of sections
   }
 
   return (
