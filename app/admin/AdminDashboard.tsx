@@ -22,14 +22,19 @@ export function AdminDashboard({
   submissions: initialSubmissions,
 }: AdminDashboardProps) {
   const [isBrandFormOpen, setIsBrandFormOpen] = useState(false)
-  const [brands, setBrands] = useState(initialBrands)
+  const [brands, setBrands] = useState(initialBrands || [])
 
-  // This function will be passed to the BrandForm to update the brand list on creation/update
   const onBrandChange = async () => {
-    const response = await fetch("/api/admin/brands")
-    if (response.ok) {
-      const updatedBrands = await response.json()
-      setBrands(updatedBrands)
+    try {
+      const response = await fetch("/api/admin/brands")
+      if (response.ok) {
+        const updatedBrands = await response.json()
+        setBrands(updatedBrands)
+      } else {
+        console.error("Failed to refresh brands")
+      }
+    } catch (error) {
+      console.error("Error refreshing brands:", error)
     }
   }
 

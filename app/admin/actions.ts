@@ -136,6 +136,24 @@ export async function deleteBrand(id: number) {
   return { success: true }
 }
 
+// File Management Action
+export async function deleteFile(fileUrl: string) {
+  const supabase = createClient()
+  try {
+    await del(fileUrl)
+    const { error: dbError } = await supabase.from("files").delete().eq("url", fileUrl)
+    if (dbError) {
+      throw dbError
+    }
+    revalidatePath("/admin")
+    return { success: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "An unknown error occurred."
+    console.error("Failed to delete file:", message)
+    return { success: false, error: message }
+  }
+}
+
 // Form Management Actions
 export async function importForm(
   brandId: string,

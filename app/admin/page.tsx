@@ -12,11 +12,14 @@ async function getDashboardData(): Promise<{
 }> {
   try {
     const supabase = createAdminClient()
-    // Use Promise.all for concurrent fetching
     const [brandsRes, submissionsRes, filesRes] = await Promise.all([
       supabase.from("brands").select("*").order("name"),
       supabase.from("submissions").select("*").order("created_at", { ascending: false }),
-      supabase.from("files").select("*").order("created_at", { ascending: false }),
+      // FIX: Use 'uploaded_at' instead of 'created_at' for the files table
+      supabase
+        .from("files")
+        .select("*")
+        .order("uploaded_at", { ascending: false }),
     ])
 
     if (brandsRes.error || submissionsRes.error || filesRes.error) {
