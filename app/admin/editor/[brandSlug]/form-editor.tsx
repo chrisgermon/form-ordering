@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useTransition, type FC } from "react"
+import { useState, useTransition, type FC, useEffect } from "react"
 import type { Brand, Section, Item, Option } from "@/lib/types"
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable"
@@ -114,7 +114,7 @@ const ItemDialog: FC<{
             </Label>
             <Textarea
               id="description"
-              value={description}
+              value={description || ""}
               onChange={(e) => setDescription(e.target.value)}
               className="col-span-3"
             />
@@ -179,7 +179,7 @@ const ItemDialog: FC<{
             </Label>
             <Input
               id="placeholder"
-              value={placeholder}
+              value={placeholder || ""}
               onChange={(e) => setPlaceholder(e.target.value)}
               className="col-span-3"
             />
@@ -210,6 +210,10 @@ const SectionItems: FC<{ brandSlug: string; section: Section }> = ({ brandSlug, 
   const [items, setItems] = useState(section.items)
   const [isPending, startTransition] = useTransition()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  useEffect(() => {
+    setItems(section.items)
+  }, [section.items])
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
@@ -276,10 +280,53 @@ const SectionItems: FC<{ brandSlug: string; section: Section }> = ({ brandSlug, 
   )
 }
 
+const AddSectionDialog: FC<{ onAdd: (title: string) => void; children: React.ReactNode }> = ({ onAdd, children }) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const [title, setTitle] = useState("")
+
+  const handleAdd = () => {
+    if (title.trim()) {
+      onAdd(title.trim())
+      setIsOpen(false)
+      setTitle("")
+    }
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add New Section</DialogTitle>
+        </DialogHeader>
+        <div className="py-4">
+          <Label htmlFor="section-title">Section Title</Label>
+          <Input
+            id="section-title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g., Patient Details"
+          />
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button onClick={handleAdd}>Add Section</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export const FormEditor: FC<{ initialBrand: Brand }> = ({ initialBrand }) => {
   const [brand, setBrand] = useState(initialBrand)
   const [isPending, startTransition] = useTransition()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  useEffect(() => {
+    setBrand(initialBrand)
+  }, [initialBrand])
 
   const handleSectionDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
@@ -304,17 +351,23 @@ export const FormEditor: FC<{ initialBrand: Brand }> = ({ initialBrand }) => {
     }
   }
 
-  const handleAddSection = () => {
-    const title = prompt("Enter new section title:")
-    if (title) {
-      startTransition(() => {
-        toast.promise(createSection(brand.id, title), {
-          loading: "Creating section...",
-          success: "Section created.",
-          error: "Failed to create section.",
-        })
+  const handleAddSection = (title: string) => {
+    startTransition(() => {
+      const promise = new Promise(async (resolve, reject) => {
+        const result = await createSection(brand.id, title)
+        if (result.success) {
+          resolve(result.data)
+        } else {
+          reject(new Error(result.error))
+        }
       })
-    }
+
+      toast.promise(promise, {
+        loading: "Creating section...",
+        success: "Section created.",
+        error: (err) => `Failed to create section: ${err.message}`,
+      })
+    })
   }
 
   const handleDeleteSection = (id: string) => {
@@ -333,9 +386,11 @@ export const FormEditor: FC<{ initialBrand: Brand }> = ({ initialBrand }) => {
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Editing: {brand.name}</h1>
-        <Button onClick={handleAddSection} disabled={isPending}>
-          <PlusCircle className="mr-2 h-4 w-4" /> Add Section
-        </Button>
+        <AddSectionDialog onAdd={handleAddSection}>
+          <Button disabled={isPending}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Add Section
+          </Button>
+        </AddSectionDialog>
       </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSectionDragEnd}>
         <SortableContext items={brand.sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
