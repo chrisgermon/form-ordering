@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useState } from "react"
 import { useForm, useFieldArray } from "react-hook-form"
 import { useFormState } from "react-dom"
@@ -18,7 +17,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Trash2, PlusCircle } from "lucide-react"
 import { SubmitButton } from "@/components/submit-button"
@@ -45,7 +51,7 @@ type BrandFormProps = {
   isOpen: boolean
   onOpenChange: (isOpen: boolean) => void
   brand?: Brand | null
-  onFormSuccess: () => void | Promise<void>
+  onFormSuccess: () => void
 }
 
 export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandFormProps) {
@@ -81,28 +87,30 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
   })
 
   useEffect(() => {
-    if (brand) {
-      form.reset({
-        name: brand.name,
-        slug: brand.slug,
-        active: brand.active,
-        emails: brand.emails || [],
-        clinic_locations: brand.clinic_locations || [],
-      })
-      if (brand.logo) {
-        setLogoPreview(resolveAssetUrl(brand.logo))
+    if (isOpen) {
+      if (brand) {
+        form.reset({
+          name: brand.name,
+          slug: brand.slug,
+          active: brand.active,
+          emails: brand.emails || [],
+          clinic_locations: brand.clinic_locations || [],
+          logo: undefined,
+        })
+        setLogoPreview(brand.logo ? resolveAssetUrl(brand.logo) : null)
+      } else {
+        form.reset({
+          name: "",
+          slug: "",
+          active: true,
+          emails: [""],
+          clinic_locations: [],
+          logo: undefined,
+        })
+        setLogoPreview(null)
       }
-    } else {
-      form.reset({
-        name: "",
-        slug: "",
-        active: true,
-        emails: [""],
-        clinic_locations: [],
-      })
-      setLogoPreview(null)
     }
-  }, [brand, form])
+  }, [brand, isOpen, form])
 
   const action = brand ? updateBrand.bind(null, brand.id) : createBrand
   const [state, formAction] = useFormState(action, { message: "", success: false })
@@ -122,6 +130,7 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
+      form.setValue("logo", event.target.files)
       const reader = new FileReader()
       reader.onloadend = () => {
         setLogoPreview(reader.result as string)
@@ -132,19 +141,17 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     const formData = new FormData()
-    Object.entries(values).forEach(([key, value]) => {
-      if (key === "logo") {
-        if (value && value.length > 0) {
-          formData.append("logo", value[0])
-        }
-      } else if (key === "clinic_locations" || key === "emails") {
-        formData.append(key, JSON.stringify(value))
-      } else {
-        formData.append(key, String(value))
-      }
-    })
+    formData.append("name", values.name)
+    formData.append("slug", values.slug)
+    formData.append("active", String(values.active))
+    formData.append("emails", JSON.stringify(values.emails))
+    formData.append("clinic_locations", JSON.stringify(values.clinic_locations || []))
 
-    const actionToCall = brand ? updateBrand.bind(null, brand.id) : createBrand
+    const logoFile = values.logo?.[0]
+    if (logoFile) {
+      formData.append("logo", logoFile)
+    }
+
     formAction(formData)
   }
 
@@ -153,6 +160,9 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{brand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
+          <DialogDescription>
+            {brand ? "Update the details for this brand." : "Enter the details for the new brand."}
+          </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
