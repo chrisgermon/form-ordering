@@ -49,7 +49,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 
 import { updateSectionOrder, updateItemOrder } from "./actions"
-import { importForm } from "../../actions"
+import { clearFormForBrand, importForm } from "../../actions"
 import type { Brand, ProductSection, ProductItem, UploadedFile } from "./types"
 
 const fieldTypes = [
@@ -325,6 +325,29 @@ export function FormEditor({
     })
   }
 
+  const handleClearForm = async () => {
+    if (
+      !confirm("Are you sure you want to delete all sections and items from this form? This action cannot be undone.")
+    ) {
+      return
+    }
+
+    const promise = clearFormForBrand(brandData.id, brandData.slug)
+
+    toast.promise(promise, {
+      loading: "Clearing form...",
+      success: (result) => {
+        if (result.success) {
+          onDataChange() // This calls router.refresh()
+          return result.message
+        } else {
+          throw new Error(result.message)
+        }
+      },
+      error: (err) => err.message || "Failed to clear form.",
+    })
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="max-w-6xl mx-auto">
@@ -334,6 +357,14 @@ export function FormEditor({
             Back to Dashboard
           </Button>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive bg-transparent"
+              onClick={handleClearForm}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Clear Form
+            </Button>
             <Button variant="outline" onClick={() => setIsImportFormDialogOpen(true)}>
               <Upload className="mr-2 h-4 w-4" />
               Import Form

@@ -172,36 +172,21 @@ export async function importForm(
 export async function clearFormForBrand(brandId: string, brandSlug: string) {
   const supabase = createAdminClient()
 
-  const { data: sections, error: sectionsError } = await supabase
-    .from("product_sections")
-    .select("id")
-    .eq("brand_id", brandId)
+  try {
+    // Deleting sections will cascade and delete all items within them
+    // due to the foreign key constraint with ON DELETE CASCADE.
+    const { error } = await supabase.from("product_sections").delete().eq("brand_id", brandId)
 
-  if (sectionsError) {
-    console.error("Error fetching sections:", sectionsError)
-    return { success: false, message: "Failed to fetch form sections." }
+    if (error) throw error
+
+    revalidatePath(`/admin/editor/${brandSlug}`)
+    revalidatePath(`/forms/${brandSlug}`)
+    return { success: true, message: "Form has been cleared successfully." }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+    console.error("Error clearing form:", errorMessage)
+    return { success: false, message: `Failed to clear form: ${errorMessage}` }
   }
-
-  if (sections && sections.length > 0) {
-    const sectionIds = sections.map((s) => s.id)
-
-    const { error: itemsError } = await supabase.from("product_items").delete().in("section_id", sectionIds)
-
-    if (itemsError) {
-      console.error("Error deleting form items:", itemsError)
-      return { success: false, message: "Failed to clear form items." }
-    }
-  }
-
-  const { error: deleteSectionsError } = await supabase.from("product_sections").delete().eq("brand_id", brandId)
-
-  if (deleteSectionsError) {
-    console.error("Error deleting form sections:", deleteSectionsError)
-    return { success: false, message: "Failed to clear form sections." }
-  }
-
-  revalidatePath(`/admin/editor/${brandSlug}`)
-  return { success: true, message: "Form has been cleared successfully." }
 }
 
 export async function revalidateAllData() {
