@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
 import { BrandFacingForm } from "@/components/brand-facing-form"
-import type { BrandData } from "@/lib/types"
+import type { Brand as BrandData } from "@/lib/types"
 import { resolveAssetUrl } from "@/lib/utils"
 
 export const revalidate = 0 // Revalidate data on every request
@@ -28,7 +28,12 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     .single()
 
   if (brandError || !brand) {
-    console.error(`Error fetching brand data for slug '${slug}':`, brandError?.message)
+    // More detailed logging for easier debugging
+    if (brandError) {
+      console.error(`Database error fetching brand data for slug '${slug}':`, brandError.message)
+    } else {
+      console.warn(`No active brand found for slug '${slug}'. The form will not be displayed.`)
+    }
     notFound()
   }
 
@@ -43,12 +48,14 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
   // Resolve the logo pathname to a full URL
   const logoUrl = brand.logo ? resolveAssetUrl(brand.logo) : null
 
-  return { ...brand, sections: sortedSections, logo: logoUrl } as BrandData
+  return { ...brand, sections: sortedSections, logo: logoUrl }
 }
 
 export default async function BrandFormPage({ params }: { params: { brand: string } }) {
   const brandData = await getBrandData(params.brand)
 
+  // This check is technically redundant because getBrandData calls notFound(),
+  // but it's good practice to keep it.
   if (!brandData) {
     notFound()
   }
