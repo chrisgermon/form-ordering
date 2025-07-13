@@ -40,7 +40,7 @@ export interface Brand {
   id: string
   name: string
   slug: string
-  logo_url: string | null
+  logo: string | null
   emails: string[]
   clinic_locations: ClinicLocation[]
   active: boolean

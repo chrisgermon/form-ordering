@@ -7,17 +7,24 @@ import type { Brand, Item, Option } from "@/lib/types"
 export async function getBrandForEditor(slug: string): Promise<Brand | null> {
   const supabase = createAdminClient()
 
-  // 1. Fetch brand
-  const { data: brandData, error: brandError } = await supabase
+  // 1. Fetch brand more robustly
+  const { data: brands, error: brandError } = await supabase
     .from("brands")
-    .select("id, name, slug, logo_url, emails, clinic_locations, active")
+    .select("id, name, slug, logo, emails, clinic_locations, active")
     .eq("slug", slug)
-    .single()
+    .limit(1)
 
   if (brandError) {
     console.error(`Error fetching brand '${slug}':`, brandError.message)
     return null
   }
+
+  if (!brands || brands.length === 0) {
+    console.error(`No brand found with slug: ${slug}`)
+    return null
+  }
+
+  const brandData = brands[0]
 
   // 2. Fetch sections
   const { data: sectionsData, error: sectionsError } = await supabase
@@ -64,7 +71,7 @@ export async function getBrandForEditor(slug: string): Promise<Brand | null> {
     if (optionsError) {
       console.error(`Error fetching options for brand '${brandData.name}':`, optionsError.message)
     } else {
-      optionsData = data
+      optionsData = data || []
     }
   }
 
