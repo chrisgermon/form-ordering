@@ -4,6 +4,7 @@ import { sendOrderEmail } from "@/lib/email"
 import type { OrderPayload, Brand, ClinicLocation } from "@/lib/types"
 import { jsPDF } from "jspdf"
 import { put } from "@vercel/blob"
+import { resolveAssetUrl } from "@/lib/utils"
 
 function addClinicInfo(doc: jsPDF, yPos: number, title: string, clinic: ClinicLocation | null) {
   if (!clinic) return yPos
@@ -28,33 +29,27 @@ async function generateOrderPdf(order: OrderPayload, brand: Brand, logoUrl: stri
 
   const isSvg = logoUrl?.toLowerCase().endsWith(".svg")
 
-  // If we have a logo URL and it's NOT an SVG, try to embed it.
   if (logoUrl && !isSvg) {
     try {
       const logoResponse = await fetch(logoUrl)
       const logoBuffer = await logoResponse.arrayBuffer()
-      // Extract extension and handle potential query params
       const extension = (logoUrl.split(".").pop()?.split("?")[0] || "PNG").toUpperCase()
 
-      // jsPDF supports JPEG, PNG, WEBP.
       if (["JPEG", "JPG", "PNG", "WEBP"].includes(extension)) {
-        doc.addImage(Buffer.from(logoBuffer), extension, 15, 15, 50, 20) // x, y, w, h
-        yPos = 45 // Move down to make space for logo
+        doc.addImage(Buffer.from(logoBuffer), extension, 15, 15, 50, 20)
+        yPos = 45
       } else {
-        // If it's some other unsupported type, fall back to text.
         doc.setFontSize(22)
         doc.text(brand.name, 105, yPos, { align: "center" })
         yPos += 10
       }
     } catch (e) {
       console.error("Failed to fetch or add logo to PDF:", e)
-      // Fallback to text if image fetching fails
       doc.setFontSize(22)
       doc.text(brand.name, 105, yPos, { align: "center" })
       yPos += 10
     }
   } else {
-    // If there's no logo, or if the logo is an SVG, just print the brand name.
     doc.setFontSize(22)
     doc.text(brand.name, 105, yPos, { align: "center" })
     yPos += 10
@@ -69,7 +64,7 @@ async function generateOrderPdf(order: OrderPayload, brand: Brand, logoUrl: stri
   doc.text(`Date: ${new Date().toLocaleDateString("en-AU")}`, 140, yPos)
   yPos += 5
 
-  doc.line(15, yPos, 195, yPos) // horizontal line
+  doc.line(15, yPos, 195, yPos)
   yPos += 10
 
   const leftColumnY = yPos
@@ -135,13 +130,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Brand not found" }, { status: 404 })
     }
 
-    let logoUrl: string | null = null
-    if (brand.logo) {
-      const { data: fileData } = await supabase.from("uploaded_files").select("url").eq("pathname", brand.logo).single()
-      if (fileData) {
-        logoUrl = fileData.url
-      }
-    }
+    const logoUrl = brand.logo ? resolveAssetUrl(brand.logo) : null
 
     const orderPayload: OrderPayload = {
       brandId: flatBody.brandId,
@@ -156,7 +145,7 @@ export async function POST(request: NextRequest) {
       },
     }
 
-    const pdfArrayBuffer = await generateOrderPdf(orderPayload, brand, logoUrl)
+    const pdfArrayBuffer = await generateOrderPdf(orderPayload, brand as Brand, logoUrl)
     const pdfBuffer = Buffer.from(pdfArrayBuffer)
 
     const blob = await put(`orders/order-${orderPayload.orderInfo.orderNumber}.pdf`, pdfBuffer, {
@@ -164,14 +153,14 @@ export async function POST(request: NextRequest) {
       contentType: "application/pdf",
     })
 
-    const emailResult = await sendOrderEmail(orderPayload, brand, pdfBuffer, logoUrl)
+    const emailResult = await sendOrderEmail(orderPayload, brand as Brand, pdfBuffer, logoUrl)
 
     const { error: submissionError } = await supabase.from("submissions").insert({
       brand_id: orderPayload.brandId,
       ordered_by: orderPayload.orderInfo.orderedBy,
       email: orderPayload.orderInfo.email,
-      bill_to: orderPayload.orderInfo.billTo.name,
-      deliver_to: orderPayload.orderInfo.deliverTo.name,
+      bill_to: orderPayload.orderInfo.billTo?.name,
+      deliver_to: orderPayload.orderInfo.deliverTo?.name,
       items: orderPayload.items as any,
       pdf_url: blob.url,
       status: emailResult.success ? "sent" : "failed",

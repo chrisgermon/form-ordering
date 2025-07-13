@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 
-function revalidateEditorPaths(brandSlug: string) {
+async function revalidateEditorPaths(brandSlug: string) {
   revalidatePath(`/admin/editor/${brandSlug}`)
   revalidatePath(`/forms/${brandSlug}`)
 }
@@ -14,31 +14,30 @@ export async function POST(request: NextRequest) {
 
     const { data: brandData } = await supabase.from("brands").select("slug").eq("id", body.brandId).single()
 
-    const { data: maxSortOrderData, error: maxSortError } = await supabase
-      .from("product_items")
-      .select("sort_order")
+    const { data: maxPosData, error: maxPosError } = await supabase
+      .from("items")
+      .select("position")
       .eq("section_id", body.sectionId)
-      .order("sort_order", { ascending: false })
+      .order("position", { ascending: false })
       .limit(1)
       .single()
 
-    if (maxSortError && maxSortError.code !== "PGRST116") {
-      throw maxSortError
+    if (maxPosError && maxPosError.code !== "PGRST116") {
+      throw maxPosError
     }
 
-    const newSortOrder = (maxSortOrderData?.sort_order ?? -1) + 1
+    const newPosition = (maxPosData?.position ?? -1) + 1
 
     const { data: item, error } = await supabase
-      .from("product_items")
+      .from("items")
       .insert({
         code: body.code,
         name: body.name,
         description: body.description,
-        options: body.options,
         sample_link: body.sample_link,
         section_id: body.sectionId,
         brand_id: body.brandId,
-        sort_order: newSortOrder,
+        position: newPosition,
         field_type: body.fieldType,
         placeholder: body.placeholder,
         is_required: body.is_required,
@@ -64,15 +63,14 @@ export async function PUT(request: NextRequest) {
     const supabase = createAdminClient()
     const body = await request.json()
 
-    const { data: itemData } = await supabase.from("product_items").select("brands(slug)").eq("id", body.id).single()
+    const { data: itemData } = await supabase.from("items").select("brands(slug)").eq("id", body.id).single()
 
     const { data: item, error } = await supabase
-      .from("product_items")
+      .from("items")
       .update({
         code: body.code,
         name: body.name,
         description: body.description,
-        options: body.options,
         sample_link: body.sample_link,
         field_type: body.fieldType,
         placeholder: body.placeholder,
@@ -105,9 +103,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Item ID is required" }, { status: 400 })
     }
 
-    const { data: itemData } = await supabase.from("product_items").select("brands(slug)").eq("id", id).single()
+    const { data: itemData } = await supabase.from("items").select("brands(slug)").eq("id", id).single()
 
-    const { error } = await supabase.from("product_items").delete().eq("id", id)
+    const { error } = await supabase.from("items").delete().eq("id", id)
 
     if (error) throw error
 

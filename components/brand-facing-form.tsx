@@ -110,9 +110,9 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
     <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
       <Card className="mb-8">
         <CardHeader className="text-center">
-          {brandData.logo_url && (
+          {brandData.logo && (
             <img
-              src={brandData.logo_url || "/placeholder.svg"}
+              src={brandData.logo || "/placeholder.svg"}
               alt={`${brandData.name} Logo`}
               className="w-48 mx-auto mb-4"
             />
@@ -152,8 +152,8 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
                               </SelectTrigger>
                               <SelectContent>
                                 {(item.options || []).map((option) => (
-                                  <SelectItem key={option} value={option}>
-                                    {option}
+                                  <SelectItem key={option.id} value={option.value}>
+                                    {option.value}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -183,20 +183,20 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
                           return (
                             <div className="space-y-2 rounded-md border p-4">
                               {(item.options || []).map((option) => (
-                                <div key={option} className="flex items-center space-x-2">
+                                <div key={option.id} className="flex items-center space-x-2">
                                   <Checkbox
-                                    id={`${item.code}-${option}`}
-                                    checked={field.value?.includes(option)}
+                                    id={`${item.code}-${option.value}`}
+                                    checked={field.value?.includes(option.value)}
                                     onCheckedChange={(checked) => {
                                       const currentValue = field.value || []
                                       if (checked) {
-                                        field.onChange([...currentValue, option])
+                                        field.onChange([...currentValue, option.value])
                                       } else {
-                                        field.onChange(currentValue.filter((v: string) => v !== option))
+                                        field.onChange(currentValue.filter((v: string) => v !== option.value))
                                       }
                                     }}
                                   />
-                                  <Label htmlFor={`${item.code}-${option}`}>{option}</Label>
+                                  <Label htmlFor={`${item.code}-${option.value}`}>{option.value}</Label>
                                 </div>
                               ))}
                             </div>

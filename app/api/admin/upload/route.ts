@@ -1,51 +1,53 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client"
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/utils/supabase/server"
+import { revalidatePath } from "next/cache"
 
 export async function POST(request: Request): Promise<NextResponse> {
   const body = (await request.json()) as HandleUploadBody
-  const supabase = createAdminClient()
+  const { searchParams } = new URL(request.url)
+  const brandId = searchParams.get("brandId")
+
+  if (!brandId) {
+    return NextResponse.json({ error: "Brand ID is required for upload." }, { status: 400 })
+  }
 
   try {
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async (pathname: string, clientPayload?: string) => {
-        const payload = clientPayload ? JSON.parse(clientPayload) : {}
-        const { brandId } = payload
-
-        if (!brandId) {
-          throw new Error("Brand ID is required for upload.")
-        }
-
+      onBeforeGenerateToken: async (pathname) => {
         return {
-          allowedContentTypes: ["image/jpeg", "image/png", "image/gif", "application/pdf"],
+          allowedContentTypes: ["image/jpeg", "image/png", "image/gif", "image/svg+xml", "application/pdf"],
           tokenPayload: JSON.stringify({
-            pathname,
-            brandId,
+            brandId: brandId,
+            pathname: pathname,
           }),
         }
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {
-        const { brandId } = JSON.parse(tokenPayload)
-
+        const { brandId, pathname } = JSON.parse(tokenPayload)
+        const supabase = createAdminClient()
         const { error } = await supabase.from("files").insert({
-          pathname: blob.pathname,
-          url: blob.url,
-          content_type: blob.contentType,
           brand_id: brandId,
+          pathname: pathname,
+          url: blob.url,
+          original_name: blob.pathname,
+          uploaded_at: new Date().toISOString(),
         })
 
         if (error) {
-          console.error("Error inserting file into Supabase:", error)
-          throw new Error("Failed to save file metadata.")
+          console.error("Error saving file metadata to Supabase:", error)
+          throw new Error("Could not save file metadata.")
         }
+
+        revalidatePath(`/admin/editor/${brandId}`) // Revalidate by ID if slug not available
       },
     })
 
     return NextResponse.json(jsonResponse)
   } catch (error) {
     const message = error instanceof Error ? error.message : "An unknown error occurred."
-    return NextResponse.json({ error: message }, { status: 400 })
+    return NextResponse.json({ error: `Upload failed: ${message}` }, { status: 400 })
   }
 }
