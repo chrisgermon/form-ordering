@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
 import { BrandFacingForm } from "@/components/brand-facing-form"
-import type { Brand as BrandData } from "@/lib/types"
+import type { Brand as BrandData, Section, Item, Option } from "@/lib/types"
 import { resolveAssetUrl } from "@/lib/utils"
 
 export const revalidate = 0 // Revalidate data on every request
@@ -9,54 +9,80 @@ export const revalidate = 0 // Revalidate data on every request
 async function getBrandData(slug: string): Promise<BrandData | null> {
   const supabase = createAdminClient()
 
+  // 1. Fetch the active brand by slug
   const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select(
-      `
-      id, name, slug, logo, emails, clinic_locations, active,
-      sections (
-        *,
-        items (
-          *,
-          options (*)
-        )
-      )
-    `,
-    )
+    .select("*")
     .eq("slug", slug)
     .eq("active", true)
     .single()
 
   if (brandError || !brand) {
-    // More detailed logging for easier debugging
-    if (brandError) {
-      console.error(`Database error fetching brand data for slug '${slug}':`, brandError.message)
-    } else {
-      console.warn(`No active brand found for slug '${slug}'. The form will not be displayed.`)
-    }
+    console.warn(`No active brand found for slug '${slug}'. The form will not be displayed.`)
     notFound()
   }
 
-  // Ensure sections and items are sorted by position
-  const sortedSections = (brand.sections || []).sort((a, b) => a.position - b.position)
-  sortedSections.forEach((section) => {
-    if (section.items) {
-      section.items.sort((a, b) => a.position - b.position)
-    }
-  })
+  // 2. Fetch all sections for the brand
+  const { data: sections, error: sectionsError } = await supabase
+    .from("sections")
+    .select("*")
+    .eq("brand_id", brand.id)
+    .order("position", { ascending: true })
 
-  // Resolve the logo pathname to a full URL
+  if (sectionsError) {
+    console.error(`Could not fetch form sections for brand ${brand.id}:`, sectionsError.message)
+    notFound()
+  }
+
+  // 3. Fetch all items for the brand
+  const { data: items, error: itemsError } = await supabase
+    .from("items")
+    .select("*")
+    .eq("brand_id", brand.id)
+    .order("position", { ascending: true })
+
+  if (itemsError) {
+    console.error(`Could not fetch form items for brand ${brand.id}:`, itemsError.message)
+    notFound()
+  }
+
+  // 4. Fetch all options for the brand
+  const { data: options, error: optionsError } = await supabase
+    .from("options")
+    .select("*")
+    .eq("brand_id", brand.id)
+    .order("position", { ascending: true })
+
+  if (optionsError) {
+    console.error(`Could not fetch form options for brand ${brand.id}:`, optionsError.message)
+    notFound()
+  }
+
+  // 5. Assemble the data structure by joining in code
+  const itemsWithOptionsMenu = (items || []).map((item: Item) => ({
+    ...item,
+    options: (options || []).filter((opt: Option) => opt.item_id === item.id),
+  }))
+
+  const sectionsWithItemsMenu = (sections || []).map((section: Section) => ({
+    ...section,
+    items: itemsWithOptionsMenu.filter((item: Item) => item.section_id === section.id),
+  }))
+
   const logoUrl = brand.logo ? resolveAssetUrl(brand.logo) : null
 
-  return { ...brand, sections: sortedSections, logo: logoUrl }
+  return {
+    ...brand,
+    logo: logoUrl,
+    sections: sectionsWithItemsMenu,
+  }
 }
 
 export default async function BrandFormPage({ params }: { params: { brand: string } }) {
   const brandData = await getBrandData(params.brand)
 
-  // This check is technically redundant because getBrandData calls notFound(),
-  // but it's good practice to keep it.
   if (!brandData) {
+    // This is redundant as getBrandData calls notFound(), but it's safe to keep.
     notFound()
   }
 
