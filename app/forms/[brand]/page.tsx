@@ -78,7 +78,7 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
   }
 }
 
-export default async function BrandFormPage({ params }: { params: { brand: string } }) {
+export default async function BrandFormPage({ params }) {
   const brandData = await getBrandData(params.brand)
 
   if (!brandData) {
