@@ -1,60 +1,128 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+
+import { useEffect, useState } from "react"
+import { useForm, useFieldArray } from "react-hook-form"
 import { useFormState } from "react-dom"
-import { toast } from "sonner"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog"
-import type { Brand } from "@/lib/types"
-import { createBrand, updateBrand } from "@/app/admin/actions"
-import { resolveAssetUrl } from "@/lib/utils"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
 import Image from "next/image"
+import { toast } from "sonner"
+import { createBrand, updateBrand } from "./actions"
+import { resolveAssetUrl } from "@/lib/utils"
+import type { Brand } from "@/lib/types"
+
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Trash2, PlusCircle } from "lucide-react"
 import { SubmitButton } from "@/components/submit-button"
 
-interface BrandFormProps {
-  brand?: Brand | null
+const formSchema = z.object({
+  name: z.string().min(2, "Brand name must be at least 2 characters."),
+  slug: z.string().min(2, "Slug must be at least 2 characters."),
+  active: z.boolean().default(true),
+  emails: z.array(z.string().email("Invalid email address.")).min(1, "At least one email is required."),
+  clinic_locations: z
+    .array(
+      z.object({
+        name: z.string().min(1, "Location name is required."),
+        address: z.string().min(1, "Address is required."),
+        phone: z.string().optional(),
+        email: z.string().email("Invalid email address.").optional().or(z.literal("")),
+      }),
+    )
+    .optional(),
+  logo: z.any().optional(),
+})
+
+type BrandFormProps = {
   isOpen: boolean
-  onClose: () => void
+  onOpenChange: (isOpen: boolean) => void
+  brand?: Brand | null
+  onFormSuccess: (brand: Brand) => void
 }
 
-const initialState: { message: string; success: boolean; brand?: Brand } = {
-  message: "",
-  success: false,
-}
-
-export function BrandForm({ brand, isOpen, onClose }: BrandFormProps) {
-  const router = useRouter()
+export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandFormProps) {
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
 
-  const action = brand ? updateBrand.bind(null, brand.id) : createBrand
-  const [state, formAction] = useFormState(action, initialState)
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: "",
+      slug: "",
+      active: true,
+      emails: [],
+      clinic_locations: [],
+    },
+  })
+
+  const {
+    fields: emailFields,
+    append: appendEmail,
+    remove: removeEmail,
+  } = useFieldArray({
+    control: form.control,
+    name: "emails",
+  })
+
+  const {
+    fields: locationFields,
+    append: appendLocation,
+    remove: removeLocation,
+  } = useFieldArray({
+    control: form.control,
+    name: "clinic_locations",
+  })
 
   useEffect(() => {
-    if (brand?.logo) {
-      setLogoPreview(resolveAssetUrl(brand.logo))
+    if (brand) {
+      form.reset({
+        name: brand.name,
+        slug: brand.slug,
+        active: brand.active,
+        emails: brand.emails || [],
+        clinic_locations: brand.clinic_locations || [],
+      })
+      if (brand.logo) {
+        setLogoPreview(resolveAssetUrl(brand.logo))
+      }
     } else {
+      form.reset({
+        name: "",
+        slug: "",
+        active: true,
+        emails: [""],
+        clinic_locations: [],
+      })
       setLogoPreview(null)
     }
-  }, [brand])
+  }, [brand, form])
+
+  const action = brand ? updateBrand.bind(null, brand.id) : createBrand
+  const [state, formAction] = useFormState(action, { message: "", success: false })
 
   useEffect(() => {
     if (state.message) {
       if (state.success) {
-        toast.success("Success!", { description: state.message })
-        onClose()
-        router.refresh() // This re-fetches server data and updates the UI
+        toast.success(state.message)
+        onOpenChange(false)
+        // This part is tricky with server actions. We might need a different approach
+        // to get the updated brand data back to the parent.
+        // For now, we rely on revalidation.
       } else {
-        toast.error("Error", { description: state.message })
+        toast.error(state.message)
       }
     }
-  }, [state, onClose, router])
+  }, [state, onOpenChange])
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (file) {
       const reader = new FileReader()
       reader.onloadend = () => {
@@ -64,55 +132,221 @@ export function BrandForm({ brand, isOpen, onClose }: BrandFormProps) {
     }
   }
 
+  const onSubmit = (values: z.infer<typeof formSchema>) => {
+    const formData = new FormData()
+    formData.append("name", values.name)
+    formData.append("slug", values.slug)
+    formData.append("active", String(values.active))
+    formData.append("emails", JSON.stringify(values.emails))
+    formData.append("clinic_locations", JSON.stringify(values.clinic_locations))
+    if (values.logo && values.logo.length > 0) {
+      formData.append("logo", values.logo[0])
+    }
+    formAction(formData)
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{brand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
         </DialogHeader>
-        <form action={formAction}>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">
-                Name
-              </Label>
-              <Input id="name" name="name" defaultValue={brand?.name || ""} className="col-span-3" required />
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Brand Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Focus Radiology" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="slug"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Slug</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. focus-radiology" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="slug" className="text-right">
-                Slug
-              </Label>
-              <Input id="slug" name="slug" defaultValue={brand?.slug || ""} className="col-span-3" required />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="logo" className="text-right">
-                Logo
-              </Label>
-              <Input id="logo" name="logo" type="file" className="col-span-3" onChange={handleFileChange} />
-            </div>
-            {logoPreview && (
-              <div className="grid grid-cols-4 items-center gap-4">
-                <div className="col-start-2 col-span-3">
-                  <Image
-                    src={logoPreview || "/placeholder.svg"}
-                    alt="Logo preview"
-                    width={100}
-                    height={100}
-                    className="object-contain border rounded-md bg-gray-50"
+
+            <FormField
+              control={form.control}
+              name="logo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Logo</FormLabel>
+                  <FormControl>
+                    <Input type="file" accept="image/*" onChange={handleFileChange} />
+                  </FormControl>
+                  {logoPreview && (
+                    <div className="mt-2">
+                      <Image
+                        src={logoPreview || "/placeholder.svg"}
+                        alt="Logo Preview"
+                        width={100}
+                        height={100}
+                        className="rounded-md border object-contain"
+                      />
+                    </div>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="active"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                  <div className="space-y-0.5">
+                    <FormLabel>Active</FormLabel>
+                  </div>
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <div>
+              <Label>Recipient Emails</Label>
+              <div className="space-y-2 mt-2">
+                {emailFields.map((field, index) => (
+                  <FormField
+                    key={field.id}
+                    control={form.control}
+                    name={`emails.${index}`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className="flex items-center gap-2">
+                          <FormControl>
+                            <Input {...field} placeholder={`email@domain.com`} />
+                          </FormControl>
+                          <Button type="button" variant="ghost" size="icon" onClick={() => removeEmail(index)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
-                </div>
+                ))}
               </div>
-            )}
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 bg-transparent"
+                onClick={() => appendEmail("")}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add Email
+              </Button>
+            </div>
+
+            <div>
+              <Label>Clinic Locations</Label>
+              <div className="space-y-4 mt-2">
+                {locationFields.map((field, index) => (
+                  <div key={field.id} className="p-4 border rounded-md space-y-2 relative">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-2 right-2"
+                      onClick={() => removeLocation(index)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <FormField
+                      control={form.control}
+                      name={`clinic_locations.${index}.name`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Location Name</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`clinic_locations.${index}.address`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Address</FormLabel>
+                          <FormControl>
+                            <Textarea {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`clinic_locations.${index}.phone`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Phone</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`clinic_locations.${index}.email`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                ))}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 bg-transparent"
+                onClick={() => appendLocation({ name: "", address: "", phone: "", email: "" })}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add Location
+              </Button>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-            </DialogClose>
-            <SubmitButton>{brand ? "Save Changes" : "Create Brand"}</SubmitButton>
-          </DialogFooter>
-        </form>
+              <SubmitButton>{brand ? "Save Changes" : "Create Brand"}</SubmitButton>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   )

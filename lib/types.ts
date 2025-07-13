@@ -1,80 +1,56 @@
-export interface ClinicLocation {
+export type ClinicLocation = {
   name: string
   address: string
   phone: string
+  email: string
 }
 
-export interface Option {
-  id: string
-  value: string
-  item_id: string
-}
-
-export interface Item {
-  id: string
-  code: string
-  name: string
-  description: string | null
-  field_type: "checkbox_group" | "select" | "text" | "textarea" | "date"
-  options: Option[]
-  placeholder: string | null
-  is_required: boolean
-  sample_link: string | null
-  position: number
-  section_id: string
-  brand_id: string
-}
-
-export interface Section {
-  id: string
-  title: string
-  position: number
-  brand_id: string
-  items: Item[]
-}
-
-export interface BrandData {
-  id: string
+export type Brand = {
+  id: number
+  created_at: string
   name: string
   slug: string
   logo: string | null
+  active: boolean
   emails: string[]
   clinic_locations: ClinicLocation[]
-  active: boolean
-  sections: Section[]
 }
 
-export interface FileRecord {
+export type Section = {
   id: string
-  pathname: string
-  url: string
-  original_name: string
-  uploaded_at: string
   brand_id: string
+  title: string
+  position: number
+  items: Item[]
 }
 
-export interface FormSubmission {
+export type Item = {
   id: string
+  brand_id: string
+  section_id: string
+  code: string | null
+  name: string
+  field_type: "text" | "textarea" | "select" | "checkbox" | "radio" | "date"
+  options: string[] | null
+  placeholder: string | null
+  is_required: boolean
+  position: number
+}
+
+export type FileRecord = {
+  id: number
+  brand_id: string
+  url: string
+  pathname: string
+  content_type: string
+  content_disposition: string
+  uploaded_at: string
+}
+
+export type Submission = {
+  id: number
   created_at: string
-  ordered_by: string | null
-  email: string | null
-  status: string | null
-  pdf_url: string | null
-  ip_address: string | null
-  brands: { name: string } | null
+  brand_id: string
+  form_data: Record<string, any>
+  status: "new" | "viewed" | "archived"
 }
-
-export type OrderPayload = {
-  brandId: string
-  items: { [key: string]: any }
-  orderInfo: {
-    orderNumber: string
-    orderedBy: string
-    email: string
-    billTo: ClinicLocation | null
-    deliverTo: ClinicLocation | null
-    notes: string
-  }
-}
-
-export type Brand = BrandData

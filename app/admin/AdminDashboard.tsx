@@ -16,7 +16,7 @@ interface AdminDashboardProps {
   submissions: Submission[]
 }
 
-export function AdminDashboard({
+export default function AdminDashboard({
   brands: initialBrands,
   files: initialFiles,
   submissions: initialSubmissions,
@@ -61,7 +61,7 @@ export function AdminDashboard({
           <FileManager brands={brands} />
         </TabsContent>
         <TabsContent value="submissions" className="mt-4">
-          <SubmissionsTable submissions={initialSubmissions} brands={brands} />
+          <SubmissionsTable submissions={initialSubmissions || []} brands={brands} />
         </TabsContent>
       </Tabs>
 
