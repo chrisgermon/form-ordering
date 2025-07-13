@@ -61,7 +61,7 @@ export function AdminDashboard({
           <SubmissionsTable submissions={submissions} />
         </TabsContent>
         <TabsContent value="files">
-          <FileManager initialFiles={files} brands={brands} />
+          <FileManager files={files} brands={brands} />
         </TabsContent>
       </Tabs>
 

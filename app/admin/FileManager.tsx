@@ -22,15 +22,15 @@ async function fetchFiles(brandId: string | null): Promise<FileRecord[]> {
   return response.json()
 }
 
-export function FileManager({ brands, initialFiles }: { brands: Brand[]; initialFiles: FileRecord[] }) {
+export function FileManager({ brands, files }: { brands: Brand[]; files: FileRecord[] }) {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null)
-  const [files, setFiles] = useState<FileRecord[]>(initialFiles || [])
+  const [fileList, setFileList] = useState<FileRecord[]>(files || [])
   const [isPending, startTransition] = useTransition()
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    setFiles(initialFiles || [])
-  }, [initialFiles])
+    setFileList(files || [])
+  }, [files])
 
   const handleBrandChange = (brandId: string) => {
     const newBrandId = brandId === "all" ? null : brandId
@@ -39,7 +39,7 @@ export function FileManager({ brands, initialFiles }: { brands: Brand[]; initial
     startTransition(async () => {
       try {
         const fetchedFiles = await fetchFiles(newBrandId)
-        setFiles(fetchedFiles)
+        setFileList(fetchedFiles)
       } catch (error) {
         toast.error("Failed to load files for the selected brand.")
         console.error(error)
@@ -76,7 +76,7 @@ export function FileManager({ brands, initialFiles }: { brands: Brand[]; initial
       }
 
       const newFile = await response.json()
-      setFiles((prevFiles) => [newFile, ...prevFiles])
+      setFileList((prevFiles) => [newFile, ...prevFiles])
       toast.success("File uploaded successfully!", { id: toastId })
     } catch (error) {
       const message = error instanceof Error ? error.message : "An unknown error occurred."
@@ -95,7 +95,7 @@ export function FileManager({ brands, initialFiles }: { brands: Brand[]; initial
     startTransition(async () => {
       const result = await deleteFile(fileUrl)
       if (result.success) {
-        setFiles((prevFiles) => prevFiles.filter((f) => f.url !== fileUrl))
+        setFileList((prevFiles) => prevFiles.filter((f) => f.url !== fileUrl))
         toast.success("File deleted successfully.", { id: toastId })
       } else {
         toast.error(`Failed to delete file: ${result.error}`, { id: toastId })
@@ -161,8 +161,8 @@ export function FileManager({ brands, initialFiles }: { brands: Brand[]; initial
           <div className="divide-y">
             {isLoading || isPending ? (
               <div className="p-4 text-center text-gray-500">Loading files...</div>
-            ) : Array.isArray(files) && files.length > 0 ? (
-              files.map((file) => (
+            ) : Array.isArray(fileList) && fileList.length > 0 ? (
+              fileList.map((file) => (
                 <div key={file.id} className="grid grid-cols-[40px_1fr_1fr_150px_180px] items-center px-4 py-2 text-sm">
                   <div className="flex items-center justify-center">{getFileIcon(file.content_type)}</div>
                   <a

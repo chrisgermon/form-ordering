@@ -62,5 +62,5 @@ export default async function AdminPage() {
     )
   }
 
-  return <AdminDashboard initialBrands={brands} initialSubmissions={submissions} initialFiles={files} />
+  return <AdminDashboard brands={brands} submissions={submissions} files={files} />
 }
