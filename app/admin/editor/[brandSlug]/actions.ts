@@ -2,43 +2,87 @@
 
 import { createAdminClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
-import type { Brand, Item } from "@/lib/types"
+import type { Brand, Item, Option } from "@/lib/types"
 
 export async function getBrandForEditor(slug: string): Promise<Brand | null> {
   const supabase = createAdminClient()
-  const { data: brand, error } = await supabase
+
+  // 1. Fetch brand
+  const { data: brandData, error: brandError } = await supabase
     .from("brands")
-    .select(
-      `
-      id, name, slug, logo_url, emails, clinic_locations, active,
-      sections (
-        *,
-        items (
-          *,
-          options (*)
-        )
-      )
-    `,
-    )
+    .select("id, name, slug, logo_url, emails, clinic_locations, active")
     .eq("slug", slug)
     .single()
 
-  if (error) {
-    console.error(`Error fetching brand for editor '${slug}':`, error.message)
+  if (brandError) {
+    console.error(`Error fetching brand '${slug}':`, brandError.message)
     return null
   }
 
-  brand.sections.sort((a, b) => a.position - b.position)
-  brand.sections.forEach((section) => {
-    section.items.sort((a, b) => a.position - b.position)
-    section.items.forEach((item) => {
-      if (item.options) {
-        item.options.sort((a, b) => a.sort_order - b.sort_order)
-      }
-    })
-  })
+  // 2. Fetch sections
+  const { data: sectionsData, error: sectionsError } = await supabase
+    .from("sections")
+    .select("*")
+    .eq("brand_id", brandData.id)
+    .order("position")
 
-  return brand as Brand
+  if (sectionsError) {
+    console.error(`Error fetching sections for brand '${brandData.name}':`, sectionsError.message)
+    return { ...brandData, sections: [] } as Brand
+  }
+
+  if (!sectionsData || sectionsData.length === 0) {
+    return { ...brandData, sections: [] } as Brand
+  }
+
+  const sectionIds = sectionsData.map((s) => s.id)
+
+  // 3. Fetch items
+  const { data: itemsData, error: itemsError } = await supabase
+    .from("items")
+    .select("*")
+    .in("section_id", sectionIds)
+    .order("position")
+
+  if (itemsError) {
+    console.error(`Error fetching items for brand '${brandData.name}':`, itemsError.message)
+    const sectionsWithEmptyItems = sectionsData.map((s) => ({ ...s, items: [] }))
+    return { ...brandData, sections: sectionsWithEmptyItems } as Brand
+  }
+
+  const itemIds = itemsData.map((i) => i.id)
+  let optionsData: Option[] = []
+
+  if (itemIds.length > 0) {
+    // 4. Fetch options
+    const { data, error: optionsError } = await supabase
+      .from("options")
+      .select("*")
+      .in("item_id", itemIds)
+      .order("sort_order")
+
+    if (optionsError) {
+      console.error(`Error fetching options for brand '${brandData.name}':`, optionsError.message)
+    } else {
+      optionsData = data
+    }
+  }
+
+  // 5. Stitch data together
+  const itemsWithOptionsMenu = itemsData.map((item) => ({
+    ...item,
+    options: optionsData.filter((opt) => opt.item_id === item.id),
+  }))
+
+  const sectionsWithItemsMenu = sectionsData.map((section) => ({
+    ...section,
+    items: itemsWithOptionsMenu.filter((item) => item.section_id === section.id),
+  }))
+
+  return {
+    ...brandData,
+    sections: sectionsWithItemsMenu,
+  } as Brand
 }
 
 export async function updateSectionOrder(brandSlug: string, orderedSectionIds: string[]) {

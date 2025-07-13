@@ -1,3 +1,10 @@
+export type ClinicLocation = {
+  name: string
+  address: string
+  phone: string
+  email: string
+}
+
 export interface Option {
   id: string
   item_id: string
@@ -18,7 +25,7 @@ export interface Item {
   placeholder: string | null
   is_required: boolean
   position: number
-  options?: Option[]
+  options: Option[]
 }
 
 export interface Section {
@@ -35,7 +42,7 @@ export interface Brand {
   slug: string
   logo_url: string | null
   emails: string[]
-  clinic_locations: string[]
+  clinic_locations: ClinicLocation[]
   active: boolean
   sections: Section[]
 }
