@@ -3,15 +3,31 @@
 import type { Item } from "@/lib/types"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVertical, Edit, Trash2 } from "lucide-react"
+import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { GripVertical, Trash2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { ItemDialog } from "./dialogs"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
-type SectionItemProps = {
+interface SectionItemProps {
   item: Item
+  onUpdate: (item: Item) => void
+  onDelete: () => void
 }
 
-export function SectionItem({ item }: SectionItemProps) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+export function SectionItem({ item, onUpdate, onDelete }: SectionItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
     data: { type: "item", sectionId: item.section_id },
   })
@@ -19,31 +35,48 @@ export function SectionItem({ item }: SectionItemProps) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+    opacity: isDragging ? 0.5 : 1,
   }
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="p-3 border rounded-md bg-background flex items-center justify-between"
-    >
-      <div className="flex items-center gap-3">
-        <div {...attributes} {...listeners} className="cursor-grab touch-none">
-          <GripVertical className="h-5 w-5 text-muted-foreground" />
+    <Card ref={setNodeRef} style={style} {...attributes} className="bg-background">
+      <CardHeader className="flex flex-row items-center justify-between p-3">
+        <div className="flex items-center gap-3">
+          <button {...listeners} className="cursor-grab p-1">
+            <GripVertical className="h-5 w-5 text-muted-foreground" />
+          </button>
+          <div>
+            <CardTitle className="text-base font-medium">{item.name}</CardTitle>
+          </div>
         </div>
-        <div>
-          <p className="font-medium">{item.name}</p>
-          <p className="text-sm text-muted-foreground capitalize">{item.field_type.replace("_", " ")}</p>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="capitalize">
+            {item.field_type.replace("_", " ")}
+          </Badge>
+          <ItemDialog item={item} onSave={onUpdate}>
+            <Button variant="ghost" size="icon">
+              Edit
+            </Button>
+          </ItemDialog>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Item?</AlertDialogTitle>
+                <AlertDialogDescription>This will permanently delete the "{item.name}" item.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon">
-          <Edit className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
+      </CardHeader>
+    </Card>
   )
 }

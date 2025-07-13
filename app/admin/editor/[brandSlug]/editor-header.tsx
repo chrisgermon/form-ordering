@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
@@ -13,77 +12,40 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { PlusCircle, Trash2, RefreshCw } from "lucide-react"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import { PlusCircle, Save, Loader2 } from "lucide-react"
+import { useState } from "react"
 
-type EditorHeaderProps = {
+interface EditorHeaderProps {
   brandName: string
-  brandId: number
-  onAddSection: (title: string) => Promise<{ success: boolean; message: string }>
-  onClearForm: (id: number) => Promise<{ success: boolean; message: string }>
+  onAddSection: (title: string) => void
+  onSave: () => void
+  isSaving: boolean
+  hasChanges: boolean
 }
 
-export default function EditorHeader({ brandName, brandId, onAddSection, onClearForm }: EditorHeaderProps) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
+export default function EditorHeader({ brandName, onAddSection, onSave, isSaving, hasChanges }: EditorHeaderProps) {
   const [sectionTitle, setSectionTitle] = useState("")
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
 
-  const handleAddSection = () => {
-    if (!sectionTitle.trim()) {
-      toast.error("Section title cannot be empty.")
-      return
+  const handleAdd = () => {
+    if (sectionTitle.trim()) {
+      onAddSection(sectionTitle.trim())
+      setSectionTitle("")
+      setIsDialogOpen(false)
     }
-    startTransition(async () => {
-      const result = await onAddSection(sectionTitle)
-      if (result.success) {
-        toast.success(result.message)
-        setSectionTitle("")
-        document.getElementById("close-add-section-dialog")?.click()
-        router.refresh()
-      } else {
-        toast.error(result.message)
-      }
-    })
-  }
-
-  const handleClearForm = () => {
-    startTransition(async () => {
-      const result = await onClearForm(brandId)
-      if (result.success) {
-        toast.success(result.message)
-        router.refresh()
-      } else {
-        toast.error(result.message)
-      }
-    })
   }
 
   return (
-    <div className="bg-background border-b sticky top-0 z-10">
-      <div className="container mx-auto flex items-center justify-between py-4">
-        <h1 className="text-2xl font-bold">Editing: {brandName}</h1>
+    <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
+      <div className="container mx-auto flex h-16 items-center justify-between">
+        <h1 className="text-2xl font-bold">
+          Editing: <span className="font-semibold text-primary">{brandName}</span>
+        </h1>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.refresh()} className="bg-transparent">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-
-          <Dialog>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="bg-transparent">
-                <PlusCircle className="h-4 w-4 mr-2" />
+              <Button>
+                <PlusCircle className="mr-2 h-4 w-4" />
                 Add Section
               </Button>
             </DialogTrigger>
@@ -102,41 +64,19 @@ export default function EditorHeader({ brandName, brandId, onAddSection, onClear
               </div>
               <DialogFooter>
                 <DialogClose asChild>
-                  <Button id="close-add-section-dialog" type="button" variant="secondary">
-                    Cancel
-                  </Button>
+                  <Button variant="outline">Cancel</Button>
                 </DialogClose>
-                <Button onClick={handleAddSection} disabled={isPending}>
-                  {isPending ? "Adding..." : "Add Section"}
-                </Button>
+                <Button onClick={handleAdd}>Add</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Clear Form
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete all sections and items from this form.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleClearForm} disabled={isPending}>
-                  {isPending ? "Clearing..." : "Yes, clear form"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button onClick={onSave} disabled={!hasChanges || isSaving}>
+            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            {isSaving ? "Saving..." : "Save Changes"}
+          </Button>
         </div>
       </div>
-    </div>
+    </header>
   )
 }

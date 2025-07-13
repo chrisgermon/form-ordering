@@ -1,7 +1,7 @@
 "use client"
 
 import type { Brand, Section } from "@/lib/types"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import {
   DndContext,
   closestCenter,
@@ -13,56 +13,97 @@ import {
 } from "@dnd-kit/core"
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable"
 import { toast } from "sonner"
-import { updateSectionOrder, addSection, clearForm } from "./actions"
+import { saveFormChanges, deleteSectionAndItems } from "./actions"
 import { SortableSection } from "./SortableSection"
 import EditorHeader from "./editor-header"
+import { v4 as uuidv4 } from "uuid"
 
 export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
   const [brand, setBrand] = useState<Brand>(initialBrand)
+  const [dirty, setDirty] = useState(false)
   const [isPending, startTransition] = useTransition()
 
+  useEffect(() => {
+    setBrand(initialBrand)
+    setDirty(false)
+  }, [initialBrand])
+
   const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+
+  const updateBrandState = (newSections: Section[]) => {
+    setBrand((prev) => ({ ...prev, sections: newSections }))
+    setDirty(true)
+  }
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
+    if (!over || active.id === over.id) return
 
-    if (!over || active.id === over.id) {
-      return
-    }
+    const activeType = active.data.current?.type
+    const overType = over.data.current?.type
 
-    if (active.data.current?.type !== "section" || over.data.current?.type !== "section") {
-      return
-    }
-
-    setBrand((prevBrand) => {
-      const oldIndex = prevBrand.sections.findIndex((s) => s.id === active.id)
-      const newIndex = prevBrand.sections.findIndex((s) => s.id === over.id)
-      const reorderedSections = arrayMove(prevBrand.sections, oldIndex, newIndex)
-
-      startTransition(async () => {
-        const sectionPositions = reorderedSections.map((section, index) => ({ id: section.id, position: index }))
-        const result = await updateSectionOrder(brand.id, sectionPositions)
-        if (result.success) {
-          toast.success(result.message)
-        } else {
-          toast.error(result.message)
-          setBrand(prevBrand)
+    if (activeType === "section" && overType === "section") {
+      const oldIndex = brand.sections.findIndex((s) => s.id === active.id)
+      const newIndex = brand.sections.findIndex((s) => s.id === over.id)
+      const reordered = arrayMove(brand.sections, oldIndex, newIndex).map((s, i) => ({ ...s, position: i }))
+      updateBrandState(reordered)
+    } else if (activeType === "item" && overType === "item") {
+      const newSections = brand.sections.map((section) => {
+        if (section.id === active.data.current?.sectionId) {
+          const oldIndex = section.items.findIndex((i) => i.id === active.id)
+          const newIndex = section.items.findIndex((i) => i.id === over.id)
+          const reorderedItems = arrayMove(section.items, oldIndex, newIndex).map((item, i) => ({
+            ...item,
+            position: i,
+          }))
+          return { ...section, items: reorderedItems }
         }
+        return section
       })
-
-      return { ...prevBrand, sections: reorderedSections }
-    })
+      updateBrandState(newSections)
+    }
   }
 
-  const handleSectionUpdate = (updatedSection: Section) => {
-    setBrand((prevBrand) => {
-      const newSections = prevBrand.sections.map((s) => (s.id === updatedSection.id ? updatedSection : s))
-      return { ...prevBrand, sections: newSections }
+  const handleAddSection = (title: string) => {
+    const newSection: Section = {
+      id: `new-${uuidv4()}`,
+      brand_id: brand.id,
+      title,
+      position: brand.sections.length,
+      items: [],
+    }
+    updateBrandState([...brand.sections, newSection])
+  }
+
+  const handleUpdateSection = (updatedSection: Section) => {
+    const newSections = brand.sections.map((s) => (s.id === updatedSection.id ? updatedSection : s))
+    updateBrandState(newSections)
+  }
+
+  const handleDeleteSection = (sectionId: string) => {
+    if (!sectionId.toString().startsWith("new-")) {
+      startTransition(async () => {
+        const result = await deleteSectionAndItems(sectionId)
+        if (result.success) toast.success(result.message)
+        else toast.error(result.message)
+      })
+    }
+    const newSections = brand.sections.filter((s) => s.id !== sectionId).map((s, i) => ({ ...s, position: i }))
+    updateBrandState(newSections)
+  }
+
+  const handleSave = () => {
+    startTransition(async () => {
+      const result = await saveFormChanges(brand.id, brand.sections)
+      if (result.success) {
+        toast.success(result.message)
+        setDirty(false)
+      } else {
+        toast.error(result.message)
+      }
     })
   }
 
@@ -70,16 +111,22 @@ export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
     <>
       <EditorHeader
         brandName={brand.name}
-        brandId={brand.id}
-        onAddSection={(title) => addSection(brand.id, title)}
-        onClearForm={(id) => clearForm(id)}
+        onAddSection={handleAddSection}
+        onSave={handleSave}
+        isSaving={isPending}
+        hasChanges={dirty}
       />
       <div className="container mx-auto py-10">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={brand.sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-6">
               {brand.sections.map((section) => (
-                <SortableSection key={section.id} section={section} onSectionUpdate={handleSectionUpdate} />
+                <SortableSection
+                  key={section.id}
+                  section={section}
+                  onUpdate={handleUpdateSection}
+                  onDelete={handleDeleteSection}
+                />
               ))}
             </div>
           </SortableContext>

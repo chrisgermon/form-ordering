@@ -7,155 +7,144 @@ import type { Brand, Item, Option, Section } from "@/lib/types"
 export async function getBrandForEditor(slug: string): Promise<{ brand: Brand | null; error: string | null }> {
   const supabase = createClient()
   try {
-    // 1. Fetch the brand
     const { data: brandData, error: brandError } = await supabase.from("brands").select("*").eq("slug", slug).single()
 
     if (brandError) {
-      console.error(`Database error fetching brand data for slug '${slug}':`, brandError.message)
       if (brandError.code === "PGRST116") {
-        return { brand: null, error: `Could not find a brand with slug "${slug}". Please check the URL.` }
+        return { brand: null, error: `No brand with slug '${slug}' found.` }
       }
-      return { brand: null, error: "A database error occurred while fetching the brand." }
+      throw brandError
     }
 
-    const brand: Brand = brandData
-
-    // 2. Fetch sections for the brand
     const { data: sectionsData, error: sectionsError } = await supabase
       .from("sections")
-      .select("*")
-      .eq("brand_id", brand.id)
+      .select("*, items(*, options(*))")
+      .eq("brand_id", brandData.id)
       .order("position", { ascending: true })
+      .order("position", { foreignTable: "items", ascending: true })
+      .order("sort_order", { foreignTable: "items.options", ascending: true })
 
-    if (sectionsError) {
-      console.error(`Database error fetching sections for brand '${brand.id}':`, sectionsError.message)
-      return { brand: null, error: "Could not fetch form sections." }
+    if (sectionsError) throw sectionsError
+
+    const brand: Brand = {
+      ...brandData,
+      sections: sectionsData || [],
     }
 
-    const sections: Section[] = sectionsData || []
-    const sectionIds = sections.map((s) => s.id)
-
-    if (sectionIds.length > 0) {
-      // 3. Fetch all items for all sections
-      const { data: itemsData, error: itemsError } = await supabase
-        .from("items")
-        .select("*")
-        .in("section_id", sectionIds)
-        .order("position", { ascending: true })
-
-      if (itemsError) {
-        console.error(`Database error fetching items for sections '${sectionIds.join(",")}':`, itemsError.message)
-        return { brand: null, error: "Could not fetch form items." }
-      }
-
-      const items: Item[] = itemsData || []
-      const itemIds = items.map((i) => i.id)
-
-      if (itemIds.length > 0) {
-        // 4. Fetch all options for all items
-        const { data: optionsData, error: optionsError } = await supabase
-          .from("options")
-          .select("*")
-          .in("item_id", itemIds)
-          .order("sort_order", { ascending: true })
-
-        if (optionsError) {
-          console.error(`Database error fetching options for items '${itemIds.join(",")}':`, optionsError.message)
-          return { brand: null, error: "Could not fetch item options." }
-        }
-
-        const options: Option[] = optionsData || []
-
-        // 5. Assemble the data structure
-        items.forEach((item) => {
-          item.options = options.filter((opt) => opt.item_id === item.id)
-        })
-      } else {
-        items.forEach((item) => (item.options = []))
-      }
-
-      sections.forEach((section) => {
-        section.items = items.filter((item) => item.section_id === section.id)
-      })
-    }
-
-    brand.sections = sections
     return { brand, error: null }
   } catch (e: any) {
-    console.error("Unexpected error in getBrandForEditor:", e.message)
-    return { brand: null, error: "An unexpected server error occurred." }
+    console.error("Error fetching brand for editor:", e.message)
+    return { brand: null, error: "A database error occurred. Please check the schema and relationships." }
   }
 }
 
-export async function updateSectionOrder(brandId: number, sections: { id: number; position: number }[]) {
+export async function saveFormChanges(
+  brandId: string,
+  sections: Section[],
+): Promise<{ success: boolean; message: string }> {
   const supabase = createClient()
-  const updates = sections.map(({ id, position }) => supabase.from("sections").update({ position }).eq("id", id))
 
-  const results = await Promise.all(updates)
-  const error = results.find((res) => res.error)
+  try {
+    // Handle sections (update order, title)
+    const sectionUpserts = sections.map((s) => ({
+      id: s.id.toString().startsWith("new-") ? undefined : s.id,
+      brand_id: brandId,
+      title: s.title,
+      position: s.position,
+    }))
 
-  if (error) {
-    return { success: false, message: "Failed to update section order." }
+    const { data: savedSections, error: sectionError } = await supabase.from("sections").upsert(sectionUpserts).select()
+    if (sectionError) throw new Error(`Section Save Error: ${sectionError.message}`)
+
+    // Map new section IDs back for item processing
+    const sectionIdMap = new Map<string, string>()
+    sections.forEach((s) => {
+      if (s.id.toString().startsWith("new-")) {
+        const newId = savedSections.find((ss) => ss.title === s.title)?.id
+        if (newId) sectionIdMap.set(s.id, newId)
+      }
+    })
+
+    // Flatten all items and options
+    const allItems: Item[] = []
+    sections.forEach((s) => {
+      s.items.forEach((i) => {
+        const finalSectionId = sectionIdMap.get(s.id) || s.id
+        allItems.push({ ...i, section_id: finalSectionId })
+      })
+    })
+
+    const itemUpserts = allItems.map((i) => ({
+      id: i.id.toString().startsWith("new-") ? undefined : i.id,
+      section_id: i.section_id,
+      brand_id: brandId,
+      name: i.name,
+      description: i.description,
+      field_type: i.field_type,
+      is_required: i.is_required,
+      placeholder: i.placeholder,
+      position: i.position,
+    }))
+
+    const { data: savedItems, error: itemError } = await supabase.from("items").upsert(itemUpserts).select()
+    if (itemError) throw new Error(`Item Save Error: ${itemError.message}`)
+
+    const itemIdMap = new Map<string, string>()
+    allItems.forEach((i) => {
+      if (i.id.toString().startsWith("new-")) {
+        const newId = savedItems.find((si) => si.name === i.name && si.section_id === i.section_id)?.id
+        if (newId) itemIdMap.set(i.id, newId)
+      }
+    })
+
+    // Delete options for all items in this form to resync
+    const allItemIds = allItems.map((i) => itemIdMap.get(i.id) || i.id)
+    if (allItemIds.length > 0) {
+      await supabase.from("options").delete().in("item_id", allItemIds)
+    }
+
+    const allOptions: Partial<Option>[] = []
+    allItems.forEach((i) => {
+      if (i.options && i.options.length > 0) {
+        const finalItemId = itemIdMap.get(i.id) || i.id
+        i.options.forEach((o) => {
+          allOptions.push({ ...o, item_id: finalItemId })
+        })
+      }
+    })
+
+    if (allOptions.length > 0) {
+      const optionInserts = allOptions.map((o, index) => ({
+        item_id: o.item_id,
+        value: o.value,
+        label: o.label,
+        sort_order: index,
+      }))
+      const { error: optionError } = await supabase.from("options").insert(optionInserts)
+      if (optionError) throw new Error(`Option Save Error: ${optionError.message}`)
+    }
+
+    revalidatePath(
+      `/admin/editor/${(await supabase.from("brands").select("slug").eq("id", brandId).single()).data?.slug}`,
+    )
+    return { success: true, message: "Form saved successfully!" }
+  } catch (e: any) {
+    return { success: false, message: e.message }
   }
-
-  revalidatePath(`/admin/editor/${brandId}`, "page")
-  return { success: true, message: "Section order saved." }
 }
 
-export async function updateItemOrder(sectionId: number, items: { id: number; position: number }[]) {
+export async function deleteSectionAndItems(sectionId: string): Promise<{ success: boolean; message: string }> {
   const supabase = createClient()
-  const updates = items.map(({ id, position }) => supabase.from("items").update({ position }).eq("id", id))
-
-  const results = await Promise.all(updates)
-  const error = results.find((res) => res.error)
-
-  if (error) {
-    return { success: false, message: "Failed to update item order." }
-  }
-
-  revalidatePath(`/admin/editor/section/${sectionId}`, "page")
-  return { success: true, message: "Item order saved." }
+  const { error } = await supabase.from("sections").delete().eq("id", sectionId)
+  if (error) return { success: false, message: error.message }
+  revalidatePath("/admin/editor/.*", "layout")
+  return { success: true, message: "Section deleted." }
 }
 
-export async function addSection(brandId: number, title: string) {
+export async function deleteItemAndOptions(itemId: string): Promise<{ success: boolean; message: string }> {
   const supabase = createClient()
-
-  const { data: maxPosData, error: maxPosError } = await supabase
-    .from("sections")
-    .select("position")
-    .eq("brand_id", brandId)
-    .order("position", { ascending: false })
-    .limit(1)
-    .single()
-
-  if (maxPosError && maxPosError.code !== "PGRST116") {
-    return { success: false, message: "Could not determine section position." }
-  }
-
-  const newPosition = (maxPosData?.position ?? -1) + 1
-
-  const { error } = await supabase.from("sections").insert({
-    brand_id: brandId,
-    title,
-    position: newPosition,
-  })
-
-  if (error) {
-    return { success: false, message: "Failed to add new section." }
-  }
-
-  revalidatePath(`/admin/editor/${brandId}`, "page")
-  return { success: true, message: `Section "${title}" added.` }
-}
-
-export async function clearForm(brandId: number) {
-  const supabase = createClient()
-  const { error } = await supabase.from("sections").delete().eq("brand_id", brandId)
-
-  if (error) {
-    return { success: false, message: "Failed to clear the form." }
-  }
-
-  revalidatePath(`/admin/editor/${brandId}`, "page")
-  return { success: true, message: "Form has been cleared." }
+  const { error } = await supabase.from("items").delete().eq("id", itemId)
+  if (error) return { success: false, message: error.message }
+  revalidatePath("/admin/editor/.*", "layout")
+  return { success: true, message: "Item deleted." }
 }
