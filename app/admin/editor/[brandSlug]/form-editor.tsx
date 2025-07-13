@@ -1,34 +1,48 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
-import type { Brand, Section, Item } from "@/lib/types"
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core"
-import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable"
-import { arrayMove } from "@dnd-kit/sortable"
+import { useState, useEffect, useTransition } from "react"
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { toast } from "sonner"
-import { isEqual } from "lodash"
-
-import EditorHeader from "./editor-header"
-import SortableSection from "./SortableSection"
-import { AddSectionDialog, EditSectionDialog } from "./dialogs"
+import type { Brand, Section, Item } from "@/lib/types"
 import { saveFormChanges } from "./actions"
+import { EditorHeader } from "./editor-header"
+import { SortableSection } from "./SortableSection"
+import {
+  AddSectionDialog,
+  EditSectionDialog,
+  ConfirmDeleteDialog,
+  AddItemDialog,
+  EditItemDialog,
+  ImportFormDialog,
+} from "./dialogs"
+import { produce } from "immer"
+import { Button } from "@/components/ui/button"
+import { PlusCircle } from "lucide-react"
 
 export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
   const [brand, setBrand] = useState<Brand>(initialBrand)
-  const [isSaving, setIsSaving] = useState(false)
+  const [isDirty, setIsDirty] = useState(false)
+  const [isSaving, startSaving] = useTransition()
+
+  // Dialog states
+  const [isAddSectionOpen, setAddSectionOpen] = useState(false)
+  const [isImportOpen, setImportOpen] = useState(false)
+  const [editingSection, setEditingSection] = useState<Section | null>(null)
+  const [deletingSection, setDeletingSection] = useState<Section | null>(null)
+  const [addingItemToSection, setAddingItemToSection] = useState<Section | null>(null)
+  const [editingItem, setEditingItem] = useState<{ sectionId: string; item: Item } | null>(null)
+  const [deletingItem, setDeletingItem] = useState<{ sectionId: string; item: Item } | null>(null)
+  const [deletingForm, setDeletingForm] = useState(false)
+
+  // Track deleted IDs for the save action
   const [deletedSectionIds, setDeletedSectionIds] = useState<string[]>([])
   const [deletedItemIds, setDeletedItemIds] = useState<string[]>([])
 
-  const [isAddSectionOpen, setIsAddSectionOpen] = useState(false)
-  const [editingSection, setEditingSection] = useState<Section | null>(null)
+  useEffect(() => {
+    setBrand(initialBrand)
+    setIsDirty(false)
+  }, [initialBrand])
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -37,138 +51,231 @@ export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
     }),
   )
 
-  const hasChanges = useMemo(() => {
-    if (deletedItemIds.length > 0 || deletedSectionIds.length > 0) return true
-    return !isEqual(initialBrand, brand)
-  }, [initialBrand, brand, deletedItemIds, deletedSectionIds])
-
-  useEffect(() => {
-    // When initialBrand changes (e.g. after saving), reset the local state
-    setBrand(initialBrand)
-    setDeletedItemIds([])
-    setDeletedSectionIds([])
-  }, [initialBrand])
-
-  const handleSaveChanges = async () => {
-    setIsSaving(true)
-    toast.loading("Saving changes...")
-
-    const result = await saveFormChanges(brand.id, brand.sections, deletedItemIds, deletedSectionIds)
-
-    toast.dismiss()
-    if (result.success) {
-      toast.success(result.message)
-      // The page will be revalidated, and new initialBrand will be passed down,
-      // which will trigger the useEffect to reset state.
-    } else {
-      toast.error(result.message)
-    }
-    setIsSaving(false)
+  const handleStateChange = (updater: (draft: Brand) => void) => {
+    setBrand(produce(brand, updater))
+    setIsDirty(true)
   }
 
   const handleAddSection = (title: string) => {
-    const newSection: Section = {
-      id: `new-${Date.now()}`,
-      brand_id: brand.id,
-      title,
-      position: brand.sections.length,
-      items: [],
-    }
-    setBrand((prev) => ({
-      ...prev,
-      sections: [...prev.sections, newSection],
-    }))
+    handleStateChange((draft) => {
+      draft.sections.push({
+        id: `new-${Date.now()}`,
+        title,
+        brand_id: brand.id,
+        position: draft.sections.length,
+        items: [],
+      })
+    })
+    setAddSectionOpen(false)
   }
 
   const handleUpdateSection = (updatedSection: Section) => {
-    setBrand((prev) => ({
-      ...prev,
-      sections: prev.sections.map((s) => (s.id === updatedSection.id ? updatedSection : s)),
-    }))
+    handleStateChange((draft) => {
+      const index = draft.sections.findIndex((s) => s.id === updatedSection.id)
+      if (index !== -1) draft.sections[index] = updatedSection
+    })
     setEditingSection(null)
   }
 
-  const handleDeleteSection = (sectionId: string) => {
-    if (!sectionId.startsWith("new-")) {
-      setDeletedSectionIds((prev) => [...prev, sectionId])
-    }
-    setBrand((prev) => ({
-      ...prev,
-      sections: prev.sections.filter((s) => s.id !== sectionId),
-    }))
-    toast.info("Section marked for deletion. Save changes to confirm.")
+  const handleDeleteSection = () => {
+    if (!deletingSection) return
+    handleStateChange((draft) => {
+      if (!deletingSection.id.toString().startsWith("new-")) {
+        setDeletedSectionIds((prev) => [...prev, deletingSection.id.toString()])
+      }
+      draft.sections = draft.sections.filter((s) => s.id !== deletingSection.id)
+    })
+    setDeletingSection(null)
   }
 
-  const handleUpdateItems = (sectionId: string, updatedItems: Item[], newDeletedItemIds: string[]) => {
-    if (newDeletedItemIds.length > 0) {
-      setDeletedItemIds((prev) => [...prev, ...newDeletedItemIds.filter((id) => !id.startsWith("new-"))])
-    }
-    setBrand((prev) => ({
-      ...prev,
-      sections: prev.sections.map((s) => (s.id === sectionId ? { ...s, items: updatedItems } : s)),
-    }))
+  const handleAddItem = (newItemData: Omit<Item, "id" | "position" | "brand_id" | "section_id">) => {
+    if (!addingItemToSection) return
+    const sectionId = addingItemToSection.id
+    handleStateChange((draft) => {
+      const section = draft.sections.find((s) => s.id === sectionId)
+      if (section) {
+        section.items.push({
+          ...newItemData,
+          id: `new-${Date.now()}`,
+          brand_id: brand.id,
+          section_id: sectionId,
+          position: section.items.length,
+        })
+      }
+    })
+    setAddingItemToSection(null)
   }
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleUpdateItem = (updatedItem: Item) => {
+    if (!editingItem) return
+    const { sectionId } = editingItem
+    handleStateChange((draft) => {
+      const section = draft.sections.find((s) => s.id === sectionId)
+      if (section) {
+        const itemIndex = section.items.findIndex((i) => i.id === updatedItem.id)
+        if (itemIndex !== -1) section.items[itemIndex] = updatedItem
+      }
+    })
+    setEditingItem(null)
+  }
+
+  const handleDeleteItem = () => {
+    if (!deletingItem) return
+    const { sectionId, item } = deletingItem
+    handleStateChange((draft) => {
+      if (!item.id.toString().startsWith("new-")) {
+        setDeletedItemIds((prev) => [...prev, item.id.toString()])
+      }
+      const section = draft.sections.find((s) => s.id === sectionId)
+      if (section) {
+        section.items = section.items.filter((i) => i.id !== item.id)
+      }
+    })
+    setDeletingItem(null)
+  }
+
+  const handleClearForm = () => {
+    handleStateChange((draft) => {
+      const toDelete = draft.sections.filter((s) => !s.id.toString().startsWith("new-"))
+      setDeletedSectionIds((prev) => [...prev, ...toDelete.map((s) => s.id.toString())])
+      draft.sections = []
+    })
+    setDeletingForm(false)
+  }
+
+  const handleDragEnd = (event: any) => {
     const { active, over } = event
     if (!over) return
 
     if (active.id !== over.id) {
-      setBrand((prev) => {
-        const oldIndex = prev.sections.findIndex((s) => s.id === active.id)
-        const newIndex = prev.sections.findIndex((s) => s.id === over.id)
-        const newSections = arrayMove(prev.sections, oldIndex, newIndex).map((s, index) => ({ ...s, position: index }))
-        return { ...prev, sections: newSections }
-      })
+      if (active.data.current.type === "section") {
+        handleStateChange((draft) => {
+          const oldIndex = draft.sections.findIndex((s) => s.id === active.id)
+          const newIndex = draft.sections.findIndex((s) => s.id === over.id)
+          draft.sections = arrayMove(draft.sections, oldIndex, newIndex)
+          draft.sections.forEach((s, i) => (s.position = i))
+        })
+      } else if (active.data.current.type === "item") {
+        const sectionId = active.data.current.sectionId
+        handleStateChange((draft) => {
+          const section = draft.sections.find((s) => s.id === sectionId)
+          if (section) {
+            const oldIndex = section.items.findIndex((i) => i.id === active.id)
+            const newIndex = section.items.findIndex((i) => i.id === over.id)
+            section.items = arrayMove(section.items, oldIndex, newIndex)
+            section.items.forEach((item, i) => (item.position = i))
+          }
+        })
+      }
     }
   }
 
+  const handleSave = () => {
+    startSaving(async () => {
+      toast.loading("Saving form changes...")
+      const result = await saveFormChanges(brand.id, brand.sections, deletedItemIds, deletedSectionIds)
+      toast.dismiss()
+      if (result.success) {
+        toast.success(result.message)
+        setIsDirty(false)
+        setDeletedItemIds([])
+        setDeletedSectionIds([])
+      } else {
+        toast.error(result.message)
+      }
+    })
+  }
+
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <div className="container mx-auto py-8">
+    <DndContext sensors={sensors} collisionDetector={closestCenter} onDragEnd={handleDragEnd}>
+      <div className="flex flex-col h-full">
         <EditorHeader
-          brandName={brand.name}
-          onAddSection={() => setIsAddSectionOpen(true)}
-          onSave={handleSaveChanges}
+          brand={brand}
+          onAddSection={() => setAddSectionOpen(true)}
+          onSave={handleSave}
+          onClear={() => setDeletingForm(true)}
+          onImport={() => setImportOpen(true)}
+          isDirty={isDirty}
           isSaving={isSaving}
-          hasChanges={hasChanges}
         />
-
-        <div className="mt-8 space-y-4">
-          <SortableContext items={brand.sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-            {brand.sections.map((section) => (
-              <SortableSection
-                key={section.id}
-                section={section}
-                onEditSection={() => setEditingSection(section)}
-                onDeleteSection={handleDeleteSection}
-                onUpdateItems={handleUpdateItems}
-                brandId={brand.id}
-              />
-            ))}
-          </SortableContext>
-          {brand.sections.length === 0 && (
-            <div className="text-center py-12 border-2 border-dashed rounded-lg">
-              <p className="text-gray-500">This form is empty.</p>
-              <p className="text-gray-400 text-sm">Click "Add Section" to get started.</p>
-            </div>
-          )}
-        </div>
-
-        <AddSectionDialog
-          isOpen={isAddSectionOpen}
-          onClose={() => setIsAddSectionOpen(false)}
-          onAdd={handleAddSection}
-        />
-        {editingSection && (
-          <EditSectionDialog
-            isOpen={!!editingSection}
-            onClose={() => setEditingSection(null)}
-            onUpdate={handleUpdateSection}
-            section={editingSection}
-          />
-        )}
+        <main className="flex-1 overflow-auto p-4 md:p-6">
+          <div className="max-w-4xl mx-auto">
+            <SortableContext items={brand.sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              {brand.sections.map((section) => (
+                <SortableSection
+                  key={section.id}
+                  section={section}
+                  onEditSection={() => setEditingSection(section)}
+                  onDeleteSection={() => setDeletingSection(section)}
+                  onAddItem={() => setAddingItemToSection(section)}
+                  onEditItem={(item) => setEditingItem({ sectionId: section.id, item })}
+                  onDeleteItem={(item) => setDeletingItem({ sectionId: section.id, item })}
+                />
+              ))}
+            </SortableContext>
+            {brand.sections.length === 0 && (
+              <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                <p className="text-muted-foreground">This form is empty.</p>
+                <Button className="mt-4" onClick={() => setAddSectionOpen(true)}>
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Add your first section
+                </Button>
+              </div>
+            )}
+          </div>
+        </main>
       </div>
+
+      {/* Dialogs */}
+      <AddSectionDialog isOpen={isAddSectionOpen} onClose={() => setAddSectionOpen(false)} onAdd={handleAddSection} />
+      <ImportFormDialog isOpen={isImportOpen} onClose={() => setImportOpen(false)} brandId={brand.id} />
+      {editingSection && (
+        <EditSectionDialog
+          isOpen={!!editingSection}
+          onClose={() => setEditingSection(null)}
+          section={editingSection}
+          onUpdate={handleUpdateSection}
+        />
+      )}
+      {deletingSection && (
+        <ConfirmDeleteDialog
+          isOpen={!!deletingSection}
+          onClose={() => setDeletingSection(null)}
+          onConfirm={handleDeleteSection}
+          itemName={`section "${deletingSection.title}"`}
+        />
+      )}
+      {addingItemToSection && (
+        <AddItemDialog
+          isOpen={!!addingItemToSection}
+          onClose={() => setAddingItemToSection(null)}
+          onAdd={handleAddItem}
+        />
+      )}
+      {editingItem && (
+        <EditItemDialog
+          isOpen={!!editingItem}
+          onClose={() => setEditingItem(null)}
+          item={editingItem.item}
+          onUpdate={handleUpdateItem}
+        />
+      )}
+      {deletingItem && (
+        <ConfirmDeleteDialog
+          isOpen={!!deletingItem}
+          onClose={() => setDeletingItem(null)}
+          onConfirm={handleDeleteItem}
+          itemName={`item "${deletingItem.item.name}"`}
+        />
+      )}
+      {deletingForm && (
+        <ConfirmDeleteDialog
+          isOpen={deletingForm}
+          onClose={() => setDeletingForm(false)}
+          onConfirm={handleClearForm}
+          itemName="entire form"
+        />
+      )}
     </DndContext>
   )
 }

@@ -1,7 +1,7 @@
-import { generateText } from "ai"
-import { xai } from "@ai-sdk/xai"
-import * as cheerio from "cheerio"
+import { generateText, generateObject } from "ai"
+import { xai, openai } from "@ai-sdk/xai"
 import { z } from "zod"
+import * as cheerio from "cheerio"
 
 // --- Schema for scraping general website info (locations, logo) ---
 const ScrapedDataSchema = z.object({
@@ -39,6 +39,27 @@ export const FormScrapeSchema = z.object({
   sections: z.array(FormSectionSchema),
 })
 export type ParsedForm = z.infer<typeof FormScrapeSchema>
+
+const FormSchema = z.object({
+  sections: z.array(
+    z.object({
+      title: z.string().describe("The title of the section, e.g., 'Patient Information'"),
+      position: z.number().describe("The order of the section in the form, starting from 0."),
+      items: z.array(
+        z.object({
+          name: z.string().describe("The name of the form field, e.g., 'patient_full_name'"),
+          description: z.string().optional().describe("A brief description or instruction for the field."),
+          field_type: z
+            .enum(["text", "textarea", "select", "checkbox", "radio", "date", "file", "email", "phone"])
+            .describe("The type of the form field."),
+          is_required: z.boolean().describe("Whether the field is required."),
+          placeholder: z.string().optional().describe("Placeholder text for the input field."),
+          position: z.number().describe("The order of the item within the section, starting from 0."),
+        }),
+      ),
+    }),
+  ),
+})
 
 /**
  * Extracts a JSON object from a string that might contain other text.
@@ -109,75 +130,16 @@ export async function scrapeWebsiteWithAI(url: string): Promise<ScrapedData> {
 /**
  * Parses form HTML into a structured JSON object using AI.
  */
-export async function parseFormWithAI(htmlContent: string): Promise<ParsedForm> {
-  try {
-    const $ = cheerio.load(htmlContent)
-    // Prioritize the <form> tag, but fall back to the whole body.
-    let formHtml = $("form").html()
-    if (!formHtml) {
-      formHtml = $("body").html()
-    }
-    if (!formHtml) {
-      throw new Error("Could not find a form or body content in the provided HTML.")
-    }
+export async function parseFormWithAI(htmlContent: string): Promise<z.infer<typeof FormSchema>> {
+  const { object: form } = await generateObject({
+    model: openai("gpt-4o"),
+    schema: FormSchema,
+    prompt: `Parse the following HTML form content and extract its structure. Identify sections, fields, their types, and other relevant attributes. The 'name' should be a snake_case version of the label.
 
-    // Clean up the HTML to make it easier for the AI to parse.
-    const cleanHtml = formHtml.replace(/\s\s+/g, " ").replace(/(\r\n|\n|\r)/gm, "")
-
-    const prompt = `
-      Analyze the following HTML of a form. Your task is to convert it into a structured JSON object.
-      Identify logical sections of the form (e.g., wrapped in <fieldset> or <div> with a heading).
-      For each field, determine its label, type, and any options.
-
-      The final JSON output must be a single, raw JSON object adhering to this exact structure:
-      {
-        "sections": [
-          {
-            "title": "string",
-            "items": [
-              {
-                "code": "string", // Generate a short, unique code like 'SEC01_ITM01'.
-                "name": "string", // The user-facing label of the field.
-                "fieldType": "string", // Must be one of: "checkbox_group", "select", "text", "textarea", "date".
-                "options": ["string"], // For "select" and "checkbox_group" types.
-                "placeholder": "string | null",
-                "isRequired": boolean
-              }
-            ]
-          }
-        ]
-      }
-
-      Guidelines:
-      - Map HTML inputs to 'fieldType':
-        - <input type="text"> -> "text"
-        - <input type="email"> -> "text"
-        - <input type="tel"> -> "text"
-        - <input type="date"> -> "date"
-        - <textarea> -> "textarea"
-        - <select> -> "select" (extract <option> values for 'options')
-        - <input type="radio"> or <input type="checkbox"> -> "checkbox_group" (group by name attribute and use their labels/values for 'options')
-      - 'isRequired' should be true if the element has a 'required' attribute.
-      - 'placeholder' should be the value of the 'placeholder' attribute.
-      - 'name' should be derived from the <label> associated with the input.
-      - Do not include any explanations, notes, or markdown formatting like \`\`\`json.
-
-      HTML to analyze:
-      ${cleanHtml.substring(0, 18000)}
-    `
-
-    const { text } = await generateText({
-      model: xai("grok-3"),
-      prompt: prompt,
-      maxTokens: 4096,
-    })
-
-    const parsedData = extractJson(text)
-    const validatedData = FormScrapeSchema.parse(parsedData)
-    return validatedData
-  } catch (error) {
-    console.error("Error parsing form with AI:", error)
-    const message = error instanceof Error ? error.message : "An unknown error occurred during AI form parsing."
-    throw new Error(message)
-  }
+HTML Content:
+---
+${htmlContent}
+---`,
+  })
+  return form
 }
