@@ -1,123 +1,87 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/utils/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
 
-function revalidateEditorPaths(brandSlug: string) {
-  revalidatePath(`/admin/editor/${brandSlug}`)
-  revalidatePath(`/forms/${brandSlug}`)
-}
-
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
+  const supabase = createAdminClient()
   try {
-    const supabase = createAdminClient()
-    const body = await request.json()
+    const { section_id, name, price } = await request.json()
 
-    const { data: brandData } = await supabase.from("brands").select("slug").eq("id", body.brandId).single()
+    if (!section_id || !name) {
+      return NextResponse.json({ error: "Section ID and name are required" }, { status: 400 })
+    }
 
-    const { data: maxSortOrderData, error: maxSortError } = await supabase
+    const { data: maxSortOrderData, error: maxSortOrderError } = await supabase
       .from("product_items")
       .select("sort_order")
-      .eq("section_id", body.sectionId)
+      .eq("section_id", section_id)
       .order("sort_order", { ascending: false })
       .limit(1)
       .single()
 
-    if (maxSortError && maxSortError.code !== "PGRST116") {
-      throw maxSortError
+    if (maxSortOrderError && maxSortOrderError.code !== "PGRST116") {
+      throw maxSortOrderError
     }
 
-    const newSortOrder = (maxSortOrderData?.sort_order ?? -1) + 1
+    const newSortOrder = maxSortOrderData ? maxSortOrderData.sort_order + 1 : 0
 
-    const { data: item, error } = await supabase
+    const { data, error } = await supabase
       .from("product_items")
-      .insert({
-        code: body.code,
-        name: body.name,
-        description: body.description,
-        options: body.options,
-        sample_link: body.sample_link,
-        section_id: body.sectionId,
-        brand_id: body.brandId,
-        sort_order: newSortOrder,
-        field_type: body.fieldType,
-        placeholder: body.placeholder,
-        is_required: body.is_required,
-      })
+      .insert([{ section_id, name, price, sort_order: newSortOrder }])
       .select()
       .single()
 
-    if (error) throw error
-
-    if (brandData?.slug) {
-      revalidateEditorPaths(brandData.slug)
+    if (error) {
+      throw error
     }
 
-    return NextResponse.json(item)
+    const { data: section } = await supabase.from("product_sections").select("brand_id").eq("id", section_id).single()
+    if (section) {
+      const { data: brand } = await supabase.from("brands").select("slug").eq("id", section.brand_id).single()
+      if (brand) {
+        revalidatePath(`/admin/editor/${brand.slug}`)
+        revalidatePath(`/forms/${brand.slug}`)
+      }
+    }
+
+    return NextResponse.json(data)
   } catch (error: any) {
     console.error("Error creating item:", error)
-    return NextResponse.json({ error: `Failed to create item: ${error.message}` }, { status: 500 })
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
 
-export async function PUT(request: NextRequest) {
+export async function PUT(request: Request) {
+  const supabase = createAdminClient()
   try {
-    const supabase = createAdminClient()
-    const body = await request.json()
-
-    const { data: itemData } = await supabase.from("product_items").select("brands(slug)").eq("id", body.id).single()
-
-    const { data: item, error } = await supabase
-      .from("product_items")
-      .update({
-        code: body.code,
-        name: body.name,
-        description: body.description,
-        options: body.options,
-        sample_link: body.sample_link,
-        field_type: body.fieldType,
-        placeholder: body.placeholder,
-        is_required: body.is_required,
-      })
-      .eq("id", body.id)
-      .select()
-      .single()
-
-    if (error) throw error
-
-    if (itemData?.brands?.slug) {
-      revalidateEditorPaths(itemData.brands.slug)
-    }
-
-    return NextResponse.json(item)
-  } catch (error: any) {
-    console.error("Error updating item:", error)
-    return NextResponse.json({ error: `Failed to update item: ${error.message}` }, { status: 500 })
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    const supabase = createAdminClient()
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get("id")
+    const { id, name, price } = await request.json()
 
     if (!id) {
       return NextResponse.json({ error: "Item ID is required" }, { status: 400 })
     }
 
-    const { data: itemData } = await supabase.from("product_items").select("brands(slug)").eq("id", id).single()
+    const { data, error } = await supabase.from("product_items").update({ name, price }).eq("id", id).select().single()
 
-    const { error } = await supabase.from("product_items").delete().eq("id", id)
-
-    if (error) throw error
-
-    if (itemData?.brands?.slug) {
-      revalidateEditorPaths(itemData.brands.slug)
+    if (error) {
+      throw error
     }
 
-    return NextResponse.json({ success: true, message: "Item deleted successfully." })
+    const { data: section } = await supabase
+      .from("product_sections")
+      .select("brand_id")
+      .eq("id", data.section_id)
+      .single()
+    if (section) {
+      const { data: brand } = await supabase.from("brands").select("slug").eq("id", section.brand_id).single()
+      if (brand) {
+        revalidatePath(`/admin/editor/${brand.slug}`)
+        revalidatePath(`/forms/${brand.slug}`)
+      }
+    }
+
+    return NextResponse.json(data)
   } catch (error: any) {
-    console.error("Error deleting item:", error)
-    return NextResponse.json({ error: `Failed to delete item: ${error.message}` }, { status: 500 })
+    console.error("Error updating item:", error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

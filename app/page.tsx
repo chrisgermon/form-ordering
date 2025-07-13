@@ -1,62 +1,68 @@
-import { createAdminClient } from "@/utils/supabase/server"
-import Link from "next/link"
+import { getActiveBrands } from "@/lib/db"
+import { BrandGrid } from "@/components/brand-grid"
 import Image from "next/image"
-import { resolveAssetUrl } from "@/lib/utils"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AlertTriangle } from "lucide-react"
+import type { Brand } from "@/lib/types"
 
 export default async function HomePage() {
-  const supabase = createAdminClient()
-  const { data: brands, error } = await supabase
-    .from("brands")
-    .select("id, name, slug, logo")
-    .eq("active", true)
-    .order("name")
+  let brands: Brand[] = []
+  let error: string | null = null
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-red-500">Error loading brands: {error.message}</p>
-      </div>
-    )
+  try {
+    brands = await getActiveBrands()
+  } catch (e) {
+    error = e instanceof Error ? e.message : "An unknown error occurred."
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 sm:p-8">
-      <div className="text-center mb-12">
-        <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">Select Your Brand</h1>
-        <p className="text-md sm:text-lg text-gray-600 mt-2">Choose your clinic to access the order form.</p>
+    <main className="min-h-screen bg-gray-50">
+      <div className="p-4 sm:p-8">
+        <div className="max-w-7xl mx-auto">
+          <header className="flex justify-between items-center py-4 mb-8">
+            <div className="flex items-center gap-4">
+              <Image src="/favicon.png" alt="VRG Logo" width={40} height={40} />
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Printing Order System</h1>
+            </div>
+            <Button asChild variant="outline">
+              <Link href="/admin/dashboard">Admin Dashboard</Link>
+            </Button>
+          </header>
+
+          <div className="text-center mb-12">
+            <h2 className="text-xl sm:text-2xl font-semibold text-gray-700 mb-2">Select a Brand to Begin</h2>
+            <p className="text-gray-500 max-w-2xl mx-auto">
+              Choose one of the brands below to access their dedicated printing order form.
+            </p>
+          </div>
+
+          {error ? (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Error Loading Brands</AlertTitle>
+              <AlertDescription>
+                Could not load brand information. Please check the system configuration and database connection.
+                <p className="mt-2 text-xs font-mono bg-red-100 p-2 rounded">Details: {error}</p>
+              </AlertDescription>
+            </Alert>
+          ) : brands.length > 0 ? (
+            <BrandGrid brands={brands} />
+          ) : (
+            <div className="text-center py-16 bg-white rounded-lg shadow-sm">
+              <p className="text-gray-600 font-semibold">No active brands found.</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Please go to the{" "}
+                <Link href="/admin/dashboard" className="text-blue-600 hover:underline">
+                  admin dashboard
+                </Link>{" "}
+                to activate brands.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
-      {brands && brands.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-6xl w-full">
-          {brands.map((brand) => (
-            <Link
-              href={`/forms/${brand.slug}`}
-              key={brand.id}
-              className="group block bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden"
-            >
-              <div className="w-full h-48 bg-gray-100 flex items-center justify-center p-4">
-                <Image
-                  src={resolveAssetUrl(brand.logo) || `/placeholder.svg?width=150&height=150&query=${brand.name}+logo`}
-                  alt={`${brand.name} Logo`}
-                  width={150}
-                  height={150}
-                  className="object-contain h-full w-full"
-                  unoptimized={brand.logo?.endsWith(".svg")}
-                />
-              </div>
-              <div className="p-4 border-t border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-700 group-hover:text-blue-600 transition-colors duration-300 truncate">
-                  {brand.name}
-                </h2>
-              </div>
-            </Link>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center">
-          <p className="text-gray-500">No active brands found.</p>
-          <p className="text-sm text-gray-400 mt-2">Please check the admin dashboard to add or activate brands.</p>
-        </div>
-      )}
-    </div>
+    </main>
   )
 }

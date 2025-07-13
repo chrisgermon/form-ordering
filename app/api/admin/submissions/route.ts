@@ -1,10 +1,10 @@
-import { createAdminClient } from "@/utils/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
 export const revalidate = 0
 
 export async function GET() {
-  const supabase = createAdminClient()
+  const supabase = createServerSupabaseClient()
   try {
     const { data, error } = await supabase
       .from("submissions")
@@ -17,7 +17,9 @@ export async function GET() {
         status,
         pdf_url,
         ip_address,
+        order_data,
         brands (
+          id,
           name
         )
       `,

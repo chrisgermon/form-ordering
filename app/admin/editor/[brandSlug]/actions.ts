@@ -1,103 +1,107 @@
 "use server"
 
-import { createAdminClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
-import type { Brand, UploadedFile } from "./types"
+import { createAdminClient } from "@/lib/supabase/admin"
+import type { BrandData } from "@/lib/types"
+import { generateText } from "ai"
+import { xai } from "@ai-sdk/openai"
 
-export async function getBrand(slug: string): Promise<Brand | null> {
+export async function getBrand(slug: string): Promise<BrandData | null> {
   const supabase = createAdminClient()
-  const { data: brand, error: brandError } = await supabase
+  const { data, error } = await supabase
     .from("brands")
-    .select("id, name, slug, logo, emails, clinic_locations, active")
+    .select(
+      `
+      *,
+      product_sections (
+        *,
+        product_items (
+          *
+        )
+      )
+    `,
+    )
     .eq("slug", slug)
     .single()
 
-  if (brandError || !brand) {
-    console.error(`Error fetching brand for editor '${slug}':`, brandError?.message)
+  if (error) {
+    console.error("Error fetching brand:", error)
     return null
   }
+  if (!data) return null
 
-  const { data: sections, error: sectionsError } = await supabase
-    .from("product_sections")
-    .select("*")
-    .eq("brand_id", brand.id)
-    .order("sort_order")
+  // Sort sections and items by their order property
+  const sortedSections = data.product_sections?.sort((a, b) => a.sort_order - b.sort_order) || []
+  const sectionsWithSortedItems = sortedSections.map((section) => ({
+    ...section,
+    product_items: section.product_items?.sort((a, b) => a.sort_order - b.sort_order) || [],
+  }))
 
-  if (sectionsError) {
-    console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
-    return { ...brand, product_sections: [] } as Brand
-  }
-
-  const sectionsWithItems = await Promise.all(
-    (sections || []).map(async (section) => {
-      const { data: items, error: itemsError } = await supabase
-        .from("product_items")
-        .select("*")
-        .eq("section_id", section.id)
-        .order("sort_order")
-
-      if (itemsError) {
-        console.error(`Error fetching items for section '${section.title}':`, itemsError.message)
-        return { ...section, product_items: [] }
-      }
-      return { ...section, product_items: items || [] }
-    }),
-  )
-
-  return {
-    ...brand,
-    product_sections: sectionsWithItems,
-  } as Brand
+  return { ...data, product_sections: sectionsWithSortedItems } as BrandData
 }
 
-export async function getUploadedFiles(): Promise<UploadedFile[]> {
+export async function getUploadedFiles() {
   const supabase = createAdminClient()
-  const { data, error } = await supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false })
+  const { data, error } = await supabase.from("uploaded_files").select("id, original_name, pathname")
   if (error) {
-    console.error("Error fetching uploaded files:", error)
+    console.error("Error fetching files:", error)
     return []
   }
-  return data || []
+  return data
 }
 
-export async function updateSectionOrder(brandSlug: string, orderedSectionIds: string[]) {
-  try {
-    const supabase = createAdminClient()
-    const updates = orderedSectionIds.map((id, index) =>
-      supabase.from("product_sections").update({ sort_order: index }).eq("id", id),
-    )
+export async function saveForm(prevState: any, formData: FormData) {
+  const supabase = createAdminClient()
 
-    const results = await Promise.all(updates)
-    const error = results.find((res) => res.error)
+  const brandId = formData.get("id") as string
+  const brandSlug = formData.get("slug") as string
 
-    if (error) throw error.error
-
-    revalidatePath(`/admin/editor/${brandSlug}`)
-    revalidatePath(`/forms/${brandSlug}`)
-    return { success: true }
-  } catch (error) {
-    console.error("Error updating section order:", error)
-    return { success: false, error: "Failed to update section order." }
+  const brandUpdateData = {
+    name: formData.get("name") as string,
+    initials: formData.get("initials") as string,
+    to_emails: formData.get("to_emails") as string,
+    cc_emails: formData.get("cc_emails") as string,
+    bcc_emails: formData.get("bcc_emails") as string,
+    subject_line: formData.get("subject_line") as string,
+    form_title: formData.get("form_title") as string,
+    form_subtitle: formData.get("form_subtitle") as string,
+    logo_url: formData.get("logo_url") as string,
+    header_image_url: formData.get("header_image_url") as string,
   }
+
+  const sectionsJson = formData.get("product_sections_json") as string
+  const sectionsData = sectionsJson ? JSON.parse(sectionsJson) : []
+
+  const { error } = await supabase.rpc("save_brand_form", {
+    brand_id_in: brandId,
+    brand_data: brandUpdateData,
+    sections_data: sectionsData,
+  })
+
+  if (error) {
+    console.error("Error saving form:", error)
+    return { success: false, message: `Failed to save form: ${error.message}` }
+  }
+
+  revalidatePath(`/admin/editor/${brandSlug}`)
+  revalidatePath(`/forms/${brandSlug}`)
+  revalidatePath(`/admin/dashboard`)
+  return { success: true, message: "Form saved successfully!" }
 }
 
-export async function updateItemOrder(brandSlug: string, orderedItemIds: string[]) {
+export async function generateDescription(itemName: string): Promise<{ description: string } | { error: string }> {
+  if (!itemName) {
+    return { error: "Item name cannot be empty." }
+  }
+
   try {
-    const supabase = createAdminClient()
-    const updates = orderedItemIds.map((id, index) =>
-      supabase.from("product_items").update({ sort_order: index }).eq("id", id),
-    )
-
-    const results = await Promise.all(updates)
-    const error = results.find((res) => res.error)
-
-    if (error) throw error.error
-
-    revalidatePath(`/admin/editor/${brandSlug}`)
-    revalidatePath(`/forms/${brandSlug}`)
-    return { success: true }
+    const { text } = await generateText({
+      model: xai("grok-3"),
+      prompt: `Generate a brief, one-sentence description for a medical printing order form item named '${itemName}'. The description should be neutral and informative.`,
+    })
+    return { description: text }
   } catch (error) {
-    console.error("Error updating item order:", error)
-    return { success: false, error: "Failed to update item order." }
+    console.error("Grok AI error:", error)
+    return { error: "Failed to generate description." }
   }
 }

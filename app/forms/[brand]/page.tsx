@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/utils/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { notFound } from "next/navigation"
 import { OrderForm } from "@/components/order-form"
 import type { BrandData } from "@/lib/types"
@@ -11,10 +11,10 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
   // Step 1: Fetch the brand by slug, ensuring it's active
   const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select("id, name, slug, logo, emails, clinic_locations, active")
+    .select("id, name, slug, logo, emails, clinic_locations, active, order_prefix")
     .eq("slug", slug)
     .eq("active", true)
-    .maybeSingle()
+    .single()
 
   // If no active brand is found, or there's an error, return null
   if (brandError || !brand) {

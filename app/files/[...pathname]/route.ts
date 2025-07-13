@@ -30,13 +30,7 @@ export async function GET(request: Request, { params }: { params: { pathname: st
 
   // Stream the response back to the client with correct headers
   const headers = new Headers()
-  let contentType = "application/octet-stream" // Default content type
-  if (pathname.toLowerCase().endsWith(".svg")) {
-    contentType = "image/svg+xml"
-  } else if (blob.contentType) {
-    contentType = blob.contentType
-  }
-  headers.set("Content-Type", contentType)
+  headers.set("Content-Type", blob.contentType || "application/octet-stream")
   headers.set("Content-Length", blob.size.toString())
   headers.set("Content-Disposition", `inline; filename="${blob.pathname.split("/").pop()}"`)
 

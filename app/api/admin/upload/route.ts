@@ -1,11 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/utils/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { put } from "@vercel/blob"
 
 export async function POST(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const brandId = searchParams.get("brandId")
     const formData = await request.formData()
     const file = formData.get("file") as File
 
@@ -37,7 +35,6 @@ export async function POST(request: NextRequest) {
         pathname: blob.pathname, // Store the pathname
         size: file.size,
         content_type: file.type,
-        brand_id: brandId, // Associate with brand
       })
       .select()
       .single()

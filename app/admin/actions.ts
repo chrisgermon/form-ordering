@@ -1,205 +1,180 @@
 "use server"
 
-import { createAdminClient } from "@/utils/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { revalidatePath } from "next/cache"
-import type { ClinicLocation } from "@/lib/types"
-import { nanoid } from "nanoid"
-import { put } from "@vercel/blob"
-import { scrapeWebsiteWithAI, parseFormWithAI } from "@/lib/scraping"
+import * as cheerio from "cheerio"
+import type { ProductItem } from "@/lib/types" // Changed import path
 
-// --- Other Server Actions (Unchanged) ---
+const slugify = (text: string) => {
+  if (!text) return ""
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-") // Replace spaces with -
+    .replace(/[^\w-]+/g, "") // Remove all non-word chars
+    .replace(/--+/g, "-") // Replace multiple - with single -
+}
 
-async function uploadLogo(logoUrl: string, brandSlug: string): Promise<string | null> {
+export async function importFromJotform(brandId: string, brandSlug: string, htmlCode: string) {
+  if (!htmlCode) {
+    return { success: false, message: "HTML code cannot be empty." }
+  }
+
   try {
-    const response = await fetch(logoUrl)
-    if (!response.ok) {
-      console.error(`Failed to fetch logo image: ${response.statusText}`)
-      return null
-    }
-    const imageBlob = await response.blob()
-    const originalName = new URL(logoUrl).pathname.split("/").pop() || `logo-${nanoid(5)}`
-    const filename = `logos/${brandSlug}-${Date.now()}-${originalName}`
+    const supabase = createAdminClient()
+    const $ = cheerio.load(htmlCode)
 
-    const { pathname } = await put(filename, imageBlob, {
-      access: "public",
-      contentType: response.headers.get("content-type") || undefined,
+    // 1. Pre-process all descriptive text blocks into a map.
+    // Key: CODE, Value: { name, description, sample_link }
+    const descriptionMap = new Map<string, { name: string; description: string | null; sample_link: string | null }>()
+    $('li[data-type="control_text"]').each((_, element) => {
+      const $el = $(element)
+      const htmlContent = ($el.find(".form-html").html() || "").replace(/<br\s*\/?>/gi, "\n")
+      const textContent = cheerio.load(`<div>${htmlContent}</div>`).text()
+      const lines = textContent
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+
+      let code: string | null = null
+      let name: string | null = null
+      let description: string | null = null
+
+      lines.forEach((line) => {
+        const parts = line.split(":")
+        const key = parts.shift()?.trim().toUpperCase()
+        const value = parts.join(":").trim()
+
+        if (key === "CODE") code = value
+        else if (key === "ITEM" || key === "REFERRALS" || key === "PATIENT BROCHURES") name = value
+        else if (key === "DESCRIPTION") description = value
+      })
+
+      const sample_link = $el.find("a").attr("href") || null
+
+      if (code && name) {
+        descriptionMap.set(code, { name, description, sample_link })
+      }
     })
 
-    return pathname
-  } catch (error) {
-    console.error("Error uploading logo:", error)
-    return null
-  }
-}
+    const createdSections: { title: string; items: any[] }[] = []
 
-export async function fetchBrandData(url: string, brandSlug: string) {
-  try {
-    const scrapedData = await scrapeWebsiteWithAI(url)
+    // Find all section containers
+    $("ul.form-section").each((index, sectionEl) => {
+      const $sectionEl = $(sectionEl)
+      let sectionTitle = `Imported Section ${index + 1}`
 
-    let uploadedLogoPath: string | null = null
-    if (scrapedData.logoUrl) {
-      uploadedLogoPath = await uploadLogo(scrapedData.logoUrl, brandSlug)
-    }
+      const prevHeader = $sectionEl.prev('li[data-type="control_head"]')
+      const collapseEl = $sectionEl.find('li[data-type="control_collapse"]').first()
+      const headerEl = $sectionEl.find('li[data-type="control_head"]').first()
 
-    return {
-      success: true,
-      data: {
-        name: scrapedData.companyName || "",
-        logo: uploadedLogoPath,
-        locations: scrapedData.locations || [],
-      },
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    console.error("Failed to fetch brand data with AI:", errorMessage)
-    return { success: false, error: `AI scraping failed: ${errorMessage}` }
-  }
-}
-
-export async function saveBrand(formData: FormData) {
-  const supabase = createAdminClient()
-  const id = formData.get("id") as string | null
-  const name = formData.get("name") as string
-  const slug = formData.get("slug") as string
-  const logo = formData.get("logo") as string
-  const emails = (formData.get("emails") as string)
-    .split(",")
-    .map((e) => e.trim())
-    .filter(Boolean)
-  const clinic_locations = JSON.parse((formData.get("clinic_locations") as string) || "[]") as ClinicLocation[]
-
-  if (!name || !slug) {
-    return { success: false, error: "Brand name and slug are required." }
-  }
-
-  const brandData = {
-    name,
-    slug,
-    logo,
-    emails,
-    clinic_locations,
-    updated_at: new Date().toISOString(),
-  }
-
-  let error
-  if (id) {
-    const { error: updateError } = await supabase.from("brands").update(brandData).eq("id", id)
-    error = updateError
-  } else {
-    const { error: insertError } = await supabase
-      .from("brands")
-      .insert({ ...brandData, created_at: new Date().toISOString() })
-    error = insertError
-  }
-
-  if (error) {
-    console.error("Error saving brand:", error)
-    return { success: false, error: error.message }
-  }
-
-  revalidatePath("/admin")
-  return { success: true }
-}
-
-export async function importForm(
-  brandId: string,
-  brandSlug: string,
-  { htmlCode, url }: { htmlCode?: string; url?: string },
-) {
-  const supabase = createAdminClient()
-
-  try {
-    let htmlContent = htmlCode
-    if (url) {
-      const response = await fetch(url)
-      if (!response.ok) {
-        return { success: false, message: `Failed to fetch URL: ${response.statusText}` }
+      if (prevHeader.length > 0) {
+        sectionTitle = prevHeader.find(".form-header").text().trim()
+      } else if (collapseEl.length > 0) {
+        sectionTitle = collapseEl.find(".form-collapse-mid").text().trim()
+      } else if (headerEl.length > 0) {
+        sectionTitle = headerEl.find(".form-header").text().trim()
       }
-      htmlContent = await response.text()
+
+      const sectionItems: any[] = []
+
+      $sectionEl.find("li.form-line").each((_, lineEl) => {
+        const $lineEl = $(lineEl)
+        const dataType = $lineEl.data("type")
+        let item: any = null
+
+        if (dataType === "control_checkbox" || dataType === "control_radio") {
+          const code = $lineEl.find("label.form-label").text().trim()
+          const details = descriptionMap.get(code)
+          if (details) {
+            const options: string[] = []
+            $lineEl.find(".form-checkbox-item, .form-radio-item").each((_, optEl) => {
+              options.push($(optEl).find("label").text().trim())
+            })
+            item = {
+              ...details,
+              code,
+              field_type: "checkbox_group",
+              options,
+              is_required: $lineEl.hasClass("jf-required"),
+            }
+          }
+        } else if (
+          dataType === "control_textbox" ||
+          dataType === "control_textarea" ||
+          dataType === "control_datetime"
+        ) {
+          const label = $lineEl.find("label.form-label").text().trim().replace(/\*$/, "").trim()
+          if (label) {
+            let field_type: ProductItem["field_type"] = "text"
+            if (dataType === "control_textarea") field_type = "textarea"
+            if (dataType === "control_datetime") field_type = "date"
+
+            item = {
+              name: label,
+              code: slugify(label),
+              description: $lineEl.find(".form-sub-label").text().trim() || null,
+              field_type,
+              options: [],
+              placeholder: $lineEl.find("input, textarea").attr("placeholder") || null,
+              is_required: $lineEl.hasClass("jf-required"),
+              sample_link: null,
+            }
+          }
+        }
+
+        if (item) {
+          sectionItems.push(item)
+        }
+      })
+
+      if (sectionItems.length > 0) {
+        createdSections.push({ title: sectionTitle, items: sectionItems })
+      }
+    })
+
+    if (createdSections.length === 0) {
+      return { success: false, message: "Could not find any form fields to import. Please check the Jotform code." }
     }
 
-    if (!htmlContent) {
-      return { success: false, message: "No HTML content provided or found at URL." }
-    }
-
-    const parsedForm = await parseFormWithAI(htmlContent)
-
-    await supabase.from("product_items").delete().eq("brand_id", brandId)
-    await supabase.from("product_sections").delete().eq("brand_id", brandId)
-
-    for (const [sectionIndex, section] of parsedForm.sections.entries()) {
+    // Now, save to database
+    let sortOrder = 999
+    for (const section of createdSections) {
       const { data: newSection, error: sectionError } = await supabase
         .from("product_sections")
         .insert({
-          brand_id: brandId,
           title: section.title,
-          sort_order: sectionIndex,
+          brand_id: brandId,
+          sort_order: sortOrder++,
         })
-        .select("id")
+        .select()
         .single()
 
-      if (sectionError) throw new Error(`Failed to insert section "${section.title}": ${sectionError.message}`)
+      if (sectionError) throw sectionError
 
-      if (section.items && section.items.length > 0) {
-        const itemsToInsert = section.items.map((item, itemIndex) => ({
-          brand_id: brandId,
-          section_id: newSection.id,
-          code: item.code,
-          name: item.name,
-          field_type: item.fieldType,
-          options: item.options || [],
-          placeholder: item.placeholder,
-          is_required: item.isRequired || false,
-          sort_order: itemIndex,
-        }))
+      const itemsToInsert = section.items.map((item, index) => ({
+        ...item,
+        brand_id: brandId,
+        section_id: newSection.id,
+        sort_order: index,
+      }))
 
+      if (itemsToInsert.length > 0) {
         const { error: itemsError } = await supabase.from("product_items").insert(itemsToInsert)
-        if (itemsError) throw new Error(`Failed to insert items for section "${section.title}": ${itemsError.message}`)
+        if (itemsError) throw itemsError
       }
     }
 
     revalidatePath(`/admin/editor/${brandSlug}`)
     revalidatePath(`/forms/${brandSlug}`)
-
-    return { success: true, message: "Form imported successfully!" }
+    return {
+      success: true,
+      message: `Successfully imported ${createdSections.reduce((acc, s) => acc + s.items.length, 0)} fields from Jotform.`,
+    }
   } catch (error) {
+    console.error("Jotform import error:", error)
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred during import."
-    console.error("Error importing form:", errorMessage)
-    return { success: false, message: errorMessage }
-  }
-}
-
-export async function clearFormForBrand(brandId: string, brandSlug: string) {
-  const supabase = createAdminClient()
-
-  try {
-    // Deleting sections will cascade and delete all items within them
-    // due to the foreign key constraint with ON DELETE CASCADE.
-    const { error } = await supabase.from("product_sections").delete().eq("brand_id", brandId)
-
-    if (error) throw error
-
-    revalidatePath(`/admin/editor/${brandSlug}`)
-    revalidatePath(`/forms/${brandSlug}`)
-    return { success: true, message: "Form has been cleared successfully." }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    console.error("Error clearing form:", errorMessage)
-    return { success: false, message: `Failed to clear form: ${errorMessage}` }
-  }
-}
-
-export async function revalidateAllData() {
-  try {
-    // Revalidate the main pages and all admin API routes
-    revalidatePath("/", "layout")
-    revalidatePath("/admin")
-    revalidatePath("/api/admin/brands")
-    revalidatePath("/api/admin/files")
-    revalidatePath("/api/admin/submissions")
-    return { success: true, message: "Data revalidated successfully." }
-  } catch (error) {
-    console.error("Revalidation failed:", error)
-    return { success: false, message: "An error occurred during revalidation." }
+    return { success: false, message: `Import failed: ${errorMessage}` }
   }
 }
