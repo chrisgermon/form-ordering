@@ -58,9 +58,6 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     sections: sections,
   } as BrandData
 
-  // For debugging: log the keys of the final object to ensure 'sections' is present
-  console.log("Final Brand Data Keys:", Object.keys(finalBrandData))
-
   return finalBrandData
 }
 
