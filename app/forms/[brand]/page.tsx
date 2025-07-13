@@ -16,7 +16,6 @@ interface RawSection extends Omit<Section, "items"> {
 async function getBrandData(slug: string): Promise<BrandData | null> {
   const supabase = createAdminClient()
 
-  // Step 1: Fetch the brand by slug, ensuring it's active
   const { data: brand, error: brandError } = await supabase
     .from("brands")
     .select("id, name, slug, logo, emails, clinic_locations, active")
@@ -25,11 +24,10 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     .maybeSingle()
 
   if (brandError || !brand) {
-    if (brandError) console.error(`Error fetching brand:`, brandError.message)
+    console.error(`Error fetching brand '${slug}':`, brandError?.message || "Brand not found")
     return null
   }
 
-  // Step 2: Fetch all sections and their items with options for this brand
   const { data: rawSections, error: sectionsError } = await supabase
     .from("sections")
     .select("*, items(*, options(value))")
@@ -39,11 +37,10 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
 
   if (sectionsError) {
     console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
+    // Return brand data but with empty sections to avoid a 404
     return { ...brand, sections: [] } as BrandData
   }
 
-  // Step 3: Process the raw data to match the expected `BrandData` type
-  // This involves converting the nested options objects into a simple string array
   const sections: Section[] = (rawSections as RawSection[]).map((section) => ({
     ...section,
     items: section.items.map((item) => ({
@@ -52,16 +49,18 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     })),
   }))
 
-  // Step 4: Assemble and return the final BrandData object
   const finalBrandData = {
     ...brand,
     sections: sections,
   } as BrandData
 
+  // Definitive check: This log will show up in your deployment's runtime logs.
+  // It proves that the object being returned has "sections" and not "product_sections".
+  console.log(`[getBrandData for '${slug}'] Final object keys:`, Object.keys(finalBrandData).join(", "))
+
   return finalBrandData
 }
 
-// This is a dynamic route handler
 export default async function BrandFormPage({ params }: { params: { brand: string } }) {
   const brandData = await getBrandData(params.brand)
 

@@ -32,6 +32,7 @@ const createFormSchema = (brandData: BrandData) => {
 
   return baseSchema.superRefine((data, ctx) => {
     let hasItems = false
+    // This uses brandData.sections, which is correct.
     brandData.sections.forEach((section) => {
       section.items.forEach((item) => {
         const value = data.items?.[item.id]
@@ -400,6 +401,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
       return brandData.sections
     }
     const lowercasedFilter = searchTerm.toLowerCase()
+    // This uses brandData.sections, which is correct.
     return brandData.sections
       .map((section) => {
         const filteredItems = section.items.filter(
@@ -551,6 +553,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
                 </div>
 
                 <div className="space-y-4">
+                  {/* This uses filteredSections, which is derived from brandData.sections. Correct. */}
                   {filteredSections.map((section) => (
                     <Collapsible
                       key={section.id}
