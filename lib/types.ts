@@ -49,3 +49,14 @@ export interface UploadedFile {
   content_type: string | null
   brand_id: string | null
 }
+
+export interface FormSubmission {
+  id: string
+  created_at: string
+  ordered_by: string | null
+  email: string | null
+  status: string | null
+  pdf_url: string | null
+  ip_address: string | null
+  brands: { name: string } | null
+}

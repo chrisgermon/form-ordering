@@ -215,16 +215,20 @@ const FormField = ({
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {field.value?.quantity ? format(field.value.quantity, "dd-MM-yyyy") : <span>DD-MM-YYYY</span>}
+                    {field.value?.quantity ? (
+                      format(new Date(field.value.quantity), "dd-MM-yyyy")
+                    ) : (
+                      <span>DD-MM-YYYY</span>
+                    )}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
                   <Calendar
                     mode="single"
-                    selected={field.value?.quantity}
+                    selected={field.value?.quantity ? new Date(field.value.quantity) : undefined}
                     onSelect={(date) => {
                       if (date) {
-                        field.onChange({ quantity: date, name: item.name, code: item.code })
+                        field.onChange({ quantity: date.toISOString(), name: item.name, code: item.code })
                       } else {
                         field.onChange(undefined)
                       }
@@ -548,7 +552,11 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
 
                 <div className="space-y-4">
                   {filteredSections.map((section) => (
-                    <Collapsible key={section.id} className="border border-dashed border-[#293563] rounded-lg">
+                    <Collapsible
+                      key={section.id}
+                      defaultOpen
+                      className="border border-dashed border-[#293563] rounded-lg"
+                    >
                       <CollapsibleTrigger className="w-full p-4 flex justify-between items-center group hover:bg-gray-50 rounded-t-lg">
                         <h2 className="text-lg font-semibold text-[#1aa7df]">{section.title}</h2>
                         <ChevronDown className="h-5 w-5 text-gray-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
