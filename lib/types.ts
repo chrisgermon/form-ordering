@@ -6,7 +6,7 @@ export type ClinicLocation = {
 }
 
 export type Brand = {
-  id: number
+  id: string
   created_at: string
   name: string
   slug: string
@@ -14,6 +14,19 @@ export type Brand = {
   active: boolean
   emails: string[]
   clinic_locations: ClinicLocation[]
+  sections?: Section[]
+}
+
+export type BrandData = Brand & {
+  sections: Section[]
+}
+
+export type Option = {
+  id: string
+  item_id: string
+  value: string
+  label: string | null
+  sort_order: number | null
 }
 
 export type Section = {
@@ -30,27 +43,38 @@ export type Item = {
   section_id: string
   code: string | null
   name: string
-  field_type: "text" | "textarea" | "select" | "checkbox" | "radio" | "date"
-  options: string[] | null
+  description: string | null
+  field_type: "text" | "textarea" | "select" | "checkbox_group" | "radio" | "date"
+  options: Option[] | null
   placeholder: string | null
   is_required: boolean
   position: number
+  sample_link: string | null
 }
 
 export type FileRecord = {
-  id: number
+  id: string
   brand_id: string
   url: string
   pathname: string
   content_type: string
-  content_disposition: string
+  size: number
   uploaded_at: string
+  original_name: string
 }
 
 export type Submission = {
-  id: number
+  id: string
   created_at: string
   brand_id: string
-  form_data: Record<string, any>
+  ordered_by: string | null
+  email: string | null
+  bill_to: string | null
+  deliver_to: string | null
+  items: Record<string, any> | null
+  pdf_url: string | null
   status: "new" | "viewed" | "archived"
+  email_response: string | null
+  order_data: Record<string, any> | null
+  ip_address: string | null
 }

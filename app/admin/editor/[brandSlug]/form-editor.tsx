@@ -54,7 +54,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 
 import { updateSectionOrder, updateItemOrder } from "./actions"
 import { clearFormForBrand, importForm } from "../../actions"
-import type { BrandData, Section as ProductSection, Item as ProductItem } from "@/lib/types"
+import type { BrandData, Section as ProductSection, Item as ProductItem, Option } from "@/lib/types"
 
 const fieldTypes = [
   { value: "checkbox_group", label: "Checkbox Group", icon: CheckSquare },
@@ -267,7 +267,6 @@ export function FormEditor({ initialBrandData }: { initialBrandData: BrandData }
       body: JSON.stringify({
         brand_id: brandData.id,
         title: newSectionName,
-        position: sections.length,
       }),
     })
 
@@ -285,7 +284,7 @@ export function FormEditor({ initialBrandData }: { initialBrandData: BrandData }
     const response = await fetch(`/api/admin/sections`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: sectionId, title: newTitle }),
+      body: JSON.stringify({ id: sectionId, title: newTitle, brand_id: brandData.id }),
     })
 
     if (response.ok) {
@@ -303,10 +302,8 @@ export function FormEditor({ initialBrandData }: { initialBrandData: BrandData }
     if (!confirm(`Are you sure you want to delete this section and all its items?`)) return
 
     const toastId = toast.loading("Deleting section...")
-    const response = await fetch(`/api/admin/sections`, {
+    const response = await fetch(`/api/admin/sections?id=${sectionId}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: sectionId }),
     })
 
     if (response.ok) {
@@ -323,14 +320,14 @@ export function FormEditor({ initialBrandData }: { initialBrandData: BrandData }
     setIsItemDialogOpen(true)
   }
 
-  const handleSaveItem = async () => {
+  const handleSaveItem = async (itemToSave: ProductItem) => {
     if (!currentSectionId) return
 
     const toastId = toast.loading("Saving item...")
-    const isNewItem = !currentItem?.id
+    const isNewItem = !itemToSave.id
 
     const payload = {
-      ...currentItem,
+      ...itemToSave,
       section_id: currentSectionId,
       brand_id: brandData.id,
     }
@@ -358,7 +355,8 @@ export function FormEditor({ initialBrandData }: { initialBrandData: BrandData }
       setIsItemDialogOpen(false)
       setCurrentItem(null)
     } else {
-      toast.error("Failed to save item.", { id: toastId })
+      const errorData = await response.json()
+      toast.error(errorData.error || "Failed to save item.", { id: toastId })
     }
   }
 
@@ -366,10 +364,8 @@ export function FormEditor({ initialBrandData }: { initialBrandData: BrandData }
     if (!confirm(`Are you sure you want to delete this item?`)) return
 
     const toastId = toast.loading("Deleting item...")
-    const response = await fetch("/api/admin/items", {
+    const response = await fetch(`/api/admin/items?id=${itemId}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: itemId }),
     })
 
     if (response.ok) {
@@ -468,7 +464,6 @@ export function FormEditor({ initialBrandData }: { initialBrandData: BrandData }
         onOpenChange={setIsItemDialogOpen}
         item={currentItem}
         onSave={handleSaveItem}
-        setCurrentItem={setCurrentItem}
       />
     </>
   )
@@ -568,13 +563,11 @@ function ItemDialog({
   onOpenChange,
   item,
   onSave,
-  setCurrentItem,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   item: ProductItem | null
-  onSave: () => void
-  setCurrentItem: (item: ProductItem | null) => void
+  onSave: (item: ProductItem) => void
 }) {
   const [formData, setFormData] = useState<Partial<ProductItem>>({})
 
@@ -606,13 +599,14 @@ function ItemDialog({
   }
 
   const handleOptionChange = (index: number, value: string) => {
-    const newOptions = [...(formData.options || [])]
-    newOptions[index] = value
+    const newOptions = [...(formData.options || [])] as Option[]
+    newOptions[index] = { ...newOptions[index], value: value }
     setFormData((prev) => ({ ...prev, options: newOptions }))
   }
 
   const addOption = () => {
-    setFormData((prev) => ({ ...prev, options: [...(prev.options || []), ""] }))
+    const newOption: Partial<Option> = { value: "" }
+    setFormData((prev) => ({ ...prev, options: [...(prev.options || []), newOption] as Option[] }))
   }
 
   const removeOption = (index: number) => {
@@ -621,8 +615,7 @@ function ItemDialog({
   }
 
   const handleSave = () => {
-    setCurrentItem(formData as ProductItem)
-    setTimeout(onSave, 0)
+    onSave(formData as ProductItem)
   }
 
   const fieldTypeLabel = fieldTypes.find((ft) => ft.value === formData.field_type)?.label || "Item"
@@ -678,7 +671,7 @@ function ItemDialog({
                 {(formData.options || []).map((opt, index) => (
                   <div key={index} className="flex items-center gap-2">
                     <Input
-                      value={opt}
+                      value={opt.value}
                       onChange={(e) => handleOptionChange(index, e.target.value)}
                       placeholder={`Option ${index + 1}`}
                     />
