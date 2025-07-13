@@ -1,67 +1,38 @@
-import { createAdminClient } from "@/utils/supabase/server"
+// Force re-evaluation: 2025-07-13 14:09
+import { createClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
-import { PublicOrderForm } from "@/components/public-order-form"
-import type { BrandData, Section, Item } from "@/lib/types"
+import { BrandFacingForm } from "@/components/brand-facing-form"
+import type { BrandData } from "@/lib/types"
 
-export const revalidate = 0 // Revalidate data on every request
+export const revalidate = 3600 // Revalidate every hour
 
-// These types represent the raw data from Supabase before we process it
-interface RawItem extends Omit<Item, "options"> {
-  options: { value: string }[]
-}
-interface RawSection extends Omit<Section, "items"> {
-  items: RawItem[]
-}
-
-async function getBrandData(slug: string): Promise<BrandData | null> {
-  const supabase = createAdminClient()
+export default async function FormPage({ params }: { params: { brand: string } }) {
+  const supabase = createClient()
 
   const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select("id, name, slug, logo, emails, clinic_locations, active")
-    .eq("slug", slug)
-    .eq("active", true)
-    .maybeSingle()
+    .select(`*, sections(*, items(*, options(*)))`)
+    .eq("slug", params.brand)
+    .single()
 
   if (brandError || !brand) {
-    console.error(`Error fetching brand '${slug}':`, brandError?.message || "Brand not found")
-    return null
-  }
-
-  const { data: rawSections, error: sectionsError } = await supabase
-    .from("sections")
-    .select("*, items(*, options(value))")
-    .eq("brand_id", brand.id)
-    .order("position", { ascending: true })
-    .order("position", { foreignTable: "items", ascending: true })
-
-  if (sectionsError) {
-    console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
-    return { ...brand, sections: [] } as BrandData
-  }
-
-  const sections: Section[] = (rawSections as RawSection[]).map((section) => ({
-    ...section,
-    items: section.items.map((item) => ({
-      ...item,
-      options: item.options.map((opt) => opt.value),
-    })),
-  }))
-
-  const finalBrandData = {
-    ...brand,
-    sections: sections,
-  } as BrandData
-
-  return finalBrandData
-}
-
-export default async function BrandFormPage({ params }: { params: { brand: string } }) {
-  const brandData = await getBrandData(params.brand)
-
-  if (!brandData) {
+    console.error("Error fetching brand or brand not found:", brandError?.message)
     notFound()
   }
 
-  return <PublicOrderForm brandData={brandData} />
+  // Ensure sections and items are sorted by position
+  brand.sections.sort((a, b) => a.position - b.position)
+  brand.sections.forEach((section) => {
+    section.items.sort((a, b) => a.position - b.position)
+  })
+
+  const brandData: BrandData = {
+    id: brand.id,
+    name: brand.name,
+    slug: brand.slug,
+    logo_url: brand.logo_url,
+    sections: brand.sections,
+  }
+
+  return <BrandFacingForm brandData={brandData} />
 }

@@ -1,39 +1,71 @@
 "use client"
+
+import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  arrayMove as dndKitArrayMove, // renamed to avoid conflict
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { toast } from "sonner"
-import arrayMove from "array-move"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert } from "@/components/ui/alert"
-import { GripVertical, Plus, Trash2, Edit, Upload } from "lucide-react"
+import {
+  ArrowLeft,
+  Edit,
+  Plus,
+  Trash2,
+  GripVertical,
+  X,
+  CheckSquare,
+  ChevronDown,
+  Type,
+  Calendar,
+  MousePointerClick,
+  Upload,
+} from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 
 import { updateSectionOrder, updateItemOrder } from "./actions"
 import { clearFormForBrand, importForm } from "../../actions"
-import type { Brand, ProductSection, ProductItem, UploadedFile } from "./types"
+import type { Brand, Section as ProductSection, Item as ProductItem } from "@/lib/types"
 import { FileManager } from "@/app/admin/FileManager"
 
 const fieldTypes = [
-  { value: "checkbox_group", label: "Checkbox Group", icon: null },
-  { value: "select", label: "Dropdown", icon: null },
-  { value: "text", label: "Text Input", icon: null },
-  { value: "textarea", label: "Text Area", icon: null },
-  { value: "date", label: "Date Picker", icon: null },
+  { value: "checkbox_group", label: "Checkbox Group", icon: CheckSquare },
+  { value: "select", label: "Dropdown", icon: ChevronDown },
+  { value: "text", label: "Text Input", icon: Type },
+  { value: "textarea", label: "Text Area", icon: Type },
+  { value: "date", label: "Date Picker", icon: Calendar },
 ]
 
 // Toolbox Component
@@ -46,7 +78,7 @@ function Toolbox({ onAddSectionClick }: { onAddSectionClick: () => void }) {
       <CardContent>
         <div className="space-y-2">
           <Button variant="outline" className="w-full justify-start bg-transparent" onClick={onAddSectionClick}>
-            <Plus className="mr-2 h-4 w-4" />
+            <MousePointerClick className="mr-2 h-4 w-4" />
             Add Section
           </Button>
           <p className="text-xs text-muted-foreground px-2 pt-2">
@@ -158,47 +190,46 @@ function ImportFormDialog({
 // Main Editor Component
 export default function FormEditor({
   initialBrandData,
-  uploadedFiles,
 }: {
   initialBrandData: Brand
-  uploadedFiles: UploadedFile[]
 }) {
   const [brandData, setBrandData] = useState<Brand>(initialBrandData)
-  const [isSectionDialogOpen, setIsSectionDialogOpen] = useState(false)
+  const [sections, setSections] = useState<ProductSection[]>(initialBrandData.sections || [])
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false)
   const [isImportFormDialogOpen, setIsImportFormDialogOpen] = useState(false)
-  const [activeItemOptions, setActiveItemOptions] = useState<{
-    sectionId: string
-    brandId: string
-    fieldType: ProductItem["field_type"]
-    item?: ProductItem
-  } | null>(null)
-  const router = useRouter()
-
-  const [sections, setSections] = useState<ProductSection[]>(initialBrandData.product_sections)
   const [currentItem, setCurrentItem] = useState<ProductItem | null>(null)
   const [currentSectionId, setCurrentSectionId] = useState<string | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
     setBrandData(initialBrandData)
-    setSections(initialBrandData.product_sections)
+    setSections(initialBrandData.sections || [])
   }, [initialBrandData])
 
-  const handleDragEnd = (result: DropResult) => {
-    const { source, destination } = result
-    if (!destination) return
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
 
-    const sourceType = source.droppableId.startsWith("section-") ? "item" : "section"
-    const destinationType = destination.droppableId.startsWith("section-") ? "item" : "section"
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
 
-    if (sourceType === "section" && destinationType === "section") {
-      const oldIndex = source.index
-      const newIndex = destination.index
-      const reorderedSections = arrayMove(sections, oldIndex, newIndex)
+    const activeType = active.data.current?.type
+    const overType = over.data.current?.type
+
+    if (activeType === "section" && overType === "section") {
+      const oldIndex = sections.findIndex((s) => s.id === active.id)
+      const newIndex = sections.findIndex((s) => s.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      const reorderedSections = dndKitArrayMove(sections, oldIndex, newIndex)
       setSections(reorderedSections)
 
       const promise = updateSectionOrder(
-        initialBrandData.slug,
+        brandData.slug,
         reorderedSections.map((s) => s.id),
       )
       toast.promise(promise, {
@@ -208,21 +239,23 @@ export default function FormEditor({
       })
     }
 
-    if (sourceType === "item" && destinationType === "item") {
-      const sectionId = source.droppableId.replace("section-", "")
+    if (activeType === "item" && overType === "item") {
+      const sectionId = active.data.current?.sectionId
       const sectionIndex = sections.findIndex((s) => s.id === sectionId)
       if (sectionIndex === -1) return
 
       const section = sections[sectionIndex]
-      const oldIndex = source.index
-      const newIndex = destination.index
-      const reorderedItems = arrayMove(section.product_items, oldIndex, newIndex)
+      const oldIndex = section.items.findIndex((i) => i.id === active.id)
+      const newIndex = section.items.findIndex((i) => i.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      const reorderedItems = dndKitArrayMove(section.items, oldIndex, newIndex)
       const newSections = [...sections]
-      newSections[sectionIndex] = { ...section, product_items: reorderedItems }
+      newSections[sectionIndex] = { ...section, items: reorderedItems }
       setSections(newSections)
 
       const promise = updateItemOrder(
-        initialBrandData.slug,
+        brandData.slug,
         reorderedItems.map((i) => i.id),
       )
       toast.promise(promise, {
@@ -243,7 +276,7 @@ export default function FormEditor({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        brand_id: initialBrandData.id,
+        brand_id: brandData.id,
         title: newSectionName,
         position: sections.length,
       }),
@@ -251,7 +284,7 @@ export default function FormEditor({
 
     if (response.ok) {
       const newSection = await response.json()
-      setSections((prevSections) => [...prevSections, newSection])
+      setSections((prevSections) => [...prevSections, { ...newSection, items: [] }])
       toast.success("Section created successfully!", { id: toastId })
     } else {
       toast.error("Failed to create section.", { id: toastId })
@@ -297,20 +330,26 @@ export default function FormEditor({
 
   const openItemDialog = (sectionId: string, item: ProductItem | null = null) => {
     setCurrentSectionId(sectionId)
-    setCurrentItem(item || { name: "", field_type: "text", is_required: false, placeholder: "" })
+    setCurrentItem(item)
     setIsItemDialogOpen(true)
   }
 
   const handleSaveItem = async () => {
-    if (!currentItem || !currentSectionId) return
+    if (!currentSectionId) return
 
     const toastId = toast.loading("Saving item...")
-    const isNewItem = !currentItem.id
+    const isNewItem = !currentItem?.id
+
+    const payload = {
+      ...currentItem,
+      section_id: currentSectionId,
+      brand_id: brandData.id,
+    }
 
     const response = await fetch("/api/admin/items", {
       method: isNewItem ? "POST" : "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...currentItem, section_id: currentSectionId }),
+      body: JSON.stringify(payload),
     })
 
     if (response.ok) {
@@ -319,15 +358,16 @@ export default function FormEditor({
         return prevSections.map((section) => {
           if (section.id === currentSectionId) {
             const newItems = isNewItem
-              ? [...(section.product_items || []), savedItem]
-              : (section.product_items || []).map((item) => (item.id === savedItem.id ? savedItem : item))
-            return { ...section, product_items: newItems }
+              ? [...(section.items || []), savedItem]
+              : (section.items || []).map((item) => (item.id === savedItem.id ? savedItem : item))
+            return { ...section, items: newItems }
           }
           return section
         })
       })
       toast.success("Item saved successfully!", { id: toastId })
       setIsItemDialogOpen(false)
+      setCurrentItem(null)
     } else {
       toast.error("Failed to save item.", { id: toastId })
     }
@@ -347,7 +387,7 @@ export default function FormEditor({
       setSections((prevSections) => {
         return prevSections.map((section) => {
           if (section.id === sectionId) {
-            return { ...section, product_items: (section.product_items || []).filter((item) => item.id !== itemId) }
+            return { ...section, items: (section.items || []).filter((item) => item.id !== itemId) }
           }
           return section
         })
@@ -365,13 +405,13 @@ export default function FormEditor({
       return
     }
 
-    const promise = clearFormForBrand(initialBrandData.id, initialBrandData.slug)
+    const promise = clearFormForBrand(brandData.id, brandData.slug)
 
     toast.promise(promise, {
       loading: "Clearing form...",
       success: (result) => {
         if (result.success) {
-          router.refresh()
+          setSections([])
           return result.message
         } else {
           throw new Error(result.message)
@@ -381,50 +421,12 @@ export default function FormEditor({
     })
   }
 
-  const handleSectionCreated = (newSection: ProductSection) => {
-    setSections((prev) => [...prev, newSection])
-  }
-
-  const handleSectionUpdated = (updatedSection: ProductSection) => {
-    setSections((prev) => prev.map((s) => (s.id === updatedSection.id ? updatedSection : s)))
-  }
-
-  const handleItemCreated = (newItem: ProductItem) => {
-    setSections((prev) => {
-      return prev.map((section) => {
-        if (section.id === newItem.section_id) {
-          return {
-            ...section,
-            product_items: [...(section.product_items || []), newItem],
-          }
-        }
-        return section
-      })
-    })
-  }
-
-  const handleItemUpdated = (updatedItem: ProductItem) => {
-    setSections((prev) => {
-      return prev.map((section) => {
-        if (section.id === updatedItem.section_id) {
-          return {
-            ...section,
-            product_items: (section.product_items || []).map((item) =>
-              item.id === updatedItem.id ? updatedItem : item,
-            ),
-          }
-        }
-        return section
-      })
-    })
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 flex justify-between items-center">
           <Button onClick={() => router.push("/admin")} variant="outline" className="flex items-center gap-2">
-            <Plus className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" />
             Back to Dashboard
           </Button>
           <div className="flex items-center gap-2">
@@ -441,7 +443,7 @@ export default function FormEditor({
               Import Form
             </Button>
             <Button asChild>
-              <Link href={`/forms/${initialBrandData.slug}`} target="_blank">
+              <Link href={`/forms/${brandData.slug}`} target="_blank">
                 Preview Form
               </Link>
             </Button>
@@ -451,169 +453,311 @@ export default function FormEditor({
         <Card className="mb-6 bg-white shadow-sm">
           <CardHeader>
             <p className="text-sm text-gray-500">Form Editor</p>
-            <CardTitle className="text-3xl">{initialBrandData.name}</CardTitle>
+            <CardTitle className="text-3xl">{brandData.name}</CardTitle>
           </CardHeader>
         </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
           <div className="space-y-6">
             <Toolbox onAddSectionClick={handleAddSection} />
-            <FileManager brandId={initialBrandData.id} />
+            <FileManager brandId={brandData.id} />
           </div>
 
           <div className="bg-white p-4 rounded-lg shadow-sm min-h-[400px]">
-            <DragDropContext onDragEnd={handleDragEnd}>
-              <Droppable droppableId="all-sections" direction="vertical" type="SECTION">
-                {(provided) => (
-                  <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4">
-                    {sections.map((section, index) => (
-                      <Draggable key={section.id} draggableId={String(section.id)} index={index}>
-                        {(provided) => (
-                          <div ref={provided.innerRef} {...provided.draggableProps}>
-                            <Card>
-                              <CardHeader className="flex flex-row items-center justify-between p-4">
-                                <div className="flex items-center gap-2">
-                                  <div {...provided.dragHandleProps}>
-                                    <GripVertical className="h-5 w-5 text-muted-foreground" />
-                                  </div>
-                                  <Input
-                                    defaultValue={section.title}
-                                    onBlur={(e) => handleUpdateSectionTitle(section.id, e.target.value)}
-                                    className="text-lg font-semibold border-none focus:ring-0 shadow-none"
-                                  />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Button variant="outline" size="sm" onClick={() => openItemDialog(section.id)}>
-                                    <Plus className="mr-2 h-4 w-4" /> Add Item
-                                  </Button>
-                                  <Button variant="ghost" size="icon" onClick={() => handleDeleteSection(section.id)}>
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </CardHeader>
-                              <CardContent className="p-4 pt-0">
-                                <Droppable droppableId={`section-${section.id}`} type="ITEM">
-                                  {(provided) => (
-                                    <div
-                                      {...provided.droppableProps}
-                                      ref={provided.innerRef}
-                                      className="min-h-[20px] space-y-2"
-                                    >
-                                      {(section.product_items || []).map((item, itemIndex) => (
-                                        <Draggable key={item.id} draggableId={String(item.id)} index={itemIndex}>
-                                          {(provided) => (
-                                            <div
-                                              ref={provided.innerRef}
-                                              {...provided.draggableProps}
-                                              {...provided.dragHandleProps}
-                                              className="flex items-center gap-2 p-2 border rounded-md bg-background"
-                                            >
-                                              <GripVertical className="h-5 w-5 text-muted-foreground" />
-                                              <div className="flex-grow">
-                                                {item.name} ({item.field_type})
-                                              </div>
-                                              <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() => openItemDialog(section.id, item)}
-                                              >
-                                                <Edit className="h-4 w-4" />
-                                              </Button>
-                                              <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() => handleDeleteItem(section.id, item.id)}
-                                              >
-                                                <Trash2 className="h-4 w-4" />
-                                              </Button>
-                                            </div>
-                                          )}
-                                        </Draggable>
-                                      ))}
-                                      {provided.placeholder}
-                                    </div>
-                                  )}
-                                </Droppable>
-                              </CardContent>
-                            </Card>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-4">
+                  {sections.length > 0 ? (
+                    sections.map((section) => (
+                      <SortableSection
+                        key={section.id}
+                        section={section}
+                        onUpdateTitle={handleUpdateSectionTitle}
+                        onDelete={handleDeleteSection}
+                        onAddItem={openItemDialog}
+                      >
+                        <SortableContext items={section.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                          <div className="space-y-2 p-4">
+                            {section.items.map((item) => (
+                              <SortableItem
+                                key={item.id}
+                                item={item}
+                                onEdit={openItemDialog}
+                                onDelete={handleDeleteItem}
+                              />
+                            ))}
                           </div>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </DragDropContext>
+                        </SortableContext>
+                      </SortableSection>
+                    ))
+                  ) : (
+                    <div className="text-center py-16 text-gray-500">
+                      <p>Your form is empty.</p>
+                      <p>Click 'Add Section' in the toolbox to get started.</p>
+                    </div>
+                  )}
+                </div>
+              </SortableContext>
+            </DndContext>
           </div>
         </div>
       </div>
       <ImportFormDialog
         open={isImportFormDialogOpen}
         onOpenChange={setIsImportFormDialogOpen}
-        brandId={initialBrandData.id}
-        brandSlug={initialBrandData.slug}
+        brandId={brandData.id}
+        brandSlug={brandData.slug}
         onImport={() => router.refresh()}
       />
-      {currentItem && (
-        <Dialog open={isItemDialogOpen} onOpenChange={setIsItemDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{currentItem.id ? "Edit" : "Add"} Item</DialogTitle>
-              <DialogDescription>Configure the details for this form item.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
-                  Label
-                </Label>
-                <Input
-                  id="name"
-                  value={currentItem.name || ""}
-                  onChange={(e) => setCurrentItem({ ...currentItem, name: e.target.value })}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="field_type" className="text-right">
-                  Type
-                </Label>
-                <Select
-                  value={currentItem.field_type}
-                  onValueChange={(value) =>
-                    setCurrentItem({ ...currentItem, field_type: value as ProductItem["field_type"] })
-                  }
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select a type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="checkbox_group">Checkbox Group</SelectItem>
-                    <SelectItem value="select">Dropdown</SelectItem>
-                    <SelectItem value="text">Text Input</SelectItem>
-                    <SelectItem value="textarea">Text Area</SelectItem>
-                    <SelectItem value="date">Date Picker</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="placeholder" className="text-right">
-                  Placeholder
-                </Label>
-                <Input
-                  id="placeholder"
-                  value={currentItem.placeholder || ""}
-                  onChange={(e) => setCurrentItem({ ...currentItem, placeholder: e.target.value })}
-                  className="col-span-3"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button onClick={handleSaveItem}>Save changes</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+      <ItemDialog
+        key={currentItem?.id || "new"}
+        open={isItemDialogOpen}
+        onOpenChange={setIsItemDialogOpen}
+        item={currentItem}
+        onSave={handleSaveItem}
+        setCurrentItem={setCurrentItem}
+      />
     </div>
+  )
+}
+
+// Sortable Section Component
+function SortableSection({
+  section,
+  children,
+  onUpdateTitle,
+  onDelete,
+  onAddItem,
+}: {
+  section: ProductSection
+  children: React.ReactNode
+  onUpdateTitle: (sectionId: string, newTitle: string) => void
+  onDelete: (sectionId: string) => void
+  onAddItem: (sectionId: string, item: ProductItem | null) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: section.id,
+    data: { type: "section" },
+  })
+  const style = { transform: CSS.Transform.toString(transform), transition }
+
+  return (
+    <Card ref={setNodeRef} style={style} className="bg-gray-50 border-2 border-dashed">
+      <CardHeader className="flex flex-row items-center justify-between p-3 bg-white border-b">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" {...attributes} {...listeners} className="cursor-grab p-2">
+            <GripVertical className="h-5 w-5 text-gray-400" />
+          </Button>
+          <Input
+            defaultValue={section.title}
+            onBlur={(e) => onUpdateTitle(section.id, e.target.value)}
+            className="text-lg font-semibold border-none focus:ring-0 shadow-none p-1 h-auto"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => onAddItem(section.id, null)}>
+            <Plus className="mr-2 h-4 w-4" /> Add Item
+          </Button>
+          <Button size="sm" variant="destructive" onClick={() => onDelete(section.id)}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">{children}</CardContent>
+    </Card>
+  )
+}
+
+// Sortable Item Component
+function SortableItem({
+  item,
+  onEdit,
+  onDelete,
+}: {
+  item: ProductItem
+  onEdit: (sectionId: string, item: ProductItem) => void
+  onDelete: (sectionId: string, itemId: string) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: item.id,
+    data: { type: "item", sectionId: item.section_id },
+  })
+  const style = { transform: CSS.Transform.toString(transform), transition }
+
+  const fieldTypeLabel = fieldTypes.find((ft) => ft.value === item.field_type)?.label || "Item"
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-2 bg-white p-3 rounded-md border shadow-sm">
+      <Button variant="ghost" size="sm" {...attributes} {...listeners} className="cursor-grab p-2">
+        <GripVertical className="h-5 w-5 text-gray-400" />
+      </Button>
+      <div className="flex-grow">
+        <p className="font-medium">{item.name}</p>
+        <p className="text-sm text-gray-500">
+          <Badge variant="secondary" className="mr-2">
+            {fieldTypeLabel}
+          </Badge>
+          Code: {item.code}
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="outline" onClick={() => onEdit(item.section_id, item)}>
+          <Edit className="h-4 w-4" />
+        </Button>
+        <Button size="sm" variant="destructive" onClick={() => onDelete(item.section_id, item.id)}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// Item Dialog
+function ItemDialog({
+  open,
+  onOpenChange,
+  item,
+  onSave,
+  setCurrentItem,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  item: ProductItem | null
+  onSave: () => void
+  setCurrentItem: (item: ProductItem | null) => void
+}) {
+  const [formData, setFormData] = useState<Partial<ProductItem>>({})
+
+  useEffect(() => {
+    if (open) {
+      setFormData(
+        item || {
+          name: "",
+          code: "",
+          field_type: "text",
+          is_required: false,
+          options: [],
+        },
+      )
+    }
+  }, [open, item])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target
+    setFormData((prev) => ({ ...prev, [id]: value }))
+  }
+
+  const handleCheckedChange = (checked: boolean) => {
+    setFormData((prev) => ({ ...prev, is_required: checked }))
+  }
+
+  const handleSelectChange = (value: string) => {
+    setFormData((prev) => ({ ...prev, field_type: value as ProductItem["field_type"] }))
+  }
+
+  const handleOptionChange = (index: number, value: string) => {
+    const newOptions = [...(formData.options || [])]
+    newOptions[index] = value
+    setFormData((prev) => ({ ...prev, options: newOptions }))
+  }
+
+  const addOption = () => {
+    setFormData((prev) => ({ ...prev, options: [...(prev.options || []), ""] }))
+  }
+
+  const removeOption = (index: number) => {
+    const newOptions = (formData.options || []).filter((_, i) => i !== index)
+    setFormData((prev) => ({ ...prev, options: newOptions }))
+  }
+
+  const handleSave = () => {
+    setCurrentItem(formData as ProductItem)
+    // Use a timeout to ensure state is updated before saving
+    setTimeout(onSave, 0)
+  }
+
+  const fieldTypeLabel = fieldTypes.find((ft) => ft.value === formData.field_type)?.label || "Item"
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{formData.id ? `Edit ${fieldTypeLabel}` : `Add New ${fieldTypeLabel}`}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="name">Label / Name</Label>
+              <Input id="name" value={formData.name || ""} onChange={handleChange} />
+            </div>
+            <div>
+              <Label htmlFor="code">Item Code</Label>
+              <Input id="code" value={formData.code || ""} onChange={handleChange} />
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="field_type">Field Type</Label>
+            <Select value={formData.field_type} onValueChange={handleSelectChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a field type" />
+              </SelectTrigger>
+              <SelectContent>
+                {fieldTypes.map((ft) => (
+                  <SelectItem key={ft.value} value={ft.value}>
+                    {ft.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="description">Description</Label>
+            <Textarea id="description" value={formData.description || ""} onChange={handleChange} />
+          </div>
+
+          {(formData.field_type === "text" || formData.field_type === "textarea") && (
+            <div>
+              <Label htmlFor="placeholder">Placeholder</Label>
+              <Input id="placeholder" value={formData.placeholder || ""} onChange={handleChange} />
+            </div>
+          )}
+
+          {(formData.field_type === "checkbox_group" || formData.field_type === "select") && (
+            <div>
+              <Label>Options</Label>
+              <div className="space-y-2">
+                {(formData.options || []).map((opt, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      value={opt}
+                      onChange={(e) => handleOptionChange(index, e.target.value)}
+                      placeholder={`Option ${index + 1}`}
+                    />
+                    <Button variant="ghost" size="icon" onClick={() => removeOption(index)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" className="mt-2 bg-transparent" onClick={addOption}>
+                <Plus className="mr-2 h-4 w-4" /> Add Option
+              </Button>
+            </div>
+          )}
+          <div className="flex items-center space-x-2 pt-2">
+            <Checkbox id="is_required" checked={formData.is_required} onCheckedChange={handleCheckedChange} />
+            <Label htmlFor="is_required" className="font-medium">
+              This field is required
+            </Label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave}>Save Item</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
