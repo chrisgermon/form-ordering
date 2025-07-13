@@ -1,73 +1,78 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { PlusCircle } from "lucide-react"
+
 import { BrandGrid } from "./BrandGrid"
 import { BrandForm } from "./BrandForm"
 import { SubmissionsTable } from "./SubmissionsTable"
 import { FileManager } from "./FileManager"
-import type { Brand } from "@/lib/types"
-import { getBrands, getSubmissions, getFiles } from "./data-access"
 
-type AdminDashboardProps = {
-  initialBrands: Brand[]
-  initialSubmissions: any[]
-  initialFiles: any[]
-}
+import type { Brand, Submission, BrandFile } from "@/lib/types"
 
-export function AdminDashboard({ initialBrands, initialSubmissions, initialFiles }: AdminDashboardProps) {
-  const [brands, setBrands] = useState(initialBrands)
-  const [submissions, setSubmissions] = useState(initialSubmissions)
-  const [files, setFiles] = useState(initialFiles)
+export function AdminDashboard({
+  brands,
+  submissions,
+  files,
+}: {
+  brands: Brand[]
+  submissions: Submission[]
+  files: BrandFile[]
+}) {
+  const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
 
-  useEffect(() => {
-    setBrands(initialBrands)
-  }, [initialBrands])
+  const handleEditBrand = (brand: Brand) => {
+    setSelectedBrand(brand)
+    setIsFormOpen(true)
+  }
 
-  useEffect(() => {
-    setSubmissions(initialSubmissions)
-  }, [initialSubmissions])
+  const handleAddNewBrand = () => {
+    setSelectedBrand(null)
+    setIsFormOpen(true)
+  }
 
-  useEffect(() => {
-    setFiles(initialFiles)
-  }, [initialFiles])
-
-  const handleDataRefresh = async () => {
-    const [brandsData, submissionsData, filesData] = await Promise.all([getBrands(), getSubmissions(), getFiles()])
-    setBrands(brandsData)
-    setSubmissions(submissionsData)
-    setFiles(filesData)
+  const handleCloseForm = () => {
+    setIsFormOpen(false)
+    setSelectedBrand(null)
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="space-y-6">
       <Tabs defaultValue="brands">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center">
           <TabsList>
             <TabsTrigger value="brands">Brands</TabsTrigger>
             <TabsTrigger value="submissions">Submissions</TabsTrigger>
-            <TabsTrigger value="files">Files</TabsTrigger>
+            <TabsTrigger value="files">File Manager</TabsTrigger>
           </TabsList>
-          <Button onClick={() => setIsFormOpen(true)}>
+          <Button onClick={handleAddNewBrand}>
             <PlusCircle className="mr-2 h-4 w-4" />
             Add New Brand
           </Button>
         </div>
         <TabsContent value="brands">
-          <BrandGrid brands={brands} onBrandChange={handleDataRefresh} />
+          <BrandGrid brands={brands} onEditBrand={handleEditBrand} />
         </TabsContent>
         <TabsContent value="submissions">
           <SubmissionsTable submissions={submissions} />
         </TabsContent>
         <TabsContent value="files">
-          <FileManager files={files} onFileChange={handleDataRefresh} />
+          <FileManager initialFiles={files} brands={brands} />
         </TabsContent>
       </Tabs>
 
-      <BrandForm isOpen={isFormOpen} onOpenChange={setIsFormOpen} onFormSuccess={handleDataRefresh} brand={null} />
+      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{selectedBrand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
+          </DialogHeader>
+          <BrandForm brand={selectedBrand} onClose={handleCloseForm} />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
