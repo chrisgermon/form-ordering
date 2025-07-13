@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import Link from "next/link"
 import { BrandGrid } from "./BrandGrid"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -11,12 +12,12 @@ import { FileManager } from "./FileManager"
 import type { Brand, UploadedFile, FormSubmission } from "@/lib/types"
 import { revalidateAllData } from "./actions"
 import { toast } from "sonner"
-import { RefreshCw } from "lucide-react"
+import { RefreshCw, Home } from "lucide-react"
 
 interface AdminDashboardProps {
-  brands: Brand[]
-  submissions: FormSubmission[]
-  files: UploadedFile[]
+  initialBrands: Brand[]
+  initialSubmissions: FormSubmission[]
+  initialFiles: UploadedFile[]
   error: string | null
 }
 
@@ -64,8 +65,6 @@ export function AdminDashboard({ initialBrands, initialSubmissions, initialFiles
 
   const handleSubmissionsRefresh = async () => {
     toast.info("Refreshing submissions...")
-    // This is a client-side action, so we trigger the API route to revalidate its cache
-    // and then fetch the new data.
     await fetch("/api/revalidate?path=/api/admin/submissions", { method: "POST" })
     await fetchSubmissions()
     toast.success("Submissions refreshed!")
@@ -128,6 +127,12 @@ export function AdminDashboard({ initialBrands, initialSubmissions, initialFiles
       <header className="flex flex-wrap gap-4 justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Admin Dashboard</h1>
         <div className="flex items-center gap-2">
+          <Link href="/" passHref>
+            <Button variant="outline">
+              <Home className="mr-2 h-4 w-4" />
+              Home
+            </Button>
+          </Link>
           <Button onClick={handleRefresh} variant="outline">
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh All Data
