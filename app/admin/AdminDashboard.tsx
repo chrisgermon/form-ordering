@@ -21,28 +21,43 @@ export default function AdminDashboard({
   files: initialFiles,
   submissions: initialSubmissions,
 }: AdminDashboardProps) {
-  const [isBrandFormOpen, setIsBrandFormOpen] = useState(false)
-  const [brands, setBrands] = useState(initialBrands || [])
+  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [editingBrand, setEditingBrand] = useState<Brand | null>(null)
+  const [brands, setBrands] = useState<Brand[]>(initialBrands || [])
+  // You might want to refresh files and submissions as well
+  // const [files, setFiles] = useState<FileRecord[]>(initialFiles || [])
+  // const [submissions, setSubmissions] = useState<Submission[]>(initialSubmissions || [])
 
-  const onBrandChange = async () => {
-    try {
-      const response = await fetch("/api/admin/brands")
-      if (response.ok) {
-        const updatedBrands = await response.json()
-        setBrands(updatedBrands)
-      } else {
-        console.error("Failed to refresh brands")
-      }
-    } catch (error) {
-      console.error("Error refreshing brands:", error)
+  const refreshData = async () => {
+    const res = await fetch("/api/admin/brands")
+    if (res.ok) {
+      const updatedBrands = await res.json()
+      setBrands(updatedBrands)
     }
+    // Add fetching for files and submissions if needed
+  }
+
+  const handleAddNewBrand = () => {
+    setEditingBrand(null)
+    setIsFormOpen(true)
+  }
+
+  const handleEditBrand = (brand: Brand) => {
+    setEditingBrand(brand)
+    setIsFormOpen(true)
+  }
+
+  const handleFormSuccess = () => {
+    setIsFormOpen(false)
+    setEditingBrand(null)
+    refreshData()
   }
 
   return (
     <>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <Button onClick={() => setIsBrandFormOpen(true)}>
+        <Button onClick={handleAddNewBrand}>
           <PlusCircle className="mr-2 h-4 w-4" />
           Add New Brand
         </Button>
@@ -55,18 +70,23 @@ export default function AdminDashboard({
           <TabsTrigger value="submissions">Submissions</TabsTrigger>
         </TabsList>
         <TabsContent value="brands" className="mt-4">
-          <BrandGrid brands={brands} onBrandChange={onBrandChange} />
+          <BrandGrid brands={brands} onEditBrand={handleEditBrand} onBrandChange={refreshData} />
         </TabsContent>
         <TabsContent value="files" className="mt-4">
           <FileManager brands={brands} />
         </TabsContent>
         <TabsContent value="submissions" className="mt-4">
-          <SubmissionsTable submissions={initialSubmissions || []} brands={brands} />
+          <SubmissionsTable submissions={initialSubmissions} brands={brands} />
         </TabsContent>
       </Tabs>
 
-      {isBrandFormOpen && (
-        <BrandForm isOpen={isBrandFormOpen} onClose={() => setIsBrandFormOpen(false)} onBrandChange={onBrandChange} />
+      {isFormOpen && (
+        <BrandForm
+          isOpen={isFormOpen}
+          onOpenChange={setIsFormOpen}
+          brand={editingBrand}
+          onFormSuccess={handleFormSuccess}
+        />
       )}
     </>
   )

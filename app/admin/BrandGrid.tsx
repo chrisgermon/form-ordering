@@ -1,98 +1,81 @@
 "use client"
 
-import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, Edit, Trash2, ExternalLink } from "lucide-react"
-import { BrandForm } from "./BrandForm"
-import { deleteBrand } from "./actions"
 import { toast } from "sonner"
-import { resolveAssetUrl } from "@/lib/utils"
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+
 import type { Brand } from "@/lib/types"
+import { resolveAssetUrl } from "@/lib/utils"
+import { deleteBrand } from "./actions"
+
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 
 interface BrandGridProps {
   brands: Brand[]
-  onBrandChange: () => Promise<void>
+  onEditBrand: (brand: Brand) => void
+  onBrandChange: () => void
 }
 
-export function BrandGrid({ brands, onBrandChange }: BrandGridProps) {
-  const [editingBrand, setEditingBrand] = useState<Brand | null>(null)
-
-  const handleEdit = (brand: Brand) => {
-    setEditingBrand(brand)
-  }
-
-  const handleDelete = async (brandId: string) => {
-    if (window.confirm("Are you sure you want to delete this brand and all associated data? This cannot be undone.")) {
+export function BrandGrid({ brands, onEditBrand, onBrandChange }: BrandGridProps) {
+  const handleDelete = async (brandId: number) => {
+    if (window.confirm("Are you sure you want to delete this brand and all its data?")) {
       const result = await deleteBrand(brandId)
       if (result.success) {
-        toast.success("Brand deleted successfully.")
-        await onBrandChange()
+        toast.success(result.message)
+        onBrandChange()
       } else {
-        toast.error(`Failed to delete brand: ${result.error}`)
+        toast.error(result.message)
       }
     }
   }
 
-  const handleCloseForm = () => {
-    setEditingBrand(null)
-  }
-
   return (
-    <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {Array.isArray(brands) && brands.length > 0 ? (
-          brands.map((brand) => (
-            <Card key={brand.id} className="flex flex-col">
-              <CardHeader className="flex-row items-center justify-between">
-                <CardTitle className="text-lg">{brand.name}</CardTitle>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleEdit(brand)}>
-                      <Edit className="mr-2 h-4 w-4" />
-                      <span>Edit</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleDelete(brand.id)} className="text-red-500">
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      <span>Delete</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </CardHeader>
-              <CardContent className="flex-grow flex flex-col items-center justify-center">
-                <Image
-                  src={resolveAssetUrl(brand.logo) || "/placeholder.svg"}
-                  alt={`${brand.name} logo`}
-                  width={128}
-                  height={128}
-                  className="rounded-md object-contain"
-                />
-              </CardContent>
-              <CardFooter>
-                <Button asChild variant="outline" className="w-full bg-transparent">
-                  <Link href={`/admin/editor/${brand.slug}`}>
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Open Editor
-                  </Link>
-                </Button>
-              </CardFooter>
-            </Card>
-          ))
-        ) : (
-          <p className="col-span-full text-center text-gray-500">No brands found. Add one to get started.</p>
-        )}
-      </div>
-      {editingBrand && (
-        <BrandForm isOpen={true} onClose={handleCloseForm} brand={editingBrand} onBrandChange={onBrandChange} />
-      )}
-    </>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {brands.map((brand) => (
+        <Card key={brand.id}>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg font-semibold">{brand.name}</CardTitle>
+            <Badge variant={brand.active ? "default" : "outline"}>{brand.active ? "Active" : "Inactive"}</Badge>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-center mb-4 h-20">
+              <Image
+                src={resolveAssetUrl(brand.logo) || "/placeholder.svg"}
+                alt={`${brand.name} logo`}
+                width={150}
+                height={75}
+                className="object-contain h-full w-auto"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/admin/editor/${brand.slug}`}>Edit Form</Link>
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => onEditBrand(brand)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit Brand
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDelete(brand.id)} className="text-red-600">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   )
 }

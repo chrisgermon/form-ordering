@@ -1,63 +1,44 @@
 import { createClient } from "@/utils/supabase/server"
 import AdminDashboard from "./AdminDashboard"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
-import type { Brand, FileRecord, Submission } from "@/lib/types"
-
-async function getDashboardData() {
-  const supabase = createClient()
-  let brands: Brand[] = []
-  let files: FileRecord[] = []
-  let submissions: Submission[] = []
-  let error: string | null = null
-
-  try {
-    const { data: brandsData, error: brandsError } = await supabase
-      .from("brands")
-      .select("id, name, slug, logo, active, emails, clinic_locations")
-      .order("name", { ascending: true })
-
-    if (brandsError) throw brandsError
-    brands = brandsData || []
-
-    const { data: filesData, error: filesError } = await supabase
-      .from("files")
-      .select("*")
-      .order("uploaded_at", { ascending: false })
-
-    if (filesError) throw filesError
-    files = filesData || []
-
-    const { data: submissionsData, error: submissionsError } = await supabase
-      .from("submissions")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100)
-
-    if (submissionsError) throw submissionsError
-    submissions = submissionsData || []
-  } catch (e: any) {
-    console.error("Failed to load dashboard data:", e)
-    error = `Failed to load dashboard data: ${e.message}`
-  }
-
-  return { brands, files, submissions, error }
-}
+import { Terminal } from "lucide-react"
 
 export default async function AdminPage() {
-  const { brands, files, submissions, error } = await getDashboardData()
+  const supabase = createClient()
 
-  if (error) {
+  try {
+    const brandsData = supabase.from("brands").select("*").order("name")
+    const filesData = supabase.from("files").select("*").order("uploaded_at", { ascending: false })
+    const submissionsData = supabase.from("submissions").select("*").order("created_at", { ascending: false })
+
+    const [
+      { data: brands, error: brandsError },
+      { data: files, error: filesError },
+      { data: submissions, error: submissionsError },
+    ] = await Promise.all([brandsData, filesData, submissionsData])
+
+    if (brandsError || filesError || submissionsError) {
+      const errorMessages = [brandsError?.message, filesError?.message, submissionsError?.message]
+        .filter(Boolean)
+        .join(", ")
+      throw new Error(errorMessages || "An unknown error occurred while fetching admin data.")
+    }
+
+    return <AdminDashboard brands={brands || []} files={files || []} submissions={submissions || []} />
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred."
+    console.error("Admin Page Error:", errorMessage)
     return (
-      <div className="container mx-auto p-4 md:p-8">
+      <div className="container mx-auto py-10">
         <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <Terminal className="h-4 w-4" />
+          <AlertTitle>Error Loading Admin Dashboard</AlertTitle>
+          <AlertDescription>
+            <p>There was a problem fetching the necessary data. Please check the server logs for more details.</p>
+            <p className="font-mono bg-muted p-2 rounded-md mt-2 text-xs">{errorMessage}</p>
+          </AlertDescription>
         </Alert>
       </div>
     )
   }
-
-  return <AdminDashboard brands={brands} files={files} submissions={submissions} />
 }

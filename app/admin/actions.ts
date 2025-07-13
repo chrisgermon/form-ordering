@@ -3,7 +3,6 @@
 import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 import { del, put } from "@vercel/blob"
-import type { Brand } from "@/lib/types"
 import { z } from "zod"
 
 const BrandSchema = z.object({
@@ -11,19 +10,28 @@ const BrandSchema = z.object({
   slug: z.string().min(1, "Slug is required"),
   active: z.boolean(),
   emails: z.array(z.string().email()),
-  clinic_locations: z.array(z.string()),
+  clinic_locations: z.array(
+    z.object({
+      name: z.string().min(1),
+      address: z.string().min(1),
+      phone: z.string().optional().or(z.literal("")),
+      email: z.string().email().optional().or(z.literal("")),
+    }),
+  ),
 })
 
 async function handleLogoUpload(logoFile: File | null, currentLogoUrl: string | null | undefined) {
   if (logoFile && logoFile.size > 0) {
     if (currentLogoUrl) {
       try {
-        await del(currentLogoUrl)
+        if (currentLogoUrl.includes("blob.vercel-storage.com")) {
+          await del(currentLogoUrl)
+        }
       } catch (error) {
         console.error("Failed to delete old logo, it might not exist:", error)
       }
     }
-    const blob = await put(`logos/${logoFile.name}`, logoFile, {
+    const blob = await put(`logos/${Date.now()}-${logoFile.name}`, logoFile, {
       access: "public",
     })
     return blob.url
@@ -31,13 +39,15 @@ async function handleLogoUpload(logoFile: File | null, currentLogoUrl: string | 
   return currentLogoUrl
 }
 
+const toBoolean = (value: string | null) => value === "true"
+
 export async function createBrand(prevState: any, formData: FormData) {
   const supabase = createClient()
 
   const validatedFields = BrandSchema.safeParse({
     name: formData.get("name"),
     slug: formData.get("slug"),
-    active: formData.get("active") === "true",
+    active: toBoolean(formData.get("active") as string),
     emails: JSON.parse((formData.get("emails") as string) || "[]"),
     clinic_locations: JSON.parse((formData.get("clinic_locations") as string) || "[]"),
   })
@@ -46,6 +56,7 @@ export async function createBrand(prevState: any, formData: FormData) {
     return {
       message: "Invalid form data.",
       errors: validatedFields.error.flatten().fieldErrors,
+      success: false,
     }
   }
 
@@ -58,21 +69,20 @@ export async function createBrand(prevState: any, formData: FormData) {
   })
 
   if (error) {
-    return { message: `Database Error: ${error.message}` }
+    return { message: `Database Error: ${error.message}`, success: false }
   }
 
   revalidatePath("/admin")
   return { message: "Brand created successfully.", success: true }
 }
 
-export async function updateBrand(prevState: any, formData: FormData) {
+export async function updateBrand(id: number, prevState: any, formData: FormData) {
   const supabase = createClient()
-  const id = formData.get("id") as string
 
   const validatedFields = BrandSchema.safeParse({
     name: formData.get("name"),
     slug: formData.get("slug"),
-    active: formData.get("active") === "true",
+    active: toBoolean(formData.get("active") as string),
     emails: JSON.parse((formData.get("emails") as string) || "[]"),
     clinic_locations: JSON.parse((formData.get("clinic_locations") as string) || "[]"),
   })
@@ -81,6 +91,7 @@ export async function updateBrand(prevState: any, formData: FormData) {
     return {
       message: "Invalid form data.",
       errors: validatedFields.error.flatten().fieldErrors,
+      success: false,
     }
   }
 
@@ -94,7 +105,7 @@ export async function updateBrand(prevState: any, formData: FormData) {
     .eq("id", id)
 
   if (error) {
-    return { message: `Database Error: ${error.message}` }
+    return { message: `Database Error: ${error.message}`, success: false }
   }
 
   revalidatePath("/admin")
@@ -127,16 +138,12 @@ export async function deleteFile(fileUrl: string) {
 
 export async function importForm(brandId: number, sections: any[]) {
   const supabase = createClient()
-  // Implementation for importing form sections and items
-  // This is a placeholder implementation
   console.log(`Importing form for brand ${brandId}`, sections)
   return { success: true, message: "Form imported successfully (placeholder)." }
 }
 
 export async function clearFormForBrand(brandId: number) {
   const supabase = createClient()
-  // Implementation for clearing form sections and items for a brand
-  // This is a placeholder implementation
   console.log(`Clearing form for brand ${brandId}`)
   return { success: true, message: "Form cleared successfully (placeholder)." }
 }
@@ -146,7 +153,7 @@ export async function revalidateAllData() {
   return { success: true }
 }
 
-export async function fetchBrandData(slug: string): Promise<Brand | null> {
+export async function fetchBrandData(slug: string) {
   const supabase = createClient()
   const { data, error } = await supabase
     .from("brands")

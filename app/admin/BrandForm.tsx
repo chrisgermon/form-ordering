@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useState } from "react"
 import { useForm, useFieldArray } from "react-hook-form"
 import { useFormState } from "react-dom"
@@ -45,7 +44,7 @@ type BrandFormProps = {
   isOpen: boolean
   onOpenChange: (isOpen: boolean) => void
   brand?: Brand | null
-  onFormSuccess: (brand: Brand) => void
+  onFormSuccess: () => void
 }
 
 export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandFormProps) {
@@ -91,6 +90,8 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
       })
       if (brand.logo) {
         setLogoPreview(resolveAssetUrl(brand.logo))
+      } else {
+        setLogoPreview(null)
       }
     } else {
       form.reset({
@@ -105,25 +106,23 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
   }, [brand, form])
 
   const action = brand ? updateBrand.bind(null, brand.id) : createBrand
-  const [state, formAction] = useFormState(action, { message: "", success: false })
+  const [state, formAction] = useFormState(action, { message: "", success: false, errors: null })
 
   useEffect(() => {
     if (state.message) {
       if (state.success) {
         toast.success(state.message)
-        onOpenChange(false)
-        // This part is tricky with server actions. We might need a different approach
-        // to get the updated brand data back to the parent.
-        // For now, we rely on revalidation.
+        onFormSuccess()
       } else {
         toast.error(state.message)
       }
     }
-  }, [state, onOpenChange])
+  }, [state, onFormSuccess])
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
+      form.setValue("logo", event.target.files)
       const reader = new FileReader()
       reader.onloadend = () => {
         setLogoPreview(reader.result as string)
@@ -138,10 +137,13 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
     formData.append("slug", values.slug)
     formData.append("active", String(values.active))
     formData.append("emails", JSON.stringify(values.emails))
-    formData.append("clinic_locations", JSON.stringify(values.clinic_locations))
-    if (values.logo && values.logo.length > 0) {
-      formData.append("logo", values.logo[0])
+    formData.append("clinic_locations", JSON.stringify(values.clinic_locations || []))
+
+    const logoFiles = form.getValues("logo")
+    if (logoFiles && logoFiles.length > 0) {
+      formData.append("logo", logoFiles[0])
     }
+
     formAction(formData)
   }
 
@@ -152,7 +154,7 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
           <DialogTitle>{brand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-1">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -185,7 +187,7 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
             <FormField
               control={form.control}
               name="logo"
-              render={({ field }) => (
+              render={() => (
                 <FormItem>
                   <FormLabel>Logo</FormLabel>
                   <FormControl>
