@@ -22,14 +22,14 @@ export async function GET() {
     const supabase = createAdminClient()
 
     const { data: sections, error } = await supabase
-      .from("product_sections")
+      .from("sections")
       .select(
         `
         *,
-        product_items (*)
+        items (*, options(*))
       `,
       )
-      .order("sort_order")
+      .order("position")
 
     if (error) throw error
 
@@ -50,27 +50,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Title and brandId are required" }, { status: 400 })
     }
 
-    const { data: maxSortOrderData, error: maxSortError } = await supabase
-      .from("product_sections")
-      .select("sort_order")
+    const { data: maxPositionData, error: maxPosError } = await supabase
+      .from("sections")
+      .select("position")
       .eq("brand_id", brandId)
-      .order("sort_order", { ascending: false })
+      .order("position", { ascending: false })
       .limit(1)
       .single()
 
-    if (maxSortError && maxSortError.code !== "PGRST116") {
+    if (maxPosError && maxPosError.code !== "PGRST116") {
       // Ignore 'No rows found' error, which is expected for the first section
-      throw maxSortError
+      throw maxPosError
     }
 
-    const newSortOrder = (maxSortOrderData?.sort_order ?? -1) + 1
+    const newPosition = (maxPositionData?.position ?? -1) + 1
 
     const { data: section, error } = await supabase
-      .from("product_sections")
+      .from("sections")
       .insert({
         title: title,
         brand_id: brandId,
-        sort_order: newSortOrder,
+        position: newPosition,
       })
       .select()
       .single()
@@ -99,7 +99,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const { data: section, error } = await supabase
-      .from("product_sections")
+      .from("sections")
       .update({
         title: title,
         brand_id: brandId,
@@ -133,7 +133,7 @@ export async function DELETE(request: NextRequest) {
 
     // First, get the brand ID for revalidation before deleting
     const { data: sectionData, error: fetchError } = await supabase
-      .from("product_sections")
+      .from("sections")
       .select("brand_id")
       .eq("id", id)
       .single()
@@ -144,7 +144,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Now, delete the section
-    const { error: deleteError } = await supabase.from("product_sections").delete().eq("id", id)
+    const { error: deleteError } = await supabase.from("sections").delete().eq("id", id)
 
     if (deleteError) throw deleteError
 

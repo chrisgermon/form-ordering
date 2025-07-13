@@ -5,44 +5,53 @@ import { notFound } from "next/navigation"
 import { FormEditor } from "./form-editor"
 import { FileManager } from "@/app/admin/FileManager"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Toaster } from "@/components/ui/sonner"
+import { Toaster } from "sonner"
 import type { BrandData } from "@/lib/types"
 
 async function getBrandData(slug: string): Promise<BrandData> {
   const supabase = createClient()
-  const { data: brand, error } = await supabase
+
+  // Step 1: Fetch the brand details
+  const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select(
-      `
-      id, name, slug, logo_url, emails, clinic_locations, active,
-      sections (
-        *,
-        items (
-          *,
-          options (*)
-        )
-      )
-    `,
-    )
+    .select("id, name, slug, logo_url, emails, clinic_locations, active")
     .eq("slug", slug)
     .single()
 
-  if (error || !brand) {
-    console.error(`Error fetching brand for editor: ${slug}`, error?.message)
+  if (brandError || !brand) {
+    console.error(`Error fetching brand details for slug '${slug}':`, brandError?.message)
     notFound()
   }
 
-  // Ensure sections and items are sorted by position
-  const sortedSections = (brand.sections || []).sort((a, b) => a.position - b.position)
-  sortedSections.forEach((section) => {
+  // Step 2: Fetch the sections for that brand, with nested items and options
+  const { data: sections, error: sectionsError } = await supabase
+    .from("sections")
+    .select(
+      `
+      *,
+      items (
+        *,
+        options (*)
+      )
+    `,
+    )
+    .eq("brand_id", brand.id)
+    .order("position", { ascending: true })
+
+  if (sectionsError) {
+    console.error(`Error fetching sections for brand '${brand.name}':`, sectionsError.message)
+    // Return brand data with empty sections if sections fail to load, preventing a crash
+    return { ...brand, sections: [] } as BrandData
+  }
+
+  // Step 3: Sort items within each section by their position
+  sections.forEach((section) => {
     if (section.items) {
       section.items.sort((a, b) => a.position - b.position)
-    } else {
-      section.items = [] // Ensure items is always an array
     }
   })
 
-  return { ...brand, sections: sortedSections } as BrandData
+  return { ...brand, sections } as BrandData
 }
 
 export default async function EditorPage({ params }: { params: { brandSlug: string } }) {

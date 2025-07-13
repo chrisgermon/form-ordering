@@ -8,7 +8,7 @@ export async function getBrand(slug: string): Promise<Brand | null> {
   const supabase = createAdminClient()
   const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select("id, name, slug, logo, emails, clinic_locations, active")
+    .select("id, name, slug, logo_url, emails, clinic_locations, active")
     .eq("slug", slug)
     .single()
 
@@ -18,35 +18,35 @@ export async function getBrand(slug: string): Promise<Brand | null> {
   }
 
   const { data: sections, error: sectionsError } = await supabase
-    .from("product_sections")
+    .from("sections")
     .select("*")
     .eq("brand_id", brand.id)
-    .order("sort_order")
+    .order("position")
 
   if (sectionsError) {
     console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
-    return { ...brand, product_sections: [] } as Brand
+    return { ...brand, sections: [] } as Brand
   }
 
   const sectionsWithItems = await Promise.all(
     (sections || []).map(async (section) => {
       const { data: items, error: itemsError } = await supabase
-        .from("product_items")
+        .from("items")
         .select("*")
         .eq("section_id", section.id)
-        .order("sort_order")
+        .order("position")
 
       if (itemsError) {
         console.error(`Error fetching items for section '${section.title}':`, itemsError.message)
-        return { ...section, product_items: [] }
+        return { ...section, items: [] }
       }
-      return { ...section, product_items: items || [] }
+      return { ...section, items: items || [] }
     }),
   )
 
   return {
     ...brand,
-    product_sections: sectionsWithItems,
+    sections: sectionsWithItems,
   } as Brand
 }
 
@@ -64,7 +64,7 @@ export async function updateSectionOrder(brandSlug: string, orderedSectionIds: s
   try {
     const supabase = createAdminClient()
     const updates = orderedSectionIds.map((id, index) =>
-      supabase.from("product_sections").update({ sort_order: index }).eq("id", id),
+      supabase.from("sections").update({ position: index }).eq("id", id),
     )
 
     const results = await Promise.all(updates)
@@ -84,9 +84,7 @@ export async function updateSectionOrder(brandSlug: string, orderedSectionIds: s
 export async function updateItemOrder(brandSlug: string, orderedItemIds: string[]) {
   try {
     const supabase = createAdminClient()
-    const updates = orderedItemIds.map((id, index) =>
-      supabase.from("product_items").update({ sort_order: index }).eq("id", id),
-    )
+    const updates = orderedItemIds.map((id, index) => supabase.from("items").update({ position: index }).eq("id", id))
 
     const results = await Promise.all(updates)
     const error = results.find((res) => res.error)
