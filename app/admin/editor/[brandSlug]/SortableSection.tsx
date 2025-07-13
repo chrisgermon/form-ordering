@@ -1,91 +1,69 @@
 "use client"
 
-import { useMemo } from "react"
-
-import { useSortable, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVertical, Pencil, Trash2 } from "lucide-react"
-import type { FormItem, FormSection } from "@/lib/types"
-import { Button } from "@/components/ui/button"
+import { GripVertical, Pencil, Trash2, Plus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import type { SectionWithItems } from "@/lib/types"
 import { SectionItem } from "./SectionItem"
 
 interface SortableSectionProps {
-  section: FormSection
-  onEditSection: (section: FormSection) => void
-  onDeleteSection: (sectionId: number) => void
-  onEditItem: (item: FormItem) => void
-  onDeleteItem: (itemId: number) => void
+  section: SectionWithItems
 }
 
-export function SortableSection({
-  section,
-  onEditSection,
-  onDeleteSection,
-  onEditItem,
-  onDeleteItem,
-}: SortableSectionProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
+export function SortableSection({ section }: SortableSectionProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: section.id,
+    data: {
+      type: "section",
+    },
+  })
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 50 : "auto",
-    opacity: isDragging ? 0.8 : 1,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : "auto",
   }
 
-  const itemIds = useMemo(() => section.items.map((item) => item.id), [section.items])
-
   return (
-    <div ref={setNodeRef} style={style} className="mb-6">
-      <Card>
-        <CardHeader
-          className="flex flex-row items-center justify-between p-4 bg-gray-50 border-b"
-          {...attributes}
-          {...listeners}
-          style={{ touchAction: "none", cursor: "grab" }}
-        >
-          <div className="flex items-center gap-3">
-            <GripVertical className="h-6 w-6 text-gray-500" />
-            <CardTitle className="text-lg font-semibold">{section.title}</CardTitle>
+    <Card ref={setNodeRef} style={style} {...attributes} className="overflow-hidden">
+      <CardHeader className="flex flex-row items-center justify-between p-4 border-b bg-muted/40">
+        <div className="flex items-center gap-2">
+          <button {...listeners} className="cursor-grab p-1 -ml-1">
+            <GripVertical className="h-5 w-5 text-muted-foreground" />
+          </button>
+          <CardTitle className="text-lg font-semibold">{section.title}</CardTitle>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon">
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="p-4">
+        <SortableContext items={section.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {section.items.map((item) => (
+              <SectionItem key={item.id} item={item} sectionId={section.id} />
+            ))}
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => {
-                e.stopPropagation()
-                onEditSection(section)
-              }}
-            >
-              <Pencil className="h-4 w-4" />
-              <span className="sr-only">Edit Section</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => {
-                e.stopPropagation()
-                onDeleteSection(section.id)
-              }}
-            >
-              <Trash2 className="h-4 w-4 text-red-500" />
-              <span className="sr-only">Delete Section</span>
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="p-4 bg-gray-50/50">
-          {section.items.length > 0 ? (
-            <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-              {section.items.map((item) => (
-                <SectionItem key={item.id} item={item} onEdit={onEditItem} onDelete={onDeleteItem} />
-              ))}
-            </SortableContext>
-          ) : (
-            <p className="text-sm text-gray-500 text-center py-4">This section is empty. Add an item to get started.</p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+        </SortableContext>
+        {section.items.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">This section is empty.</p>
+        )}
+        <div className="mt-4 pt-4 border-t">
+          <Button variant="secondary" size="sm">
+            <Plus className="mr-2 h-4 w-4" />
+            Add Item
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

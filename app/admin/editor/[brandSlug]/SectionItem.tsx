@@ -3,53 +3,51 @@
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical, Pencil, Trash2 } from "lucide-react"
-import type { FormItem } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import type { Item } from "@/lib/types"
 
 interface SectionItemProps {
-  item: FormItem
-  onEdit: (item: FormItem) => void
-  onDelete: (itemId: number) => void
+  item: Item
+  sectionId: string
 }
 
-export function SectionItem({ item, onEdit, onDelete }: SectionItemProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
+export function SectionItem({ item, sectionId }: SectionItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+    data: {
+      type: "item",
+      sectionId: sectionId,
+    },
+  })
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 100 : "auto",
     opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 20 : "auto",
   }
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center justify-between p-3 mb-2 bg-white rounded-md shadow-sm border border-gray-200"
+      {...attributes}
+      className="flex items-center justify-between p-3 border rounded-lg bg-background shadow-sm"
     >
       <div className="flex items-center gap-3">
-        <button
-          {...attributes}
-          {...listeners}
-          className="cursor-grab touch-none p-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-sm"
-        >
-          <GripVertical className="h-5 w-5 text-gray-400" />
+        <button {...listeners} className="cursor-grab p-1 -ml-1">
+          <GripVertical className="h-5 w-5 text-muted-foreground" />
         </button>
         <span className="font-medium">{item.label}</span>
-        <Badge variant="secondary" className="capitalize">
-          {item.type.replace(/_/g, " ")}
-        </Badge>
+        <Badge variant="outline">{item.type}</Badge>
       </div>
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => onEdit(item)}>
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="icon">
           <Pencil className="h-4 w-4" />
-          <span className="sr-only">Edit Item</span>
         </Button>
-        <Button variant="ghost" size="icon" onClick={() => onDelete(item.id)}>
-          <Trash2 className="h-4 w-4 text-red-500" />
-          <span className="sr-only">Delete Item</span>
+        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+          <Trash2 className="h-4 w-4" />
         </Button>
       </div>
     </div>
