@@ -11,7 +11,16 @@ const BrandSchema = z.object({
   slug: z.string().min(1, "Slug is required"),
   active: z.boolean(),
   emails: z.array(z.string().email()),
-  clinic_locations: z.array(z.string()),
+  clinic_locations: z
+    .array(
+      z.object({
+        name: z.string(),
+        address: z.string(),
+        phone: z.string().optional().nullable(),
+        email: z.string().optional().nullable(),
+      }),
+    )
+    .optional(),
 })
 
 async function handleLogoUpload(logoFile: File | null, currentLogoUrl: string | null | undefined) {
@@ -65,9 +74,8 @@ export async function createBrand(prevState: any, formData: FormData) {
   return { message: "Brand created successfully.", success: true }
 }
 
-export async function updateBrand(prevState: any, formData: FormData) {
+export async function updateBrand(id: string, prevState: any, formData: FormData) {
   const supabase = createClient()
-  const id = formData.get("id") as string
 
   const validatedFields = BrandSchema.safeParse({
     name: formData.get("name"),
@@ -84,14 +92,19 @@ export async function updateBrand(prevState: any, formData: FormData) {
     }
   }
 
-  const { data: currentBrand } = await supabase.from("brands").select("logo").eq("id", id).single()
+  const numericId = Number.parseInt(id, 10)
+  if (isNaN(numericId)) {
+    return { message: "Invalid Brand ID." }
+  }
+
+  const { data: currentBrand } = await supabase.from("brands").select("logo").eq("id", numericId).single()
   const logoFile = formData.get("logo") as File | null
   const logoUrl = await handleLogoUpload(logoFile, currentBrand?.logo)
 
   const { error } = await supabase
     .from("brands")
     .update({ ...validatedFields.data, logo: logoUrl })
-    .eq("id", id)
+    .eq("id", numericId)
 
   if (error) {
     return { message: `Database Error: ${error.message}` }
@@ -104,6 +117,9 @@ export async function updateBrand(prevState: any, formData: FormData) {
 
 export async function deleteBrand(brandId: number) {
   const supabase = createClient()
+  if (isNaN(brandId)) {
+    return { success: false, message: "Invalid Brand ID." }
+  }
   const { error } = await supabase.from("brands").delete().eq("id", brandId)
   if (error) {
     return { success: false, message: error.message }

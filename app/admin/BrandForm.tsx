@@ -45,7 +45,7 @@ type BrandFormProps = {
   isOpen: boolean
   onOpenChange: (isOpen: boolean) => void
   brand?: Brand | null
-  onFormSuccess: (brand: Brand) => void
+  onFormSuccess: () => void | Promise<void>
 }
 
 export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandFormProps) {
@@ -111,15 +111,13 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
     if (state.message) {
       if (state.success) {
         toast.success(state.message)
+        onFormSuccess()
         onOpenChange(false)
-        // This part is tricky with server actions. We might need a different approach
-        // to get the updated brand data back to the parent.
-        // For now, we rely on revalidation.
       } else {
         toast.error(state.message)
       }
     }
-  }, [state, onOpenChange])
+  }, [state, onOpenChange, onFormSuccess])
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -134,14 +132,19 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     const formData = new FormData()
-    formData.append("name", values.name)
-    formData.append("slug", values.slug)
-    formData.append("active", String(values.active))
-    formData.append("emails", JSON.stringify(values.emails))
-    formData.append("clinic_locations", JSON.stringify(values.clinic_locations))
-    if (values.logo && values.logo.length > 0) {
-      formData.append("logo", values.logo[0])
-    }
+    Object.entries(values).forEach(([key, value]) => {
+      if (key === "logo") {
+        if (value && value.length > 0) {
+          formData.append("logo", value[0])
+        }
+      } else if (key === "clinic_locations" || key === "emails") {
+        formData.append(key, JSON.stringify(value))
+      } else {
+        formData.append(key, String(value))
+      }
+    })
+
+    const actionToCall = brand ? updateBrand.bind(null, brand.id) : createBrand
     formAction(formData)
   }
 

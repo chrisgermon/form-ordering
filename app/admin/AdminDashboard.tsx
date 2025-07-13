@@ -1,73 +1,73 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { PlusCircle } from "lucide-react"
-import type { Brand, FileRecord, Submission } from "@/lib/types"
 import { BrandGrid } from "./BrandGrid"
 import { BrandForm } from "./BrandForm"
-import { FileManager } from "./FileManager"
 import { SubmissionsTable } from "./SubmissionsTable"
+import { FileManager } from "./FileManager"
+import type { Brand } from "@/lib/types"
+import { getBrands, getSubmissions, getFiles } from "./data-access"
 
-interface AdminDashboardProps {
-  brands: Brand[]
-  files: FileRecord[]
-  submissions: Submission[]
+type AdminDashboardProps = {
+  initialBrands: Brand[]
+  initialSubmissions: any[]
+  initialFiles: any[]
 }
 
-export default function AdminDashboard({
-  brands: initialBrands,
-  files: initialFiles,
-  submissions: initialSubmissions,
-}: AdminDashboardProps) {
-  const [isBrandFormOpen, setIsBrandFormOpen] = useState(false)
-  const [brands, setBrands] = useState(initialBrands || [])
+export function AdminDashboard({ initialBrands, initialSubmissions, initialFiles }: AdminDashboardProps) {
+  const [brands, setBrands] = useState(initialBrands)
+  const [submissions, setSubmissions] = useState(initialSubmissions)
+  const [files, setFiles] = useState(initialFiles)
+  const [isFormOpen, setIsFormOpen] = useState(false)
 
-  const onBrandChange = async () => {
-    try {
-      const response = await fetch("/api/admin/brands")
-      if (response.ok) {
-        const updatedBrands = await response.json()
-        setBrands(updatedBrands)
-      } else {
-        console.error("Failed to refresh brands")
-      }
-    } catch (error) {
-      console.error("Error refreshing brands:", error)
-    }
+  useEffect(() => {
+    setBrands(initialBrands)
+  }, [initialBrands])
+
+  useEffect(() => {
+    setSubmissions(initialSubmissions)
+  }, [initialSubmissions])
+
+  useEffect(() => {
+    setFiles(initialFiles)
+  }, [initialFiles])
+
+  const handleDataRefresh = async () => {
+    const [brandsData, submissionsData, filesData] = await Promise.all([getBrands(), getSubmissions(), getFiles()])
+    setBrands(brandsData)
+    setSubmissions(submissionsData)
+    setFiles(filesData)
   }
 
   return (
-    <>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <Button onClick={() => setIsBrandFormOpen(true)}>
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Add New Brand
-        </Button>
-      </div>
-
+    <div className="container mx-auto py-8">
       <Tabs defaultValue="brands">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="brands">Brands</TabsTrigger>
-          <TabsTrigger value="files">File Manager</TabsTrigger>
-          <TabsTrigger value="submissions">Submissions</TabsTrigger>
-        </TabsList>
-        <TabsContent value="brands" className="mt-4">
-          <BrandGrid brands={brands} onBrandChange={onBrandChange} />
+        <div className="flex justify-between items-center mb-6">
+          <TabsList>
+            <TabsTrigger value="brands">Brands</TabsTrigger>
+            <TabsTrigger value="submissions">Submissions</TabsTrigger>
+            <TabsTrigger value="files">Files</TabsTrigger>
+          </TabsList>
+          <Button onClick={() => setIsFormOpen(true)}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Add New Brand
+          </Button>
+        </div>
+        <TabsContent value="brands">
+          <BrandGrid brands={brands} onBrandChange={handleDataRefresh} />
         </TabsContent>
-        <TabsContent value="files" className="mt-4">
-          <FileManager brands={brands} />
+        <TabsContent value="submissions">
+          <SubmissionsTable submissions={submissions} />
         </TabsContent>
-        <TabsContent value="submissions" className="mt-4">
-          <SubmissionsTable submissions={initialSubmissions || []} brands={brands} />
+        <TabsContent value="files">
+          <FileManager files={files} onFileChange={handleDataRefresh} />
         </TabsContent>
       </Tabs>
 
-      {isBrandFormOpen && (
-        <BrandForm isOpen={isBrandFormOpen} onClose={() => setIsBrandFormOpen(false)} onBrandChange={onBrandChange} />
-      )}
-    </>
+      <BrandForm isOpen={isFormOpen} onOpenChange={setIsFormOpen} onFormSuccess={handleDataRefresh} brand={null} />
+    </div>
   )
 }

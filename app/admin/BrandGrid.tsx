@@ -27,12 +27,12 @@ export function BrandGrid({ brands, onBrandChange }: BrandGridProps) {
 
   const handleDelete = async (brandId: string) => {
     if (window.confirm("Are you sure you want to delete this brand and all associated data? This cannot be undone.")) {
-      const result = await deleteBrand(brandId)
+      const result = await deleteBrand(Number.parseInt(brandId, 10))
       if (result.success) {
         toast.success("Brand deleted successfully.")
         await onBrandChange()
       } else {
-        toast.error(`Failed to delete brand: ${result.error}`)
+        toast.error(`Failed to delete brand: ${result.message}`)
       }
     }
   }
@@ -91,7 +91,7 @@ export function BrandGrid({ brands, onBrandChange }: BrandGridProps) {
         )}
       </div>
       {editingBrand && (
-        <BrandForm isOpen={true} onClose={handleCloseForm} brand={editingBrand} onBrandChange={onBrandChange} />
+        <BrandForm isOpen={true} onOpenChange={handleCloseForm} brand={editingBrand} onFormSuccess={onBrandChange} />
       )}
     </>
   )
