@@ -1,126 +1,139 @@
 "use client"
 
-import type { Section, Item } from "@/lib/types"
-import { useSortable, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import { useState } from "react"
+import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core"
+import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import type { Section, Item } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { GripVertical, Plus, Trash2 } from "lucide-react"
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
-import { SectionItem } from "./SectionItem"
-import { ItemDialog } from "./dialogs"
-import { v4 as uuidv4 } from "uuid"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import { GripVertical, Pencil, PlusCircle, Trash2 } from "lucide-react"
+import SectionItem from "./SectionItem"
+import { AddItemDialog, EditItemDialog, ConfirmDeleteDialog } from "./dialogs"
 
 interface SortableSectionProps {
   section: Section
-  onUpdate: (section: Section) => void
-  onDelete: (sectionId: string) => void
+  onEditSection: () => void
+  onDeleteSection: (sectionId: string) => void
+  onUpdateItems: (sectionId: string, items: Item[], deletedItemIds: string[]) => void
+  brandId: string
 }
 
-export function SortableSection({ section, onUpdate, onDelete }: SortableSectionProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: section.id,
-    data: { type: "section" },
-  })
+export default function SortableSection({
+  section,
+  onEditSection,
+  onDeleteSection,
+  onUpdateItems,
+  brandId,
+}: SortableSectionProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
+  const [isAddItemOpen, setIsAddItemOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<Item | null>(null)
+  const [deletingSectionId, setDeletingSectionId] = useState<string | null>(null)
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+    opacity: isDragging ? 0.8 : 1,
   }
 
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor))
-
-  const handleAddItem = (newItem: Omit<Item, "id" | "position" | "brand_id">) => {
-    const item: Item = {
-      ...newItem,
-      id: `new-${uuidv4()}`,
+  const handleAddItem = (item: Omit<Item, "id" | "position" | "brand_id" | "section_id">) => {
+    const newItem: Item = {
+      ...item,
+      id: `new-item-${Date.now()}`,
       position: section.items.length,
-      brand_id: section.brand_id,
+      brand_id: brandId,
+      section_id: section.id,
     }
-    onUpdate({ ...section, items: [...section.items, item] })
+    onUpdateItems(section.id, [...section.items, newItem], [])
   }
 
   const handleUpdateItem = (updatedItem: Item) => {
     const newItems = section.items.map((i) => (i.id === updatedItem.id ? updatedItem : i))
-    onUpdate({ ...section, items: newItems })
+    onUpdateItems(section.id, newItems, [])
+    setEditingItem(null)
   }
 
   const handleDeleteItem = (itemId: string) => {
-    const newItems = section.items.filter((i) => i.id !== itemId).map((item, i) => ({ ...item, position: i }))
-    onUpdate({ ...section, items: newItems })
+    const newItems = section.items.filter((i) => i.id !== itemId)
+    onUpdateItems(section.id, newItems, [itemId])
+  }
+
+  const handleItemDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      const oldIndex = section.items.findIndex((item) => item.id === active.id)
+      const newIndex = section.items.findIndex((item) => item.id === over.id)
+      const newItems = arrayMove(section.items, oldIndex, newIndex).map((item, index) => ({ ...item, position: index }))
+      onUpdateItems(section.id, newItems, [])
+    }
   }
 
   return (
-    <Card ref={setNodeRef} style={style} {...attributes} className="overflow-hidden">
-      <CardHeader className="flex flex-row items-center justify-between p-4 border-b bg-muted/40">
-        <div className="flex items-center gap-2">
-          <button {...listeners} className="cursor-grab p-1 -ml-1">
-            <GripVertical className="h-5 w-5 text-muted-foreground" />
-          </button>
-          <CardTitle className="text-lg font-semibold">{section.title}</CardTitle>
-        </div>
-        <div className="flex items-center gap-1">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently delete the "{section.title}" section and all of its items. This action cannot be
-                  undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => onDelete(section.id)}>Delete</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </CardHeader>
-      <CardContent className="p-4">
-        <DndContext sensors={sensors} collisionDetection={closestCenter}>
-          <SortableContext items={section.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-2">
-              {section.items.map((item) => (
-                <SectionItem
-                  key={item.id}
-                  item={item}
-                  onUpdate={handleUpdateItem}
-                  onDelete={() => handleDeleteItem(item.id)}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-        {section.items.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-4">This section is empty.</p>
-        )}
-        <div className="mt-4 pt-4 border-t">
-          <ItemDialog onSave={handleAddItem}>
-            <Button variant="secondary" size="sm">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Item
+    <>
+      <Card ref={setNodeRef} style={style} className="bg-slate-50">
+        <CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b">
+          <div className="flex items-center gap-2">
+            <button {...attributes} {...listeners} className="cursor-grab p-1">
+              <GripVertical className="h-5 w-5 text-gray-400" />
+            </button>
+            <CardTitle className="text-lg">{section.title}</CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={onEditSection}>
+              <Pencil className="h-4 w-4" />
             </Button>
-          </ItemDialog>
-        </div>
-      </CardContent>
-    </Card>
+            <Button variant="ghost" size="icon" onClick={() => setDeletingSectionId(section.id)}>
+              <Trash2 className="h-4 w-4 text-red-500" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4">
+          <DndContext sensors={[]} collisionDetection={closestCenter} onDragEnd={handleItemDragEnd}>
+            <SortableContext items={section.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-3">
+                {section.items.map((item) => (
+                  <SectionItem
+                    key={item.id}
+                    item={item}
+                    onEdit={() => setEditingItem(item)}
+                    onDelete={handleDeleteItem}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+          {section.items.length === 0 && (
+            <div className="text-center py-6 text-gray-500">This section has no items.</div>
+          )}
+          <Button variant="outline" className="mt-4 w-full bg-transparent" onClick={() => setIsAddItemOpen(true)}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Add Item
+          </Button>
+        </CardContent>
+      </Card>
+
+      <AddItemDialog isOpen={isAddItemOpen} onClose={() => setIsAddItemOpen(false)} onAdd={handleAddItem} />
+      {editingItem && (
+        <EditItemDialog
+          isOpen={!!editingItem}
+          onClose={() => setEditingItem(null)}
+          onUpdate={handleUpdateItem}
+          item={editingItem}
+        />
+      )}
+      {deletingSectionId && (
+        <ConfirmDeleteDialog
+          isOpen={!!deletingSectionId}
+          onClose={() => setDeletingSectionId(null)}
+          onConfirm={() => {
+            onDeleteSection(deletingSectionId)
+            setDeletingSectionId(null)
+          }}
+          itemName={`section "${section.title}" and all its items`}
+        />
+      )}
+    </>
   )
 }
