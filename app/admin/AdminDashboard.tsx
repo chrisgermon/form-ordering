@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,11 @@ export function AdminDashboard({
 }) {
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
+  const router = useRouter()
+
+  const handleBrandChange = () => {
+    router.refresh()
+  }
 
   const handleEditBrand = (brand: Brand) => {
     setSelectedBrand(brand)
@@ -55,7 +61,11 @@ export function AdminDashboard({
           </Button>
         </div>
         <TabsContent value="brands">
-          <BrandGrid brands={brands} onEditBrand={handleEditBrand} />
+          <BrandGrid
+            brands={brands}
+            onEditBrand={handleEditBrand}
+            onBrandChange={handleBrandChange}
+          />
         </TabsContent>
         <TabsContent value="submissions">
           <SubmissionsTable submissions={submissions} />

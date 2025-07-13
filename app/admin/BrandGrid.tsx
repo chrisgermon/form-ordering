@@ -1,13 +1,11 @@
 "use client"
 
-import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MoreHorizontal, Edit, Trash2, ExternalLink } from "lucide-react"
-import { BrandForm } from "./BrandForm"
 import { deleteBrand } from "./actions"
 import { toast } from "sonner"
 import { resolveAssetUrl } from "@/lib/utils"
@@ -15,14 +13,13 @@ import type { Brand } from "@/lib/types"
 
 interface BrandGridProps {
   brands: Brand[]
+  onEditBrand: (brand: Brand) => void
   onBrandChange: () => Promise<void>
 }
 
-export function BrandGrid({ brands, onBrandChange }: BrandGridProps) {
-  const [editingBrand, setEditingBrand] = useState<Brand | null>(null)
-
+export function BrandGrid({ brands, onEditBrand, onBrandChange }: BrandGridProps) {
   const handleEdit = (brand: Brand) => {
-    setEditingBrand(brand)
+    onEditBrand(brand)
   }
 
   const handleDelete = async (brandId: string) => {
@@ -37,9 +34,6 @@ export function BrandGrid({ brands, onBrandChange }: BrandGridProps) {
     }
   }
 
-  const handleCloseForm = () => {
-    setEditingBrand(null)
-  }
 
   return (
     <>
@@ -90,9 +84,6 @@ export function BrandGrid({ brands, onBrandChange }: BrandGridProps) {
           <p className="col-span-full text-center text-gray-500">No brands found. Add one to get started.</p>
         )}
       </div>
-      {editingBrand && (
-        <BrandForm isOpen={true} onOpenChange={handleCloseForm} brand={editingBrand} onFormSuccess={onBrandChange} />
-      )}
     </>
   )
 }
