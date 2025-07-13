@@ -46,7 +46,7 @@ export function BrandForm({ brand, isOpen, onClose }: BrandFormProps) {
       if (state.success) {
         toast.success("Success!", { description: state.message })
         onClose()
-        router.refresh()
+        router.refresh() // This re-fetches server data and updates the UI
       } else {
         toast.error("Error", { description: state.message })
       }
