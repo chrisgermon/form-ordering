@@ -41,7 +41,9 @@ export default async function HomePage() {
       <main className="flex-grow">
         <div className="container mx-auto px-4 py-12">
           <div className="text-center mb-12">
-            <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">Printed Form Ordering</h1>
+            <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
+              Crowd IT Print Ordering System
+            </h1>
             <p className="mt-4 text-lg leading-8 text-gray-600">
               Select your brand to access the customised printing order form for your radiology practice.
             </p>

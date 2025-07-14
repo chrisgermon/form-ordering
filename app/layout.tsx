@@ -15,7 +15,7 @@ const work_sans = Work_Sans({
 })
 
 export const metadata: Metadata = {
-  title: "v0 App",
+  title: "Crowd IT Print Ordering System",
   description: "Created with v0",
   generator: "v0.dev",
 }
