@@ -52,11 +52,14 @@ export async function sendNewOrderEmail({
   }
 
   try {
+    console.log(
+      `Sending new order email to ${brand.email} (CC: ${submission.email}) for order ${submission.order_number}`,
+    )
     const info = await transporter.sendMail(mailOptions)
     console.log("Order email sent successfully:", info.messageId)
     return { success: true, data: info }
   } catch (error) {
-    console.error("Error sending order email:", error)
+    console.error(`Error sending order email for ${submission.order_number}:`, error)
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
   }
 }
@@ -122,11 +125,12 @@ export async function sendOrderCompletionEmail(submission: Submission) {
   }
 
   try {
+    console.log(`Attempting to send completion email to: ${submission.email} for order ${submission.order_number}`)
     const info = await transporter.sendMail(mailOptions)
     console.log("Completion email sent successfully:", info.messageId)
     return info
   } catch (error) {
-    console.error("Error sending completion email:", error)
+    console.error(`Error sending completion email for order ${submission.order_number}:`, error)
     throw error
   }
 }

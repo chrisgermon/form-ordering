@@ -102,14 +102,18 @@ export async function scrapeClinicsFromWebsite(
     }
     const html = await response.text()
 
-    // 2. Extract text content using Cheerio
+    // 2. Load HTML into Cheerio and clean it
     const $ = cheerio.load(html)
-    const textContent = $("body").text()
+    // Remove tags that are unlikely to contain location info to reduce noise
+    $("script, style, link, meta, noscript, header, footer, nav").remove()
+    const bodyHtml = $("body").html()
+    const cleanedHtml = bodyHtml ? bodyHtml.replace(/\s\s+/g, " ").trim() : ""
 
-    // Clean up the text content to remove excessive whitespace
-    const cleanedText = textContent.replace(/\s\s+/g, " ").trim()
+    if (!cleanedHtml) {
+      return { error: "Could not extract content from the website body." }
+    }
 
-    // 3. Use AI to extract clinic information
+    // 3. Use AI to extract clinic information from the cleaned HTML
     const { object } = await generateObject({
       model: openai("gpt-4o"),
       schema: z.object({
@@ -124,19 +128,19 @@ export async function scrapeClinicsFromWebsite(
           }),
         ),
       }),
-      prompt: `You are an expert web scraper and data extractor. Your task is to analyze the text content of a webpage and extract clinic locations.
+      prompt: `You are an expert web scraper and data extractor. Your task is to analyze the HTML content of a webpage and extract clinic locations.
 
-      Here is the text content from the website:
+      Here is the cleaned HTML content from the website's body:
       ---
-      ${cleanedText.substring(0, 15000)}
+      ${cleanedHtml.substring(0, 15000)}
       ---
 
-      Please extract all clinic locations from the text. For each clinic, provide its short name and its full address.
+      Please extract all clinic locations from the HTML. For each clinic, provide its short name and its full address.
 
       - The name should be a short, simple identifier for the location (e.g., for "Focus Radiology Dapto", the name should be "Dapto").
       - The address should be the complete street address for that location.
-      - Do not include the main brand name in the clinic name.
-      - Only return entries that you are confident are distinct clinic locations with a name and an address.
+      - Do not include the main brand name (like 'Light Radiology' or 'Focus Radiology') in the clinic name.
+      - Only return entries that you are confident are distinct clinic locations with both a name and a full address.
       - If you cannot find any clinics, return an empty array.`,
     })
 

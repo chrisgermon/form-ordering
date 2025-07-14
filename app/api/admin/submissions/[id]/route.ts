@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase"
 import { sendOrderCompletionEmail } from "@/lib/email"
+import type { Submission } from "@/lib/types"
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createServerSupabaseClient()
@@ -11,7 +12,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Submission ID is required" }, { status: 400 })
     }
 
-    const { data: updatedSubmission, error } = await supabase
+    const { data: updatedSubmissionData, error } = await supabase
       .from("submissions")
       .update({
         status: "completed",
@@ -30,7 +31,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     if (error) {
       console.error("Error updating submission:", error)
-      // Check for a specific error if PostgREST schema cache is stale
       if (error.message.includes("column") && error.message.includes("does not exist")) {
         return NextResponse.json(
           {
@@ -43,19 +43,20 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       throw error
     }
 
-    if (updatedSubmission) {
-      // Manually map brand name for consistency and prepare for email
-      const submissionForEmail = {
-        ...updatedSubmission,
-        brand_name: updatedSubmission.brand?.name || "Unknown Brand",
+    if (updatedSubmissionData) {
+      const { brand, ...submissionRest } = updatedSubmissionData
+      const submissionForEmail: Submission = {
+        ...submissionRest,
+        brand_name: brand?.name || "Unknown Brand",
       }
+
       // Fire and forget the email to the user who placed the order
       sendOrderCompletionEmail(submissionForEmail).catch((e) =>
-        console.error(`Failed to send completion email for submission ${updatedSubmission.id}:`, e),
+        console.error(`Failed to send completion email for submission ${submissionForEmail.id}:`, e),
       )
     }
 
-    return NextResponse.json(updatedSubmission)
+    return NextResponse.json(updatedSubmissionData)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
     console.error("PUT /api/admin/submissions/[id] Error:", errorMessage)
