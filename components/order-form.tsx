@@ -1,14 +1,15 @@
 "use client"
 import { useState, useMemo } from "react"
-import { useForm, Controller, FormProvider, useFormContext } from "react-hook-form"
+import { useForm, FormProvider, useFormContext } from "react-hook-form"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CalendarIcon, Loader2, Send, CheckCircle, XCircle } from "lucide-react"
+import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ArrowLeft } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import type { Brand, ProductItem } from "@/lib/types"
@@ -24,7 +25,7 @@ interface FormValues {
 }
 
 const ItemRow = ({ item }: { item: ProductItem }) => {
-  const { control, setValue, watch, register } = useFormContext<FormValues>()
+  const { setValue, watch, register } = useFormContext<FormValues>()
   const itemState = watch(`items.${item.id}`)
   const selectedQuantity = itemState?.quantity
 
@@ -33,6 +34,7 @@ const ItemRow = ({ item }: { item: ProductItem }) => {
       setValue(`items.${item.id}.quantity`, quantity, { shouldValidate: true })
     } else if (selectedQuantity === quantity) {
       setValue(`items.${item.id}.quantity`, undefined, { shouldValidate: true })
+      setValue(`items.${item.id}.customQuantity`, "", { shouldValidate: true })
     }
   }
 
@@ -83,7 +85,57 @@ const ItemRow = ({ item }: { item: ProductItem }) => {
   )
 }
 
+function OrderSummary({ allItemsMap }: { allItemsMap: Map<string, ProductItem> }) {
+  const { watch } = useFormContext<FormValues>()
+  const selectedItems = watch("items")
+
+  const itemsToDisplay = useMemo(() => {
+    if (!selectedItems) return []
+    return Object.entries(selectedItems)
+      .map(([id, data]) => {
+        if (data && data.quantity) {
+          const details = allItemsMap.get(id)
+          if (details) {
+            return {
+              ...details,
+              selectedQuantity: data.quantity,
+              customQuantity: data.customQuantity,
+            }
+          }
+        }
+        return null
+      })
+      .filter(Boolean) as (ProductItem & { selectedQuantity: string; customQuantity?: string })[]
+  }, [selectedItems, allItemsMap])
+
+  return (
+    <div className="sticky top-8">
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200">
+        <div className="bg-gray-100 text-gray-800 text-center py-3 rounded-t-xl border-b">
+          <h2 className="text-xl font-semibold">Your Order</h2>
+        </div>
+        <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+          {itemsToDisplay.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">No items selected yet.</p>
+          ) : (
+            itemsToDisplay.map((item) => (
+              <div key={item.id} className="border-b pb-3 last:border-b-0 last:pb-0">
+                <p className="font-semibold text-gray-800">{item.name}</p>
+                <p className="text-sm text-gray-600">Code: {item.code}</p>
+                <p className="text-sm font-medium text-blue-600 mt-1">
+                  Quantity: {item.selectedQuantity === "other" ? item.customQuantity || "N/A" : item.selectedQuantity}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function OrderForm({ brandData }: { brandData: Brand }) {
+  const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submissionStatus, setSubmissionStatus] = useState<"success" | "error" | null>(null)
   const [submissionMessage, setSubmissionMessage] = useState("")
@@ -184,8 +236,12 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
   return (
     <FormProvider {...methods}>
       <div className="min-h-screen bg-[#f9f9f9] p-4 sm:p-6 md:p-8 font-work-sans">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center mb-8">
+            <Button variant="outline" onClick={() => router.push("/")} className="mr-auto">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to All Brands
+            </Button>
             {brandData.logo && (
               <Image
                 src={brandData.logo || "/placeholder.svg"}
@@ -196,54 +252,52 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                 priority
               />
             )}
+            <div className="w-[188px] mr-auto"></div> {/* Spacer to balance the back button */}
           </div>
 
-          <div className="bg-white rounded-xl shadow-lg">
-            <div className="bg-[#2a3760] text-white text-center py-4 rounded-t-xl">
-              <h1 className="text-2xl font-semibold">Printing Order Form</h1>
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+            <div className="lg:col-span-2">
+              <div className="bg-white rounded-xl shadow-lg">
+                <div className="bg-[#2a3760] text-white text-center py-4 rounded-t-xl">
+                  <h1 className="text-2xl font-semibold">Printing Order Form</h1>
+                </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="p-6 sm:p-8">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 mb-8">
-                <div className="space-y-1">
-                  <label htmlFor="orderedBy" className="text-sm font-medium text-gray-800">
-                    Ordered By: <span className="text-red-500">*</span>
-                  </label>
-                  <Controller
-                    name="orderedBy"
-                    control={control}
-                    rules={{ required: "Ordered By is required." }}
-                    render={({ field }) => <Input {...field} id="orderedBy" className="bg-gray-100 border-gray-300" />}
-                  />
-                  {errors.orderedBy && <p className="text-xs text-red-500">{errors.orderedBy.message}</p>}
-                </div>
-                <div className="space-y-1">
-                  <label htmlFor="email" className="text-sm font-medium text-gray-800">
-                    Email Address <span className="text-red-500">*</span>
-                  </label>
-                  <Controller
-                    name="email"
-                    control={control}
-                    rules={{
-                      required: "Email is required.",
-                      pattern: { value: /^\S+@\S+$/i, message: "Invalid email address." },
-                    }}
-                    render={({ field }) => (
-                      <Input {...field} id="email" type="email" className="bg-gray-100 border-gray-300" />
-                    )}
-                  />
-                  {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
-                </div>
-                <div className="space-y-1">
-                  <label htmlFor="billTo" className="text-sm font-medium text-gray-800">
-                    Bill to Clinic: <span className="text-red-500">*</span>
-                  </label>
-                  <Controller
-                    name="billTo"
-                    control={control}
-                    rules={{ required: "Please select a clinic to bill." }}
-                    render={({ field }) => (
-                      <Select onValueChange={field.onChange} value={field.value}>
+                <form onSubmit={handleSubmit(onSubmit)} className="p-6 sm:p-8">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 mb-8">
+                    <div className="space-y-1">
+                      <label htmlFor="orderedBy" className="text-sm font-medium text-gray-800">
+                        Ordered By: <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        id="orderedBy"
+                        className="bg-gray-100 border-gray-300"
+                        {...methods.register("orderedBy", { required: "Ordered By is required." })}
+                      />
+                      {errors.orderedBy && <p className="text-xs text-red-500">{errors.orderedBy.message}</p>}
+                    </div>
+                    <div className="space-y-1">
+                      <label htmlFor="email" className="text-sm font-medium text-gray-800">
+                        Email Address <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        id="email"
+                        type="email"
+                        className="bg-gray-100 border-gray-300"
+                        {...methods.register("email", {
+                          required: "Email is required.",
+                          pattern: { value: /^\S+@\S+$/i, message: "Invalid email address." },
+                        })}
+                      />
+                      {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+                    </div>
+                    <div className="space-y-1">
+                      <label htmlFor="billTo" className="text-sm font-medium text-gray-800">
+                        Bill to Clinic: <span className="text-red-500">*</span>
+                      </label>
+                      <Select
+                        onValueChange={(value) => methods.setValue("billTo", value)}
+                        value={methods.watch("billTo")}
+                      >
                         <SelectTrigger id="billTo" className="bg-gray-100 border-gray-300">
                           <SelectValue placeholder="Select a clinic" />
                         </SelectTrigger>
@@ -255,20 +309,16 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                           ))}
                         </SelectContent>
                       </Select>
-                    )}
-                  />
-                  {errors.billTo && <p className="text-xs text-red-500">{errors.billTo.message}</p>}
-                </div>
-                <div className="space-y-1">
-                  <label htmlFor="deliverTo" className="text-sm font-medium text-gray-800">
-                    Deliver to Clinic: <span className="text-red-500">*</span>
-                  </label>
-                  <Controller
-                    name="deliverTo"
-                    control={control}
-                    rules={{ required: "Please select a delivery clinic." }}
-                    render={({ field }) => (
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      {errors.billTo && <p className="text-xs text-red-500">{errors.billTo.message}</p>}
+                    </div>
+                    <div className="space-y-1">
+                      <label htmlFor="deliverTo" className="text-sm font-medium text-gray-800">
+                        Deliver to Clinic: <span className="text-red-500">*</span>
+                      </label>
+                      <Select
+                        onValueChange={(value) => methods.setValue("deliverTo", value)}
+                        value={methods.watch("deliverTo")}
+                      >
                         <SelectTrigger id="deliverTo" className="bg-gray-100 border-gray-300">
                           <SelectValue placeholder="Select a clinic" />
                         </SelectTrigger>
@@ -280,82 +330,89 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                           ))}
                         </SelectContent>
                       </Select>
-                    )}
-                  />
-                  {errors.deliverTo && <p className="text-xs text-red-500">{errors.deliverTo.message}</p>}
-                </div>
-                <div className="space-y-1 sm:col-span-2">
-                  <label htmlFor="date" className="text-sm font-medium text-gray-800">
-                    Date: <span className="text-red-500">*</span>
-                  </label>
-                  <Controller
-                    name="date"
-                    control={control}
-                    rules={{ required: "Date is required." }}
-                    render={({ field }) => (
+                      {errors.deliverTo && <p className="text-xs text-red-500">{errors.deliverTo.message}</p>}
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label htmlFor="date" className="text-sm font-medium text-gray-800">
+                        Date: <span className="text-red-500">*</span>
+                      </label>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
                             variant={"outline"}
                             className={cn(
                               "w-full justify-start text-left font-normal bg-gray-100 border-gray-300",
-                              !field.value && "text-muted-foreground",
+                              !methods.watch("date") && "text-muted-foreground",
                             )}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                            {methods.watch("date") ? format(methods.watch("date")!, "PPP") : <span>Pick a date</span>}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
-                          <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                          <Calendar
+                            mode="single"
+                            selected={methods.watch("date")}
+                            onSelect={(date) => methods.setValue("date", date)}
+                            initialFocus
+                          />
                         </PopoverContent>
                       </Popover>
-                    )}
-                  />
-                  {errors.date && <p className="text-xs text-red-500">{errors.date.message}</p>}
-                </div>
-              </div>
-
-              <div className="space-y-8">
-                {brandData.product_sections.map((section) => (
-                  <div key={section.id} className="border border-dashed border-[#293563] rounded-lg p-4">
-                    <h2 className="text-lg font-semibold text-[#1aa7df] mb-4">{section.title}</h2>
-                    <div className="space-y-4">
-                      {section.product_items.map((item) => (
-                        <ItemRow key={item.id} item={item} />
-                      ))}
+                      {errors.date && <p className="text-xs text-red-500">{errors.date.message}</p>}
                     </div>
                   </div>
-                ))}
-              </div>
 
-              {submissionStatus && (
-                <Alert
-                  className={cn(
-                    "mt-8",
-                    submissionStatus === "success" ? "border-green-500 text-green-700" : "border-red-500 text-red-700",
-                  )}
-                >
-                  {submissionStatus === "success" ? (
-                    <CheckCircle className="h-4 w-4" />
-                  ) : (
-                    <XCircle className="h-4 w-4" />
-                  )}
-                  <AlertDescription>{submissionMessage}</AlertDescription>
-                </Alert>
-              )}
+                  <div className="space-y-8">
+                    {brandData.product_sections.map((section) => (
+                      <div key={section.id} className="border border-dashed border-[#293563] rounded-lg p-4">
+                        <h2 className="text-lg font-semibold text-[#1aa7df] mb-4">{section.title}</h2>
+                        <div className="space-y-4">
+                          {section.product_items.map((item) => (
+                            <ItemRow key={item.id} item={item} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
 
-              <div className="flex justify-center mt-8 pt-6">
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="bg-[#2a3760] hover:bg-[#2a3760]/90 text-white font-semibold px-12 py-6 text-base"
-                >
-                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                  Submit
-                </Button>
+                  {submissionStatus && (
+                    <Alert
+                      className={cn(
+                        "mt-8",
+                        submissionStatus === "success"
+                          ? "border-green-500 text-green-700"
+                          : "border-red-500 text-red-700",
+                      )}
+                    >
+                      {submissionStatus === "success" ? (
+                        <CheckCircle className="h-4 w-4" />
+                      ) : (
+                        <XCircle className="h-4 w-4" />
+                      )}
+                      <AlertDescription>{submissionMessage}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  <div className="flex justify-center mt-8 pt-6">
+                    <Button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="bg-[#2a3760] hover:bg-[#2a3760]/90 text-white font-semibold px-12 py-6 text-base"
+                    >
+                      {isSubmitting ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="mr-2 h-4 w-4" />
+                      )}
+                      Submit
+                    </Button>
+                  </div>
+                </form>
               </div>
-            </form>
+            </div>
+            <div className="lg:col-span-1">
+              <OrderSummary allItemsMap={allItemsMap} />
+            </div>
           </div>
         </div>
       </div>
