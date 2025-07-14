@@ -1,68 +1,41 @@
-import { createClient } from "@/utils/supabase/server"
-import { revalidatePath } from "next/cache"
-import { NextResponse } from "next/server"
-import { del } from "@vercel/blob"
+import { type NextRequest, NextResponse } from "next/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
 
-export async function GET(request: Request) {
-  const supabase = createClient()
-  const { searchParams } = new URL(request.url)
-  const brandId = searchParams.get("brandId")
-
-  if (!brandId) {
-    return NextResponse.json({ error: "Brand ID is required" }, { status: 400 })
-  }
-
+export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from("files")
+    const supabase = createServerSupabaseClient()
+
+    const { data: files, error } = await supabase
+      .from("uploaded_files")
       .select("*")
-      .eq("brand_id", brandId)
       .order("uploaded_at", { ascending: false })
 
-    if (error) {
-      console.error("Error fetching files:", error)
-      throw new Error(error.message)
-    }
+    if (error) throw error
 
-    return NextResponse.json(data)
+    return NextResponse.json(files)
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return NextResponse.json({ error: `Failed to fetch files: ${errorMessage}` }, { status: 500 })
+    console.error("Error fetching files:", error)
+    return NextResponse.json({ error: "Failed to fetch files" }, { status: 500 })
   }
 }
 
-export async function DELETE(request: Request) {
-  const supabase = createClient()
-  const { fileIds } = await request.json()
-
-  if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
-    return NextResponse.json({ error: "File IDs are required" }, { status: 400 })
-  }
-
+export async function DELETE(request: NextRequest) {
   try {
-    // First, get the pathnames to delete from Vercel Blob
-    const { data: filesToDelete, error: selectError } = await supabase.from("files").select("url").in("id", fileIds)
+    const supabase = createServerSupabaseClient()
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get("id")
 
-    if (selectError) {
-      throw new Error(selectError.message)
+    if (!id) {
+      return NextResponse.json({ error: "File ID is required" }, { status: 400 })
     }
 
-    const blobUrls = filesToDelete.map((file) => file.url).filter(Boolean) as string[]
-    if (blobUrls.length > 0) {
-      await del(blobUrls)
-    }
+    const { error } = await supabase.from("uploaded_files").delete().eq("id", id)
 
-    // Then, delete the records from the database
-    const { error: deleteError } = await supabase.from("files").delete().in("id", fileIds)
+    if (error) throw error
 
-    if (deleteError) {
-      throw new Error(deleteError.message)
-    }
-
-    revalidatePath("/admin/editor/[brandSlug]", "page")
-    return NextResponse.json({ message: "Files deleted successfully" })
+    return NextResponse.json({ success: true })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return NextResponse.json({ error: `Failed to delete files: ${errorMessage}` }, { status: 500 })
+    console.error("Error deleting file:", error)
+    return NextResponse.json({ error: "Failed to delete file" }, { status: 500 })
   }
 }

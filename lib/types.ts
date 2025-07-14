@@ -1,91 +1,62 @@
-// Base types from DB tables
-export interface ClinicLocation {
-  id: string
-  name: string
-  address: string
-  phone: string
-  email: string
-}
+// This file is the single source of truth for all data structures.
 
-export interface Option {
+export interface ProductItem {
   id: string
-  item_id: string
-  brand_id: string
-  value: string
-  label: string | null
-  sort_order: number
-}
-
-export interface Item {
-  id: string
-  section_id: string
-  brand_id: string
   code: string
   name: string
   description: string | null
+  quantities: string[]
   sample_link: string | null
-  field_type: "text" | "textarea" | "number" | "date" | "checkbox" | "select" | "radio"
-  placeholder: string | null
-  is_required: boolean
-  position: number
-  options: Option[]
+  sort_order: number
+  section_id: string
+  brand_id: string
 }
 
-export interface Section {
+export interface ProductSection {
   id: string
-  brand_id: string
   title: string
-  position: number
-  items: Item[]
+  sort_order: number
+  brand_id: string
+  product_items: ProductItem[]
 }
 
 export interface Brand {
   id: string
   name: string
   slug: string
-  logo_url: string | null
-  emails: string[]
-  active: boolean
-}
-
-// Composite type for the form editor and public form page
-export type BrandData = Brand & {
-  clinic_locations: ClinicLocation[]
-  sections: (Section & {
-    items: (Item & {
-      options: Option[]
-    })[]
-  })[]
-}
-
-// Types for order submission and processing
-export interface OrderInfo {
-  orderNumber: string
-  orderedBy: string
+  logo: string | null
+  primary_color: string
   email: string
-  billTo: ClinicLocation
-  deliverTo: ClinicLocation
-  notes?: string
-}
-
-export interface OrderItem {
-  code: string
-  name: string
-  quantity: string | number
-}
-
-export interface OrderPayload {
-  brandSlug: string
-  items: Record<string, OrderItem>
-  orderInfo: OrderInfo
+  active: boolean
+  product_sections: ProductSection[]
 }
 
 export interface UploadedFile {
   id: string
-  file_name: string
-  file_path: string
-  file_type: string
-  file_size: number
+  filename: string
+  original_name: string
+  url: string
   uploaded_at: string
-  brand_id: string | null
+  size: number
+}
+
+export interface Submission {
+  id: string
+  brand_id: string
+  ordered_by: string
+  email: string
+  bill_to: string
+  deliver_to: string
+  order_date: string | null
+  items: Record<string, any>
+  pdf_url: string | null
+  status: "pending" | "sent" | "failed" | "completed"
+  created_at: string
+  updated_at: string
+  brand_name?: string // Joined from brands table
+  ip_address?: string
+  delivery_details?: string | null
+  expected_delivery_date?: string | null
+  completed_at?: string | null
+  completed_by?: string | null
 }
