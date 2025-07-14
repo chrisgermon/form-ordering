@@ -30,13 +30,13 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert } from "@/components/ui/alert"
-import { ArrowLeft, Edit, Plus, Trash2, GripVertical, Heading2, X } from "lucide-react"
+import { ArrowLeft, Edit, Plus, Trash2, GripVertical, Heading2, X, Download, Loader2 } from "lucide-react"
 
-import { updateSectionOrder, updateItemOrder } from "./actions"
+import { updateSectionOrder, updateItemOrder, importFromJotform } from "./actions"
 import type { Brand, ProductSection, ProductItem, UploadedFile } from "@/lib/types"
 
 // Toolbox Component
-function Toolbox({ onAddSectionClick }: { onAddSectionClick: () => void }) {
+function Toolbox({ onAddSectionClick, onImportClick }: { onAddSectionClick: () => void; onImportClick: () => void }) {
   return (
     <Card>
       <CardHeader>
@@ -49,6 +49,12 @@ function Toolbox({ onAddSectionClick }: { onAddSectionClick: () => void }) {
             Add Section
           </Button>
           <p className="text-xs text-muted-foreground px-2 pt-2">Add items within a section.</p>
+          <div className="border-t my-4" />
+          <Button variant="outline" className="w-full justify-start bg-transparent" onClick={onImportClick}>
+            <Download className="mr-2 h-4 w-4" />
+            Import from JotForm
+          </Button>
+          <p className="text-xs text-muted-foreground px-2">Import sections and items from an existing JotForm.</p>
         </div>
       </CardContent>
     </Card>
@@ -66,6 +72,7 @@ export function FormEditor({
   const [brandData, setBrandData] = useState<Brand>(initialBrandData)
   const [message, setMessage] = useState("")
   const [isSectionDialogOpen, setIsSectionDialogOpen] = useState(false)
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const router = useRouter()
 
   const sensors = useSensors(
@@ -177,7 +184,10 @@ export function FormEditor({
         {message && <Alert className="mb-4">{message}</Alert>}
 
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
-          <Toolbox onAddSectionClick={() => setIsSectionDialogOpen(true)} />
+          <Toolbox
+            onAddSectionClick={() => setIsSectionDialogOpen(true)}
+            onImportClick={() => setIsImportDialogOpen(true)}
+          />
 
           <div className="bg-white p-4 rounded-lg shadow-sm min-h-[400px]">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -214,7 +224,7 @@ export function FormEditor({
                   ) : (
                     <div className="text-center py-16 text-gray-500">
                       <p>Your form is empty.</p>
-                      <p>Add a section from the toolbox to get started.</p>
+                      <p>Add a section or import from JotForm to get started.</p>
                     </div>
                   )}
                 </div>
@@ -228,6 +238,14 @@ export function FormEditor({
         onOpenChange={setIsSectionDialogOpen}
         brandId={brandData.id}
         onDataChange={onDataChange}
+      />
+      <JotformImportDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+        brandId={brandData.id}
+        brandSlug={brandData.slug}
+        onDataChange={onDataChange}
+        setMessage={setMessage}
       />
     </div>
   )
@@ -568,6 +586,83 @@ function ItemDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit}>Save Item</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Jotform Import Dialog
+function JotformImportDialog({
+  open,
+  onOpenChange,
+  brandId,
+  brandSlug,
+  onDataChange,
+  setMessage,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  brandId: string
+  brandSlug: string
+  onDataChange: () => void
+  setMessage: (message: string) => void
+}) {
+  const [jotformId, setJotformId] = useState("")
+  const [isImporting, setIsImporting] = useState(false)
+
+  const handleImport = async () => {
+    if (!jotformId) {
+      setMessage("Please enter a JotForm Form ID.")
+      return
+    }
+    if (
+      !confirm("This will add new sections and items from the JotForm. Existing items will not be affected. Continue?")
+    ) {
+      return
+    }
+
+    setIsImporting(true)
+    setMessage("Importing from JotForm... This may take a moment.")
+
+    const result = await importFromJotform(brandId, brandSlug, jotformId)
+
+    if (result.success) {
+      setMessage(result.message || "Import successful!")
+      onDataChange()
+      onOpenChange(false)
+    } else {
+      setMessage(`Import failed: ${result.error}`)
+    }
+    setIsImporting(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Import from JotForm</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div>
+            <Label htmlFor="jotform-id">JotForm Form ID</Label>
+            <Input
+              id="jotform-id"
+              value={jotformId}
+              onChange={(e) => setJotformId(e.target.value)}
+              placeholder="e.g., 241938217491867"
+            />
+            <p className="text-xs text-muted-foreground mt-1">You can find this ID in your JotForm URL.</p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isImporting}>
+            Cancel
+          </Button>
+          <Button onClick={handleImport} disabled={isImporting}>
+            {isImporting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Import Form
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
