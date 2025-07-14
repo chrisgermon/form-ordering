@@ -43,7 +43,7 @@ function getPdfHtml(order: OrderPayload, brand: Brand, logoUrl: string | null): 
     <!DOCTYPE html>
     <html>
     <head>
-      <meta charset="utf-8" />
+      <meta charset="utf-g" />
       <title>Order #${orderInfo.orderNumber}</title>
       <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #333; margin: 0; padding: 0; }

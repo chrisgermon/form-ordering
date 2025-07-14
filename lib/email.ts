@@ -1,7 +1,6 @@
 import nodemailer from "nodemailer"
 import type { OrderPayload, Brand, ClinicLocation } from "@/lib/types"
 import { generatePdf } from "@/lib/pdf"
-import { getPublicUrl } from "@/lib/utils"
 
 function formatClinicHtml(title: string, clinic: ClinicLocation | null) {
   if (!clinic) return ""
@@ -119,25 +118,41 @@ export async function sendOrderEmail(order: OrderPayload, brand: Brand, pdfBuffe
 }
 
 export async function generatePdfAndSendEmail(order: OrderPayload, brand: Brand) {
+  console.log("Generating PDF and sending email for brand:", brand.name)
   try {
-    console.log("Generating PDF for order:", order.orderInfo.orderNumber)
     const pdfBuffer = await generatePdf(order, brand)
     console.log("PDF generated successfully. Size:", pdfBuffer.length)
 
-    const logoUrl = brand.logo ? getPublicUrl(brand.logo) : null
+    const transporter = nodemailer.createTransport({
+      host: "smtp.mailgun.org",
+      port: 587,
+      secure: false, // true for 465, false for other ports
+      auth: {
+        user: process.env.MAILGUN_SMTP_USERNAME,
+        pass: process.env.MAILGUN_SMTP_PASSWORD,
+      },
+    })
 
-    console.log("Sending order email...")
-    const emailResult = await sendOrderEmail(order, brand, pdfBuffer, logoUrl)
-
-    if (!emailResult.success) {
-      throw new Error(`Failed to send email: ${emailResult.message}`)
+    const mailOptions = {
+      from: `"${brand.name} Orders" <${process.env.FROM_EMAIL}>`,
+      to: brand.email_recipients.join(", "),
+      subject: `New Order Received - #${order.orderInfo.orderNumber}`,
+      html: `<p>A new order has been submitted. Please find the details in the attached PDF.</p>`,
+      attachments: [
+        {
+          filename: `Order-${order.orderInfo.orderNumber}.pdf`,
+          content: pdfBuffer,
+          contentType: "application/pdf",
+        },
+      ],
     }
 
-    console.log("Email sent successfully.")
-    return { success: true, message: "Order processed and email sent." }
+    const info = await transporter.sendMail(mailOptions)
+    console.log("Email sent successfully:", info.messageId)
+    return { success: true, message: "Email sent successfully." }
   } catch (error) {
     console.error("Error in generatePdfAndSendEmail:", error)
-    const errorMessage = error instanceof Error ? error.message : "Unknown error processing order."
-    return { success: false, message: errorMessage }
+    const message = error instanceof Error ? error.message : "An unknown error occurred."
+    return { success: false, message }
   }
 }
