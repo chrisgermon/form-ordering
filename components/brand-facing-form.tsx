@@ -4,82 +4,77 @@ import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { toast } from "sonner"
-import { format } from "date-fns"
+import { resolveAssetUrl } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { cn } from "@/lib/utils"
-import type { BrandData } from "@/lib/types"
-import { CalendarIcon } from "lucide-react"
+import type { BrandData, Item } from "@/lib/types"
 
-// Dynamically build the Zod schema from the form structure
-const buildZodSchema = (brandData: BrandData) => {
-  if (!brandData || !brandData.sections) {
-    return z.object({}) // Return empty schema if data is not ready
-  }
-
-  const schemaShape = brandData.sections.reduce(
-    (acc, section) => {
-      section.items.forEach((item) => {
-        let fieldSchema: z.ZodTypeAny
-
-        switch (item.field_type) {
-          case "text":
-          case "textarea":
-            fieldSchema = z.string()
-            break
-          case "date":
-            fieldSchema = z.date().nullable()
-            break
-          case "select":
-            fieldSchema = z.string()
-            break
-          case "checkbox_group":
-            fieldSchema = z.array(z.string())
-            break
-          default:
-            fieldSchema = z.any()
-        }
-
-        if (item.is_required) {
-          if (item.field_type === "checkbox_group") {
-            fieldSchema = (fieldSchema as z.ZodArray<any>).min(1, { message: "Please select at least one option." })
-          } else {
-            fieldSchema = (fieldSchema as z.ZodString).min(1, { message: "This field is required." })
-          }
-        } else {
-          fieldSchema = fieldSchema.optional()
-        }
-
-        acc[item.code] = fieldSchema
+// A more robust schema for an order form
+const createOrderSchema = (items: Item[]) => {
+  const itemSchemas = items.reduce(
+    (acc, item) => {
+      acc[item.code] = z.object({
+        quantity: z.string(),
+        customQuantity: z.string().optional(),
       })
       return acc
     },
-    {} as Record<string, z.ZodTypeAny>,
+    {} as Record<string, z.ZodObject<any>>,
   )
 
-  return z.object(schemaShape)
+  return z
+    .object({
+      orderedBy: z.string().min(1, "Your name is required."),
+      email: z.string().email("A valid email is required."),
+      billToName: z.string().min(1, "Please select a billing location."),
+      deliverToName: z.string().min(1, "Please select a delivery location."),
+      notes: z.string().optional(),
+      items: z.object(itemSchemas),
+    })
+    .refine(
+      (data) => {
+        const hasItems = Object.values(data.items).some(
+          (item) => item.quantity && item.quantity !== "0" && item.quantity !== "",
+        )
+        return hasItems
+      },
+      {
+        message: "You must order at least one item.",
+        path: ["items"],
+      },
+    )
 }
 
 export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
-  const validationSchema = buildZodSchema(brandData)
+  const allItems = brandData.sections.flatMap((s) => s.items)
+  const validationSchema = createOrderSchema(allItems)
+
   const {
     control,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
     reset,
-  } = useForm({
+  } = useForm<z.infer<typeof validationSchema>>({
     resolver: zodResolver(validationSchema),
+    defaultValues: {
+      orderedBy: "",
+      email: "",
+      notes: "",
+      items: allItems.reduce((acc, item) => {
+        acc[item.code] = { quantity: "0", customQuantity: "" }
+        return acc
+      }, {} as any),
+    },
   })
 
-  // Defensive check to prevent crash
+  const watchedItems = watch("items")
+
   if (!brandData || !brandData.sections) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -89,131 +84,204 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
   }
 
   const onSubmit = async (data: z.infer<typeof validationSchema>) => {
+    // Filter out items that were not ordered
+    const orderedItems = Object.entries(data.items)
+      .filter(([, itemData]) => itemData.quantity && itemData.quantity !== "0")
+      .reduce(
+        (acc, [code, itemData]) => {
+          const itemInfo = allItems.find((i) => i.code === code)
+          if (itemInfo) {
+            acc[code] = {
+              code: itemInfo.code,
+              name: itemInfo.name,
+              ...itemData,
+            }
+          }
+          return acc
+        },
+        {} as Record<string, any>,
+      )
+
+    const payload = {
+      brandId: brandData.id,
+      orderInfo: {
+        orderedBy: data.orderedBy,
+        email: data.email,
+        billToName: data.billToName,
+        deliverToName: data.deliverToName,
+        notes: data.notes,
+      },
+      items: orderedItems,
+    }
+
     const promise = fetch("/api/submit-order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ brandId: brandData.id, formData: data }),
+      body: JSON.stringify(payload),
     })
 
     toast.promise(promise, {
       loading: "Submitting order...",
-      success: (res) => {
-        if (!res.ok) throw new Error("Submission failed.")
+      success: async (res) => {
+        if (!res.ok) {
+          const errorData = await res.json()
+          throw new Error(errorData.details || "Submission failed.")
+        }
         reset()
         return "Order submitted successfully!"
       },
-      error: "Failed to submit order.",
+      error: (err) => err.message || "Failed to submit order.",
     })
   }
 
+  const logoUrl = brandData.logo ? resolveAssetUrl(brandData.logo) : null
+
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
-      <Card className="mb-8">
-        <CardHeader className="text-center">
-          {brandData.logo && (
-            <img
-              src={brandData.logo || "/placeholder.svg"}
-              alt={`${brandData.name} Logo`}
-              className="w-48 mx-auto mb-4"
-            />
+    <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8 bg-gray-50">
+      <Card className="mb-8 shadow-lg">
+        <CardHeader className="text-center bg-gray-100 p-6">
+          {logoUrl && (
+            <img src={logoUrl || "/placeholder.svg"} alt={`${brandData.name} Logo`} className="w-48 mx-auto mb-4" />
           )}
-          <CardTitle className="text-3xl font-bold">{brandData.name} Order Form</CardTitle>
+          <CardTitle className="text-3xl font-bold">{brandData.name}</CardTitle>
+          <CardDescription className="text-lg">Printing Order Form</CardDescription>
         </CardHeader>
       </Card>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Your Details</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="orderedBy">Full Name</Label>
+              <Controller
+                name="orderedBy"
+                control={control}
+                render={({ field }) => <Input {...field} id="orderedBy" />}
+              />
+              {errors.orderedBy && <p className="text-sm text-destructive">{errors.orderedBy.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <Controller
+                name="email"
+                control={control}
+                render={({ field }) => <Input {...field} id="email" type="email" />}
+              />
+              {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="billToName">Bill To</Label>
+              <Controller
+                name="billToName"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <SelectTrigger id="billToName">
+                      <SelectValue placeholder="Select a billing location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {brandData.clinic_locations.map((loc) => (
+                        <SelectItem key={loc.name} value={loc.name}>
+                          {loc.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errors.billToName && <p className="text-sm text-destructive">{errors.billToName.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deliverToName">Deliver To</Label>
+              <Controller
+                name="deliverToName"
+                control={control}
+                render={({ field }) => (
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <SelectTrigger id="deliverToName">
+                      <SelectValue placeholder="Select a delivery location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {brandData.clinic_locations.map((loc) => (
+                        <SelectItem key={loc.name} value={loc.name}>
+                          {loc.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errors.deliverToName && <p className="text-sm text-destructive">{errors.deliverToName.message}</p>}
+            </div>
+          </CardContent>
+        </Card>
+
         {brandData.sections.map((section) => (
           <Card key={section.id}>
             <CardHeader>
               <CardTitle>{section.title}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-4">
               {section.items.map((item) => (
-                <div key={item.id}>
-                  <Label htmlFor={item.code} className="text-base font-semibold">
-                    {item.name} {item.is_required && <span className="text-destructive">*</span>}
-                  </Label>
-                  {item.description && <p className="text-sm text-muted-foreground mb-2">{item.description}</p>}
-
-                  <Controller
-                    name={item.code}
-                    control={control}
-                    render={({ field }) => {
-                      switch (item.field_type) {
-                        case "text":
-                          return <Input {...field} id={item.code} placeholder={item.placeholder} />
-                        case "textarea":
-                          return <Textarea {...field} id={item.code} placeholder={item.placeholder} />
-                        case "select":
-                          return (
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <SelectTrigger id={item.code}>
-                                <SelectValue placeholder={item.placeholder || "Select an option"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {(item.options || []).map((option) => (
-                                  <SelectItem key={option.id} value={option.value}>
-                                    {option.value}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )
-                        case "date":
-                          return (
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <Button
-                                  variant={"outline"}
-                                  className={cn(
-                                    "w-full justify-start text-left font-normal",
-                                    !field.value && "text-muted-foreground",
-                                  )}
-                                >
-                                  <CalendarIcon className="mr-2 h-4 w-4" />
-                                  {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0">
-                                <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
-                              </PopoverContent>
-                            </Popover>
-                          )
-                        case "checkbox_group":
-                          return (
-                            <div className="space-y-2 rounded-md border p-4">
-                              {(item.options || []).map((option) => (
-                                <div key={option.id} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={`${item.code}-${option.value}`}
-                                    checked={field.value?.includes(option.value)}
-                                    onCheckedChange={(checked) => {
-                                      const currentValue = field.value || []
-                                      if (checked) {
-                                        field.onChange([...currentValue, option.value])
-                                      } else {
-                                        field.onChange(currentValue.filter((v: string) => v !== option.value))
-                                      }
-                                    }}
-                                  />
-                                  <Label htmlFor={`${item.code}-${option.value}`}>{option.value}</Label>
-                                </div>
-                              ))}
-                            </div>
-                          )
-                        default:
-                          return <p>Unsupported field type</p>
-                      }
-                    }}
-                  />
-                  {errors[item.code] && (
-                    <p className="text-sm font-medium text-destructive mt-2">{errors[item.code]?.message as string}</p>
-                  )}
+                <div key={item.id} className="grid grid-cols-3 items-center gap-4 border-t pt-4">
+                  <div className="col-span-3 sm:col-span-2">
+                    <Label htmlFor={`items.${item.code}.quantity`} className="font-semibold">
+                      {item.name}
+                    </Label>
+                    <p className="text-sm text-muted-foreground">Code: {item.code}</p>
+                  </div>
+                  <div className="col-span-3 sm:col-span-1 grid grid-cols-2 gap-2">
+                    <Controller
+                      name={`items.${item.code}.quantity`}
+                      control={control}
+                      render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Qty" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[...Array(11).keys()].map((i) => (
+                              <SelectItem key={i} value={String(i)}>
+                                {i}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                    {watchedItems?.[item.code]?.quantity === "other" && (
+                      <Controller
+                        name={`items.${item.code}.customQuantity`}
+                        control={control}
+                        render={({ field }) => <Input {...field} placeholder="Custom" type="number" />}
+                      />
+                    )}
+                  </div>
                 </div>
               ))}
             </CardContent>
           </Card>
         ))}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Controller
+              name="notes"
+              control={control}
+              render={({ field }) => <Textarea {...field} placeholder="Add any special instructions here..." />}
+            />
+          </CardContent>
+        </Card>
+
+        {errors.items && <p className="text-sm font-medium text-destructive text-center">{errors.items.message}</p>}
+
         <div className="flex justify-end">
           <Button type="submit" size="lg" disabled={isSubmitting}>
             {isSubmitting ? "Submitting..." : "Submit Order"}

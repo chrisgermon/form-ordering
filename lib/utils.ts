@@ -5,11 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/**
- * Generates a URL-friendly slug from a string.
- * e.g., "Patient Name" -> "patient-name"
- */
-export const slugify = (text: string): string => {
+export function slugify(text: string): string {
   if (!text) return ""
   return text
     .toString()
@@ -21,28 +17,41 @@ export const slugify = (text: string): string => {
 }
 
 /**
- * Constructs a full, public URL for a Supabase Storage asset.
+ * A robust function to construct a full public URL for a Supabase Storage asset.
  * @param path The path to the file in the bucket (e.g., "bucket-name/file.png").
- * @returns A full URL to the asset or a placeholder if the path is invalid.
+ * @param fallback The value to return if the path is invalid or Supabase URL is not configured.
+ * @returns A full URL to the asset or the fallback value.
  */
-export function resolveAssetUrl(path: string | null | undefined): string {
+function constructSupabaseUrl(path: string | null | undefined, fallback: string): string {
   if (!path) {
-    return "/placeholder-logo.png"
+    return fallback
   }
-
-  // If it's already a full URL, return it directly.
   if (path.startsWith("http")) {
     return path
   }
-
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   if (!supabaseUrl) {
     console.error("Supabase URL is not configured in environment variables.")
-    return "/placeholder-logo.png"
+    return fallback
   }
-
-  // Trim leading slashes to prevent URL malformation (e.g. ...//bucket/file)
   const cleanedPath = path.startsWith("/") ? path.substring(1) : path
-
   return `${supabaseUrl}/storage/v1/object/public/${cleanedPath}`
+}
+
+/**
+ * Used for client-side display of assets. Provides a placeholder image path on failure.
+ * @param path The path to the file in the bucket.
+ * @returns A full URL to the asset or a placeholder image path.
+ */
+export function resolveAssetUrl(path: string | null | undefined): string {
+  return constructSupabaseUrl(path, "/placeholder-logo.png")
+}
+
+/**
+ * Used for server-side logic (like PDF generation). Returns an empty string on failure.
+ * @param path The path to the file in the bucket.
+ * @returns A full URL to the asset or an empty string.
+ */
+export function getPublicUrl(path: string | null | undefined): string {
+  return constructSupabaseUrl(path, "")
 }

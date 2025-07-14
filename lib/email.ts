@@ -1,5 +1,7 @@
 import nodemailer from "nodemailer"
 import type { OrderPayload, Brand, ClinicLocation } from "@/lib/types"
+import { generatePdf } from "@/lib/pdf"
+import { getPublicUrl } from "@/lib/utils"
 
 function formatClinicHtml(title: string, clinic: ClinicLocation | null) {
   if (!clinic) return ""
@@ -18,7 +20,7 @@ function formatClinicHtml(title: string, clinic: ClinicLocation | null) {
 
 function generateOrderEmailHtml(order: OrderPayload, brand: Brand, logoUrl: string | null): string {
   const { orderInfo, items } = order
-  const themeColor = "#2a3760" // Standardized theme color
+  const themeColor = "#2a3760"
 
   const logoHtml = logoUrl
     ? `<img src="${logoUrl}" alt="${brand.name} Logo" style="max-width: 200px; max-height: 70px; margin-bottom: 20px;" />`
@@ -93,7 +95,7 @@ export async function sendOrderEmail(order: OrderPayload, brand: Brand, pdfBuffe
   const mailOptions = {
     from: `"${brand.name} Orders" <${process.env.FROM_EMAIL}>`,
     to: brand.emails.join(","),
-    cc: order.orderInfo.email, // CC the person who ordered
+    cc: order.orderInfo.email,
     subject: `New Printing Order for ${brand.name} - #${order.orderInfo.orderNumber}`,
     html: generateOrderEmailHtml(order, brand, logoUrl),
     attachments: [
@@ -112,6 +114,30 @@ export async function sendOrderEmail(order: OrderPayload, brand: Brand, pdfBuffe
   } catch (error) {
     console.error("Error sending email:", error)
     const errorMessage = error instanceof Error ? error.message : "Unknown email error"
+    return { success: false, message: errorMessage }
+  }
+}
+
+export async function generatePdfAndSendEmail(order: OrderPayload, brand: Brand) {
+  try {
+    console.log("Generating PDF for order:", order.orderInfo.orderNumber)
+    const pdfBuffer = await generatePdf(order, brand)
+    console.log("PDF generated successfully. Size:", pdfBuffer.length)
+
+    const logoUrl = brand.logo ? getPublicUrl(brand.logo) : null
+
+    console.log("Sending order email...")
+    const emailResult = await sendOrderEmail(order, brand, pdfBuffer, logoUrl)
+
+    if (!emailResult.success) {
+      throw new Error(`Failed to send email: ${emailResult.message}`)
+    }
+
+    console.log("Email sent successfully.")
+    return { success: true, message: "Order processed and email sent." }
+  } catch (error) {
+    console.error("Error in generatePdfAndSendEmail:", error)
+    const errorMessage = error instanceof Error ? error.message : "Unknown error processing order."
     return { success: false, message: errorMessage }
   }
 }

@@ -18,7 +18,7 @@ export interface Item {
   id: string
   section_id: string
   brand_id: string
-  code: string // Changed from `string | null` to `string` for type safety
+  code: string
   name: string
   description: string | null
   sample_link: string | null
@@ -57,3 +57,30 @@ export interface UploadedFile {
   uploaded_at: string
   brand_id: string | null
 }
+
+// START ADDED TYPES
+export interface OrderInfo {
+  orderNumber: string
+  orderedBy: string
+  email: string
+  billTo: ClinicLocation | null
+  deliverTo: ClinicLocation | null
+  notes?: string
+}
+
+export interface OrderItem {
+  code: string
+  name: string
+  quantity: string | number
+  customQuantity?: string
+}
+
+export interface OrderPayload {
+  brandId: string
+  items: Record<string, OrderItem>
+  orderInfo: OrderInfo
+}
+
+// Using Brand as the source for the form data
+export type BrandData = Brand
+// END ADDED TYPES
