@@ -1,33 +1,24 @@
 import type React from "react"
-import type { Metadata } from "next"
-import { Inter, Work_Sans } from "next/font/google"
 import "./globals.css"
-import { cn } from "@/lib/utils"
+import { Inter } from "next/font/google"
+import { Toaster } from "@/components/ui/toaster"
+import type { Metadata } from "next"
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-})
-
-const work_sans = Work_Sans({
-  subsets: ["latin"],
-  variable: "--font-work-sans",
-})
+const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Crowd IT Print Ordering System",
-  description: "Created with v0",
-  generator: "v0.dev",
+  description: "An online portal for ordering printed materials.",
+    generator: 'v0.dev'
 }
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={cn(inter.variable, work_sans.variable, "font-sans")}>{children}</body>
+      <body className={inter.className}>
+        {children}
+        <Toaster />
+      </body>
     </html>
   )
 }

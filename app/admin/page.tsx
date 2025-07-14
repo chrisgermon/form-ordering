@@ -1,56 +1,44 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useMemo } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useForm, Controller } from "react-hook-form"
-import { format, addDays } from "date-fns"
+import { format } from "date-fns"
 import type { DateRange } from "react-day-picker"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import {
   Trash2,
-  Edit,
   Plus,
-  Upload,
-  Eye,
   Download,
-  Database,
   Loader2,
-  Link2,
-  ArrowLeft,
-  RefreshCw,
-  CheckCircle,
   CalendarIcon,
-  Search,
   ClipboardCopy,
   CalendarIcon as CalendarIconFilter,
 } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { runSeed, autoAssignPdfs, reloadSchemaCache, scrapeClinicsFromWebsite } from "./actions"
+import { scrapeClinicsFromWebsite } from "./actions"
 import type { Brand, UploadedFile, Submission, Clinic } from "@/lib/types"
 import { Textarea } from "@/components/ui/textarea"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { createClient } from "@/lib/supabase/server"
+import { MarkAsCompleteButton, RefreshButton } from "./admin-components"
 
 function DatePickerWithRange({
   className,
@@ -99,728 +87,80 @@ function DatePickerWithRange({
   )
 }
 
-export default function AdminDashboard() {
-  const [brands, setBrands] = useState<Brand[]>([])
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
-  const [submissions, setSubmissions] = useState<Submission[]>([])
-  const [loading, setLoading] = useState(true)
-  const [message, setMessage] = useState("")
-  const [editingBrand, setEditingBrand] = useState<Brand | null>(null)
-  const [showBrandDialog, setShowBrandDialog] = useState(false)
-  const [isSeeding, setIsSeeding] = useState(false)
-  const [isAssigning, setIsAssigning] = useState(false)
-  const [isReloadingSchema, setIsReloadingSchema] = useState(false)
-  const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
-  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
-  const [viewingSubmission, setViewingSubmission] = useState<Submission | null>(null)
-  const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([])
-  const router = useRouter()
+export const dynamic = "force-dynamic"
 
-  // States for submission filtering
-  const [submissionSearch, setSubmissionSearch] = useState("")
-  const [selectedBrandFilter, setSelectedBrandFilter] = useState("all")
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState("all")
-  const [dateRange, setDateRange] = useState<DateRange | undefined>()
+export default async function AdminPage() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from("submissions")
+    .select("*, brand:brands(name)")
+    .order("created_at", { ascending: false })
 
-  useEffect(() => {
-    loadAllData()
-  }, [])
-
-  const loadAllData = async () => {
-    setLoading(true)
-    try {
-      await Promise.all([loadBrands(), loadUploadedFiles(), loadSubmissions()])
-    } catch (error) {
-      setMessage("Error loading initial data.")
-    } finally {
-      setLoading(false)
-    }
+  if (error) {
+    console.error("Error fetching submissions:", error)
   }
 
-  const loadBrands = async () => {
-    const brandsResponse = await fetch("/api/admin/brands")
-    if (brandsResponse.ok) {
-      const brandsData = await brandsResponse.json()
-      setBrands(brandsData || [])
-    } else {
-      setMessage("Failed to load brands.")
-      setBrands([])
-    }
-  }
-
-  const loadUploadedFiles = async () => {
-    const filesResponse = await fetch("/api/admin/files")
-    if (filesResponse.ok) {
-      const filesData = await filesResponse.json()
-      setUploadedFiles(filesData || [])
-    } else {
-      setMessage("Failed to load uploaded files.")
-      setUploadedFiles([])
-    }
-  }
-
-  const loadSubmissions = async () => {
-    const response = await fetch("/api/admin/submissions")
-    if (response.ok) {
-      const data = await response.json()
-      setSubmissions(data || [])
-    } else {
-      setMessage("Failed to load submissions.")
-      setSubmissions([])
-    }
-  }
-
-  const handleRefreshSubmissions = async () => {
-    setMessage("Refreshing submissions...")
-    await loadSubmissions()
-    setMessage("Submissions refreshed.")
-    setTimeout(() => setMessage(""), 3000)
-  }
-
-  const handleSeedDatabase = async () => {
-    if (!confirm("Are you sure you want to re-seed the database? This will delete all existing data.")) return
-    setIsSeeding(true)
-    setMessage("Seeding database, please wait...")
-    try {
-      const result = await runSeed()
-      setMessage(result.message)
-      if (result.success) {
-        await loadAllData()
-      }
-    } catch (error) {
-      setMessage("An unexpected error occurred while seeding.")
-    } finally {
-      setIsSeeding(false)
-    }
-  }
-
-  const handleReloadSchema = async () => {
-    setIsReloadingSchema(true)
-    setMessage("Reloading schema cache...")
-    const result = await reloadSchemaCache()
-    setMessage(result.message)
-    setIsReloadingSchema(false)
-    setTimeout(() => setMessage(""), 3000)
-  }
-
-  const saveBrand = async (brandData: any) => {
-    try {
-      const url = brandData.id ? `/api/admin/brands?id=${brandData.id}` : "/api/admin/brands"
-      const method = brandData.id ? "PUT" : "POST"
-
-      const response = await fetch(url, {
-        method: method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(brandData),
-      })
-
-      if (response.ok) {
-        setMessage("Brand saved successfully")
-        setShowBrandDialog(false)
-        setEditingBrand(null)
-        await loadBrands()
-      } else {
-        const result = await response.json()
-        setMessage(`Error saving brand: ${result.error}`)
-      }
-    } catch (error) {
-      setMessage("Error saving brand")
-    }
-  }
-
-  const deleteBrand = async (brandId: string) => {
-    if (
-      !confirm("Are you sure you want to delete this brand? This will also delete all associated sections and items.")
-    )
-      return
-
-    try {
-      const response = await fetch(`/api/admin/brands?id=${brandId}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
-        setMessage("Brand deleted successfully")
-        await loadBrands()
-      } else {
-        const result = await response.json()
-        setMessage(`Error deleting brand: ${result.error}`)
-      }
-    } catch (error) {
-      setMessage("Error deleting brand")
-    }
-  }
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files || files.length === 0) return
-
-    setMessage(`Uploading ${files.length} file(s)...`)
-
-    const uploadPromises = Array.from(files).map((file) => {
-      const formData = new FormData()
-      formData.append("file", file)
-      return fetch("/api/admin/upload", {
-        method: "POST",
-        body: formData,
-      })
-    })
-
-    try {
-      const responses = await Promise.all(uploadPromises)
-      const successfulUploads = responses.filter((res) => res.ok).length
-      let resultMessage = `${successfulUploads} of ${files.length} files uploaded successfully.`
-      const failedUploads = responses.length - successfulUploads
-      if (failedUploads > 0) {
-        resultMessage += ` ${failedUploads} files failed to upload.`
-      }
-      setMessage(resultMessage)
-      if (successfulUploads > 0) {
-        await loadUploadedFiles()
-      }
-    } catch (error) {
-      setMessage("An error occurred during the bulk upload process.")
-      console.error("Bulk upload error:", error)
-    }
-  }
-
-  const handleAutoAssign = async () => {
-    if (!confirm("This will assign PDFs to items based on filename matching the item code. Continue?")) return
-    setIsAssigning(true)
-    setMessage("Scanning files and assigning links...")
-    try {
-      const result = await autoAssignPdfs()
-      setMessage(result.message)
-    } catch (error) {
-      setMessage("An unexpected error occurred during auto-assignment.")
-    } finally {
-      setIsAssigning(false)
-    }
-  }
-
-  const deleteFile = async (fileId: string) => {
-    if (!confirm("Are you sure you want to delete this file?")) return
-
-    try {
-      const response = await fetch(`/api/admin/files?id=${fileId}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
-        setMessage("File deleted successfully")
-        await loadUploadedFiles()
-      } else {
-        setMessage("Error deleting file")
-      }
-    } catch (error) {
-      setMessage("Error deleting file")
-    }
-  }
-
-  const filteredSubmissions = useMemo(() => {
-    return submissions.filter((submission) => {
-      const searchLower = submissionSearch.toLowerCase()
-      const matchesSearch =
-        submissionSearch === "" ||
-        submission.ordered_by.toLowerCase().includes(searchLower) ||
-        submission.email.toLowerCase().includes(searchLower) ||
-        submission.order_number?.toLowerCase().includes(searchLower)
-
-      const matchesBrand = selectedBrandFilter === "all" || submission.brand_id === selectedBrandFilter
-
-      const matchesStatus = selectedStatusFilter === "all" || submission.status === selectedStatusFilter
-
-      const submissionDate = new Date(submission.created_at)
-      const matchesDate =
-        !dateRange ||
-        ((!dateRange.from || submissionDate >= dateRange.from) &&
-          // Set time to end of day for 'to' date to include all submissions on that day
-          (!dateRange.to || submissionDate <= addDays(dateRange.to, 1)))
-
-      return matchesSearch && matchesBrand && matchesStatus && matchesDate
-    })
-  }, [submissions, submissionSearch, selectedBrandFilter, selectedStatusFilter, dateRange])
-
-  const handleSelectAllSubmissions = (checked: boolean | "indeterminate") => {
-    if (checked === true) {
-      setSelectedSubmissions(filteredSubmissions.map((s) => s.id))
-    } else {
-      setSelectedSubmissions([])
-    }
-  }
-
-  const handleSelectSubmission = (id: string, checked: boolean) => {
-    if (checked) {
-      setSelectedSubmissions((prev) => [...prev, id])
-    } else {
-      setSelectedSubmissions((prev) => prev.filter((subId) => subId !== id))
-    }
-  }
-
-  const handleDeleteSelectedSubmissions = async () => {
-    if (selectedSubmissions.length === 0) return
-    if (
-      !confirm(
-        `Are you sure you want to delete ${selectedSubmissions.length} submission(s)? This action cannot be undone.`,
-      )
-    )
-      return
-
-    setMessage(`Deleting ${selectedSubmissions.length} submission(s)...`)
-    try {
-      const response = await fetch("/api/admin/submissions", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: selectedSubmissions }),
-      })
-
-      const result = await response.json()
-      if (response.ok) {
-        setMessage(result.message)
-        setSelectedSubmissions([])
-        await loadSubmissions() // Refresh the list
-      } else {
-        throw new Error(result.error || "Failed to delete submissions.")
-      }
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "An unknown error occurred.")
-    }
-  }
+  const submissions = data || []
 
   return (
-    <TooltipProvider>
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold text-gray-900">Crowd IT - Admin Dashboard</h1>
-            <div className="flex items-center gap-4">
-              <Button onClick={handleReloadSchema} variant="secondary" disabled={isReloadingSchema || loading}>
-                {isReloadingSchema ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                )}
-                Reload Schema
-              </Button>
-              <Button onClick={handleSeedDatabase} variant="secondary" disabled={isSeeding || loading}>
-                {isSeeding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
-                Seed Database
-              </Button>
-              <Button variant="outline" onClick={() => router.push("/")}>
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Home
-              </Button>
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+          <div className="flex items-center space-x-4">
+            <RefreshButton />
+            <Link href="/admin/brands">
+              <Button>Manage Brands</Button>
+            </Link>
+          </div>
+        </div>
+      </header>
+      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="px-4 py-6 sm:px-0">
+          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+            <div className="px-4 py-5 sm:px-6">
+              <h3 className="text-lg leading-6 font-medium text-gray-900">Order Submissions</h3>
+              <p className="mt-1 max-w-2xl text-sm text-gray-500">A list of all the print orders submitted.</p>
+            </div>
+            <div className="border-t border-gray-200">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Order #</TableHead>
+                    <TableHead>Brand</TableHead>
+                    <TableHead>Ordered By</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {submissions.map((submission) => (
+                    <TableRow key={submission.id}>
+                      <TableCell className="font-medium">{submission.order_number}</TableCell>
+                      <TableCell>{submission.brand?.name}</TableCell>
+                      <TableCell>{submission.ordered_by}</TableCell>
+                      <TableCell>{format(new Date(submission.created_at), "dd/MM/yyyy")}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={submission.status === "completed" ? "default" : "secondary"}
+                          className={submission.status === "completed" ? "bg-green-100 text-green-800" : ""}
+                        >
+                          {submission.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {submission.status !== "completed" && <MarkAsCompleteButton submission={submission} />}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           </div>
-
-          {message && (
-            <Alert className="mb-6">
-              <AlertDescription>{message}</AlertDescription>
-            </Alert>
-          )}
-
-          <Tabs defaultValue="submissions" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="brands">Brands</TabsTrigger>
-              <TabsTrigger value="submissions">Submissions</TabsTrigger>
-              <TabsTrigger value="files">Files</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="brands">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Brand Management</CardTitle>
-                  <Dialog open={showBrandDialog} onOpenChange={setShowBrandDialog}>
-                    <DialogTrigger asChild>
-                      <Button
-                        onClick={() => {
-                          setEditingBrand(null)
-                          setShowBrandDialog(true)
-                        }}
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Brand
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                      <DialogHeader>
-                        <DialogTitle>{editingBrand ? "Edit Brand" : "Add Brand"}</DialogTitle>
-                      </DialogHeader>
-                      <BrandForm
-                        brand={editingBrand}
-                        uploadedFiles={uploadedFiles}
-                        onSave={saveBrand}
-                        onCancel={() => {
-                          setShowBrandDialog(false)
-                          setEditingBrand(null)
-                        }}
-                      />
-                    </DialogContent>
-                  </Dialog>
-                </CardHeader>
-                <CardContent>
-                  {loading ? (
-                    <div className="flex justify-center items-center p-10">
-                      <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Logo</TableHead>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Initials</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {Array.isArray(brands) &&
-                          brands.map((brand) => (
-                            <TableRow key={brand.id}>
-                              <TableCell>
-                                <img
-                                  src={brand.logo || "/placeholder.svg?height=40&width=100&query=No+Logo"}
-                                  alt={`${brand.name} Logo`}
-                                  className="h-10 w-auto object-contain bg-gray-100 p-1 rounded"
-                                />
-                              </TableCell>
-                              <TableCell className="font-medium">{brand.name}</TableCell>
-                              <TableCell className="font-mono text-sm">{brand.initials || "N/A"}</TableCell>
-                              <TableCell>
-                                <Badge variant={brand.active ? "default" : "secondary"}>
-                                  {brand.active ? "Active" : "Inactive"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex gap-2 justify-end">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      setEditingBrand(brand)
-                                      setShowBrandDialog(true)
-                                    }}
-                                  >
-                                    <Edit className="mr-2 h-4 w-4" /> Edit Brand
-                                  </Button>
-                                  <Button size="sm" asChild>
-                                    <Link href={`/admin/editor/${brand.slug}`}>
-                                      <Edit className="mr-2 h-4 w-4" /> Edit Form
-                                    </Link>
-                                  </Button>
-                                  <Button size="sm" variant="outline" asChild>
-                                    <Link href={`/forms/${brand.slug}`} target="_blank">
-                                      <Eye className="mr-2 h-4 w-4" /> View Form
-                                    </Link>
-                                  </Button>
-                                  <Button size="sm" variant="destructive" onClick={() => deleteBrand(brand.id)}>
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="submissions">
-              <Card>
-                <CardHeader>
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div className="flex-grow">
-                      <CardTitle>Order Submissions</CardTitle>
-                      <p className="text-sm text-muted-foreground">Search, filter, and manage submitted order forms.</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {selectedSubmissions.length > 0 && (
-                        <Button onClick={handleDeleteSelectedSubmissions} variant="destructive" size="sm">
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete ({selectedSubmissions.length})
-                        </Button>
-                      )}
-                      <Button onClick={handleRefreshSubmissions} variant="outline" size="sm">
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Refresh
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="relative md:col-span-1">
-                      <label htmlFor="submission-search" className="sr-only">
-                        Search Submissions
-                      </label>
-                      <Input
-                        id="submission-search"
-                        placeholder="Search by name, email, or order #"
-                        className="pl-10"
-                        value={submissionSearch}
-                        onChange={(e) => setSubmissionSearch(e.target.value)}
-                      />
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    </div>
-                    <div className="md:col-span-1">
-                      <Select value={selectedBrandFilter} onValueChange={setSelectedBrandFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Filter by brand" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Brands</SelectItem>
-                          {brands.map((brand) => (
-                            <SelectItem key={brand.id} value={brand.id}>
-                              {brand.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="md:col-span-1">
-                      <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Filter by status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Statuses</SelectItem>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="sent">Sent</SelectItem>
-                          <SelectItem value="failed">Failed</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="md:col-span-1">
-                      <DatePickerWithRange date={dateRange} setDate={setDateRange} />
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {loading ? (
-                    <div className="flex justify-center items-center p-10">
-                      <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[40px]">
-                            <Checkbox
-                              checked={
-                                filteredSubmissions.length > 0 &&
-                                selectedSubmissions.length === filteredSubmissions.length
-                                  ? true
-                                  : selectedSubmissions.length > 0
-                                    ? "indeterminate"
-                                    : false
-                              }
-                              onCheckedChange={handleSelectAllSubmissions}
-                              aria-label="Select all"
-                            />
-                          </TableHead>
-                          <TableHead>Order #</TableHead>
-                          <TableHead>Brand</TableHead>
-                          <TableHead>Ordered By</TableHead>
-                          <TableHead>Deliver To</TableHead>
-                          <TableHead>Bill To</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredSubmissions.length > 0 ? (
-                          filteredSubmissions.map((submission) => (
-                            <TableRow
-                              key={submission.id}
-                              data-state={selectedSubmissions.includes(submission.id) && "selected"}
-                            >
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedSubmissions.includes(submission.id)}
-                                  onCheckedChange={(checked) => handleSelectSubmission(submission.id, !!checked)}
-                                  aria-label={`Select submission ${submission.order_number}`}
-                                />
-                              </TableCell>
-                              <TableCell className="font-mono text-sm">{submission.order_number}</TableCell>
-                              <TableCell className="font-medium">{submission.brand_name}</TableCell>
-                              <TableCell>
-                                <div>{submission.ordered_by}</div>
-                                <div className="text-xs text-muted-foreground">{submission.email}</div>
-                              </TableCell>
-                              <TableCell>{submission.deliver_to}</TableCell>
-                              <TableCell>{submission.bill_to}</TableCell>
-                              <TableCell>
-                                <Tooltip>
-                                  <TooltipTrigger>
-                                    <span className="cursor-default">
-                                      {new Date(submission.created_at).toLocaleDateString("en-AU", {
-                                        day: "2-digit",
-                                        month: "short",
-                                        year: "numeric",
-                                      })}
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {format(new Date(submission.created_at), "dd MMM yyyy, h:mm:ss a")}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant={
-                                    submission.status === "sent"
-                                      ? "default"
-                                      : submission.status === "failed"
-                                        ? "destructive"
-                                        : submission.status === "completed"
-                                          ? "success"
-                                          : "secondary"
-                                  }
-                                  className="capitalize"
-                                >
-                                  {submission.status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <Button
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-8 w-8 bg-transparent"
-                                    onClick={() => setViewingSubmission(submission)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                    <span className="sr-only">View Details</span>
-                                  </Button>
-                                  {submission.status !== "completed" && (
-                                    <Button
-                                      size="icon"
-                                      variant="outline"
-                                      className="h-8 w-8 bg-transparent"
-                                      onClick={() => {
-                                        setSelectedSubmission(submission)
-                                        setIsCompleteDialogOpen(true)
-                                      }}
-                                    >
-                                      <CheckCircle className="h-4 w-4" />
-                                      <span className="sr-only">Mark as Complete</span>
-                                    </Button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        ) : (
-                          <TableRow>
-                            <TableCell colSpan={9} className="h-24 text-center">
-                              No submissions found.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="files">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>File Management</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Button onClick={handleAutoAssign} variant="secondary" disabled={isAssigning || loading}>
-                      {isAssigning ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Link2 className="mr-2 h-4 w-4" />
-                      )}
-                      Auto-assign PDF Links
-                    </Button>
-                    <div className="relative">
-                      <Button asChild>
-                        <label htmlFor="file-upload" className="cursor-pointer">
-                          <Upload className="mr-2 h-4 w-4" />
-                          Upload File(s)
-                        </label>
-                      </Button>
-                      <Input
-                        id="file-upload"
-                        type="file"
-                        multiple
-                        accept=".pdf,.png,.jpg,.jpeg,.svg"
-                        onChange={handleFileUpload}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      />
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {Array.isArray(uploadedFiles) &&
-                      uploadedFiles.map((file) => (
-                        <Card key={file.id} className="p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-semibold truncate">{file.original_name}</h3>
-                            <div className="flex gap-2">
-                              <Button size="sm" variant="outline" asChild>
-                                <a href={file.url} target="_blank" rel="noopener noreferrer">
-                                  <Eye className="mr-2 h-4 w-4" />
-                                </a>
-                              </Button>
-                              <Button size="sm" variant="outline" asChild>
-                                <a href={file.url} download={file.original_name}>
-                                  <Download className="h-4 w-4" />
-                                </a>
-                              </Button>
-                              <Button size="sm" variant="destructive" onClick={() => deleteFile(file.id)}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                          <p className="text-sm text-gray-600">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                          <p className="text-xs text-gray-500">{new Date(file.uploaded_at).toLocaleDateString()}</p>
-                          <div className="mt-2">
-                            <Input
-                              value={file.url}
-                              readOnly
-                              className="text-xs"
-                              onClick={(e) => e.currentTarget.select()}
-                            />
-                          </div>
-                        </Card>
-                      ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
         </div>
-        <CompleteSubmissionDialog
-          open={isCompleteDialogOpen}
-          onOpenChange={setIsCompleteDialogOpen}
-          submission={selectedSubmission}
-          onCompleted={() => {
-            setIsCompleteDialogOpen(false)
-            setSelectedSubmission(null)
-            loadSubmissions()
-            setMessage("Submission marked as complete.")
-          }}
-        />
-        <SubmissionDetailsDialog
-          submission={viewingSubmission}
-          open={!!viewingSubmission}
-          onOpenChange={(isOpen) => {
-            if (!isOpen) {
-              setViewingSubmission(null)
-            }
-          }}
-        />
-      </div>
-    </TooltipProvider>
+      </main>
+    </div>
   )
 }
 

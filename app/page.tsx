@@ -1,8 +1,7 @@
 import Link from "next/link"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createClient } from "@/lib/supabase/server"
 import { BrandGrid } from "@/components/brand-grid"
 
-// Define the type for a brand on the homepage, matching what BrandGrid expects.
 interface Brand {
   id: string
   name: string
@@ -10,13 +9,11 @@ interface Brand {
   logo: string | null
 }
 
-export const revalidate = 0 // Revalidate data on every request
+export const revalidate = 0
 
 async function getBrands(): Promise<Brand[]> {
-  const supabase = createServerSupabaseClient()
+  const supabase = createClient()
 
-  // This query now correctly fetches all required columns, including 'logo'.
-  // This will work once the database schema is updated with the provided SQL script.
   const { data: brands, error } = await supabase
     .from("brands")
     .select("id, name, slug, logo")
@@ -25,8 +22,6 @@ async function getBrands(): Promise<Brand[]> {
 
   if (error) {
     console.error("Error fetching brands:", error)
-    // This error will occur if the database schema is not up-to-date.
-    // Please run the `000-initial-schema.sql` script.
     return []
   }
 

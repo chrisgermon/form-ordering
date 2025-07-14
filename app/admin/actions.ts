@@ -1,12 +1,13 @@
 "use server"
 
-import { seedDatabase } from "@/lib/seed-database"
-import { createServerSupabaseClient } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
+import { createClient } from "@/lib/supabase/server"
+import { sendOrderCompletionEmail } from "@/lib/email"
+import type { Submission, Clinic } from "@/lib/types"
 import { generateObject } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { xai } from "@ai-sdk/xai"
 import { z } from "zod"
-import * as cheerio from "cheerio"
+import { seedDatabase } from "@/lib/seed-database"
 
 export async function runSeed() {
   try {
@@ -20,7 +21,7 @@ export async function runSeed() {
 }
 
 export async function autoAssignPdfs() {
-  const supabase = createServerSupabaseClient()
+  const supabase = createClient()
   try {
     const { data: items, error: itemsError } = await supabase.from("product_items").select("id, code")
     if (itemsError) throw itemsError
@@ -72,7 +73,7 @@ export async function autoAssignPdfs() {
 }
 
 export async function reloadSchemaCache() {
-  const supabase = createServerSupabaseClient()
+  const supabase = createClient()
   try {
     const { error } = await supabase.rpc("reload_schema_cache")
     if (error) {
@@ -87,66 +88,85 @@ export async function reloadSchemaCache() {
   }
 }
 
-export async function scrapeClinicsFromWebsite(
-  url: string,
-): Promise<{ clinics?: { name: string; address: string }[]; error?: string }> {
-  if (!url || !url.startsWith("http")) {
-    return { error: "A valid URL (starting with http or https) is required." }
+export async function markOrderAsComplete(
+  submission: Submission,
+  deliveryDetails: string,
+  expectedDeliveryDate: string,
+) {
+  console.log(`Marking order ${submission.id} as complete...`)
+  const supabase = createClient()
+  const completedAt = new Date().toISOString()
+
+  const { data, error } = await supabase
+    .from("submissions")
+    .update({
+      status: "completed",
+      completed_at: completedAt,
+      delivery_details: deliveryDetails,
+      expected_delivery_date: expectedDeliveryDate,
+    })
+    .eq("id", submission.id)
+    .select("*, brands(name)")
+    .single()
+
+  if (error) {
+    console.error("Error updating submission status:", error)
+    return { success: false, error: "Database error: Could not update submission." }
   }
 
+  console.log("Submission updated successfully. Preparing to send email.")
+
   try {
-    // 1. Fetch HTML content from the URL
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch website. Status: ${response.status}`)
-    }
-    const html = await response.text()
-
-    // 2. Load HTML into Cheerio and clean it
-    const $ = cheerio.load(html)
-    // Remove tags that are unlikely to contain location info to reduce noise
-    $("script, style, link, meta, noscript, header, footer, nav").remove()
-    const bodyHtml = $("body").html()
-    const cleanedHtml = bodyHtml ? bodyHtml.replace(/\s\s+/g, " ").trim() : ""
-
-    if (!cleanedHtml) {
-      return { error: "Could not extract content from the website body." }
+    const updatedSubmission = {
+      ...data,
+      brand_name: data.brands.name,
     }
 
-    // 3. Use AI to extract clinic information from the cleaned HTML
+    await sendOrderCompletionEmail(updatedSubmission)
+    console.log(`Completion email process initiated for order ${submission.id}.`)
+    revalidatePath("/admin")
+    return { success: true }
+  } catch (emailError) {
+    console.error("Error sending completion email:", emailError)
+    return {
+      success: false,
+      error: "Order status updated, but failed to send completion email. Please check server logs.",
+    }
+  }
+}
+
+export async function refreshSubmissions() {
+  revalidatePath("/admin")
+}
+
+export async function scrapeClinicsFromWebsite(
+  url: string,
+): Promise<{ success: boolean; data?: Clinic[]; error?: string }> {
+  if (!url) {
+    return { success: false, error: "URL is required." }
+  }
+
+  console.log(`Scraping clinics from URL: ${url} using Grok`)
+
+  try {
     const { object } = await generateObject({
-      model: openai("gpt-4o"),
+      model: xai("grok-3"),
       schema: z.object({
         clinics: z.array(
           z.object({
-            name: z
-              .string()
-              .describe(
-                "The short, simple name of the clinic location (e.g., for 'Focus Radiology Dapto', the name should be 'Dapto').",
-              ),
+            name: z.string().describe("The full name of the clinic or practice."),
             address: z.string().describe("The full street address of the clinic."),
+            phone: z.string().optional().describe("The primary phone number."),
+            email: z.string().email().optional().describe("The primary contact email address."),
           }),
         ),
       }),
-      prompt: `You are an expert web scraper and data extractor. Your task is to analyze the HTML content of a webpage and extract clinic locations.
-
-      Here is the cleaned HTML content from the website's body:
-      ---
-      ${cleanedHtml.substring(0, 15000)}
-      ---
-
-      Please extract all clinic locations from the HTML. For each clinic, provide its short name and its full address.
-
-      - The name should be a short, simple identifier for the location (e.g., for "Focus Radiology Dapto", the name should be "Dapto").
-      - The address should be the complete street address for that location.
-      - Do not include the main brand name (like 'Light Radiology' or 'Focus Radiology') in the clinic name.
-      - Only return entries that you are confident are distinct clinic locations with both a name and a full address.
-      - If you cannot find any clinics, return an empty array.`,
+      prompt: `Scrape the content of the website at the URL ${url}. Identify and extract a list of all clinic locations mentioned on the page. For each clinic, provide its name, full address, phone number, and email address if available.`,
     })
-
-    return { clinics: object.clinics }
+    console.log("Successfully scraped clinics:", object.clinics)
+    return { success: true, data: object.clinics }
   } catch (error) {
-    console.error("Scraping error:", error)
-    return { error: error instanceof Error ? error.message : "An unknown error occurred during scraping." }
+    console.error("Error scraping clinics with Grok:", error)
+    return { success: false, error: "Failed to scrape clinic data. The website structure might be unsupported." }
   }
 }

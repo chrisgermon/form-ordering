@@ -1,7 +1,7 @@
-import { createServerSupabaseClient } from "./supabase"
+import { createClient } from "./supabase/server"
 
 export async function seedDatabase() {
-  const supabase = createServerSupabaseClient()
+  const supabase = createClient()
 
   // Create brands
   const brands = [
