@@ -148,3 +148,25 @@ export async function importFromJotform(brandId: string, brandSlug: string, jotf
     return { success: false, error: error instanceof Error ? error.message : "An unknown error occurred." }
   }
 }
+
+export async function clearForm(brandId: string, brandSlug: string) {
+  if (!brandId) {
+    return { success: false, error: "Brand ID is required." }
+  }
+
+  try {
+    const supabase = createServerSupabaseClient()
+    // Deleting sections will also delete all items within them due to the CASCADE rule in the database.
+    const { error } = await supabase.from("product_sections").delete().eq("brand_id", brandId)
+
+    if (error) throw error
+
+    revalidatePath(`/admin/editor/${brandSlug}`)
+    revalidatePath(`/forms/${brandSlug}`)
+    return { success: true, message: "Form has been cleared successfully." }
+  } catch (error) {
+    console.error("Error clearing form:", error)
+    const errorMessage = error instanceof Error ? error.message : "Failed to clear the form."
+    return { success: false, error: errorMessage }
+  }
+}

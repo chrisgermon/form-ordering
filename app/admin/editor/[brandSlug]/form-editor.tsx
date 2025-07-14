@@ -30,9 +30,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert } from "@/components/ui/alert"
-import { ArrowLeft, Edit, Plus, Trash2, GripVertical, Heading2, X, Download, Loader2 } from "lucide-react"
+import { ArrowLeft, Edit, Plus, Trash2, GripVertical, Heading2, X, Download, Loader2, Trash } from "lucide-react"
 
-import { updateSectionOrder, updateItemOrder, importFromJotform } from "./actions"
+import { updateSectionOrder, updateItemOrder, importFromJotform, clearForm } from "./actions"
 import type { Brand, ProductSection, ProductItem, UploadedFile } from "@/lib/types"
 
 // Toolbox Component
@@ -95,6 +95,27 @@ export function FormEditor({
         }
       })
       setBrandData(data)
+    }
+  }
+
+  const handleClearForm = async () => {
+    if (
+      !confirm(`Are you sure you want to clear the entire form for "${brandData.name}"? This action cannot be undone.`)
+    ) {
+      return
+    }
+
+    const originalSections = brandData.product_sections
+    setBrandData({ ...brandData, product_sections: [] }) // Optimistic update
+    setMessage("Clearing form...")
+
+    const result = await clearForm(brandData.id, brandData.slug)
+
+    if (result.success) {
+      setMessage(result.message || "Form cleared successfully.")
+    } else {
+      setMessage(`Error: ${result.error}`)
+      setBrandData({ ...brandData, product_sections: originalSections }) // Revert on failure
     }
   }
 
@@ -175,9 +196,15 @@ export function FormEditor({
         </div>
 
         <Card className="mb-6 bg-white shadow-sm">
-          <CardHeader>
-            <p className="text-sm text-gray-500">Form Editor</p>
-            <CardTitle className="text-3xl">{brandData.name}</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Form Editor</p>
+              <CardTitle className="text-3xl">{brandData.name}</CardTitle>
+            </div>
+            <Button variant="destructive" onClick={handleClearForm}>
+              <Trash className="mr-2 h-4 w-4" />
+              Clear Form
+            </Button>
           </CardHeader>
         </Card>
 
@@ -201,7 +228,9 @@ export function FormEditor({
                       <SortableSection
                         key={section.id}
                         section={section}
-                        onDataChange={onDataChange}
+                        brandData={brandData}
+                        setBrandData={setBrandData}
+                        setMessage={setMessage}
                         uploadedFiles={uploadedFiles}
                       >
                         <SortableContext
@@ -213,7 +242,9 @@ export function FormEditor({
                               <SortableItem
                                 key={item.id}
                                 item={item}
-                                onDataChange={onDataChange}
+                                brandData={brandData}
+                                setBrandData={setBrandData}
+                                setMessage={setMessage}
                                 uploadedFiles={uploadedFiles}
                               />
                             ))}
@@ -255,12 +286,16 @@ export function FormEditor({
 function SortableSection({
   section,
   children,
-  onDataChange,
+  brandData,
+  setBrandData,
+  setMessage,
   uploadedFiles,
 }: {
   section: ProductSection
   children: React.ReactNode
-  onDataChange: () => void
+  brandData: Brand
+  setBrandData: React.Dispatch<React.SetStateAction<Brand>>
+  setMessage: (message: string) => void
   uploadedFiles: UploadedFile[]
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -271,10 +306,34 @@ function SortableSection({
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false)
   const [isSectionDialogOpen, setIsSectionDialogOpen] = useState(false)
 
+  const onDataChange = async () => {
+    const res = await fetch(`/api/admin/brands/${brandData.slug}`, { cache: "no-store" })
+    if (res.ok) {
+      const data = await res.json()
+      data.product_sections.sort((a: any, b: any) => a.sort_order - b.sort_order)
+      data.product_sections.forEach((s: any) => {
+        if (s.product_items) s.product_items.sort((a: any, b: any) => a.sort_order - b.sort_order)
+      })
+      setBrandData(data)
+    }
+  }
+
   const deleteSection = async () => {
-    if (!confirm(`Are you sure you want to delete section "${section.title}"?`)) return
-    await fetch(`/api/admin/sections?id=${section.id}`, { method: "DELETE" })
-    onDataChange()
+    if (!confirm(`Are you sure you want to delete section "${section.title}"? This will also delete all items in it.`))
+      return
+
+    const originalSections = brandData.product_sections
+    const newSections = originalSections.filter((s) => s.id !== section.id)
+    setBrandData((prev) => ({ ...prev, product_sections: newSections })) // Optimistic update
+
+    const response = await fetch(`/api/admin/sections?id=${section.id}`, { method: "DELETE" })
+
+    if (!response.ok) {
+      setMessage(`Error: Could not delete section "${section.title}".`)
+      setBrandData((prev) => ({ ...prev, product_sections: originalSections })) // Revert
+    } else {
+      setMessage(`Section "${section.title}" deleted.`)
+    }
   }
 
   return (
@@ -325,11 +384,15 @@ function SortableSection({
 // Sortable Item Component
 function SortableItem({
   item,
-  onDataChange,
+  brandData,
+  setBrandData,
+  setMessage,
   uploadedFiles,
 }: {
   item: ProductItem
-  onDataChange: () => void
+  brandData: Brand
+  setBrandData: React.Dispatch<React.SetStateAction<Brand>>
+  setMessage: (message: string) => void
   uploadedFiles: UploadedFile[]
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -339,10 +402,44 @@ function SortableItem({
   const style = { transform: CSS.Transform.toString(transform), transition }
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false)
 
+  const onDataChange = async () => {
+    const res = await fetch(`/api/admin/brands/${brandData.slug}`, { cache: "no-store" })
+    if (res.ok) {
+      const data = await res.json()
+      data.product_sections.sort((a: any, b: any) => a.sort_order - b.sort_order)
+      data.product_sections.forEach((s: any) => {
+        if (s.product_items) s.product_items.sort((a: any, b: any) => a.sort_order - b.sort_order)
+      })
+      setBrandData(data)
+    }
+  }
+
   const deleteItem = async () => {
     if (!confirm(`Are you sure you want to delete item "${item.name}"?`)) return
-    await fetch(`/api/admin/items?id=${item.id}`, { method: "DELETE" })
-    onDataChange()
+
+    const originalBrandData = brandData
+    const updatedBrandData = {
+      ...brandData,
+      product_sections: brandData.product_sections.map((s) => {
+        if (s.id === item.section_id) {
+          return {
+            ...s,
+            product_items: s.product_items.filter((i) => i.id !== item.id),
+          }
+        }
+        return s
+      }),
+    }
+    setBrandData(updatedBrandData) // Optimistic update
+
+    const response = await fetch(`/api/admin/items?id=${item.id}`, { method: "DELETE" })
+
+    if (!response.ok) {
+      setMessage(`Error: Could not delete item "${item.name}".`)
+      setBrandData(originalBrandData) // Revert
+    } else {
+      setMessage(`Item "${item.name}" deleted.`)
+    }
   }
 
   return (
