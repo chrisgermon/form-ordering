@@ -97,15 +97,20 @@ export async function saveFormChanges(
 
 export async function importFormFromHtml(brandId: string, htmlContent: string) {
   try {
+    // The parseFormWithAI function returns an object: { sections: [...] }
     const parsedForm = await parseFormWithAI(htmlContent)
-    if (!parsedForm || parsedForm.length === 0) {
+
+    if (!parsedForm || !parsedForm.sections || parsedForm.sections.length === 0) {
       return { success: false, message: "Could not parse any sections from the HTML." }
     }
 
     const supabase = createAdminClient()
+
+    // Corrected: Pass the `sections` array directly to the RPC function,
+    // not the parent object that contains it.
     const { error } = await supabase.rpc("import_form_from_ai", {
       p_brand_id: brandId,
-      p_sections: parsedForm,
+      p_sections: parsedForm.sections,
     })
 
     if (error) {
