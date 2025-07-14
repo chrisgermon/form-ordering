@@ -1,7 +1,7 @@
-import { createClient } from "./supabase/server"
+import { createServerSupabaseClient } from "./supabase"
 
-export async function seedDatabase() {
-  const supabase = createClient()
+export default async function seedDatabase() {
+  const supabase = createServerSupabaseClient()
 
   // Create brands
   const brands = [
@@ -10,6 +10,7 @@ export async function seedDatabase() {
       slug: "vision-radiology",
       logo: "/vision-radiology-logo.svg",
       active: true,
+      primary_color: "#1e40af",
       email: "orders@visionradiology.com.au",
     },
     {
@@ -17,6 +18,7 @@ export async function seedDatabase() {
       slug: "light-radiology",
       logo: "/light-radiology-logo.svg",
       active: true,
+      primary_color: "#059669",
       email: "orders@lightradiology.com.au",
     },
     {
@@ -24,6 +26,7 @@ export async function seedDatabase() {
       slug: "focus-radiology",
       logo: "/images/focus-radiology-logo.png",
       active: true,
+      primary_color: "#dc2626",
       email: "orders@focusradiology.com.au",
     },
     {
@@ -31,6 +34,7 @@ export async function seedDatabase() {
       slug: "quantum-medical-imaging",
       logo: "https://www.jotform.com/uploads/Germon/form_files/Quantum-Imaging-Logo.67ce57124c7890.77397803-removebg-preview.67d52f7359e367.05025068.png",
       active: true,
+      primary_color: "#2a3760",
       email: "orders@quantummedical.com.au",
     },
   ]
@@ -636,6 +640,7 @@ export async function seedDatabase() {
       {
         section: { title: "Operational & Patient Info", sort_order: 1 },
         items: [
+          { code: "FR-APPNT", name: "Appointment Cards", quantities: ["250", "500", "1000", "other"], sort_order: 0 },
           {
             code: "FR-EUFAPPNT",
             name: "EUF Appointment Cards",
@@ -647,6 +652,12 @@ export async function seedDatabase() {
             name: "Film Bags Large",
             quantities: ["1 box", "2 boxes", "4 boxes", "other"],
             sort_order: 2,
+          },
+          {
+            code: "FR-FILMS",
+            name: "Film Bags Small",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 3,
           },
           {
             code: "FR-50MMBS",

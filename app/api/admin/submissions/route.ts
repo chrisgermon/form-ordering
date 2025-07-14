@@ -1,57 +1,35 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase"
 
 export async function GET() {
-  const supabase = createServerSupabaseClient()
   try {
-    const { data, error } = await supabase
+    const supabase = createServerSupabaseClient()
+
+    const { data: submissions, error } = await supabase
       .from("submissions")
       .select(
         `
         *,
-        brand:brands (
+        brands (
           name
         )
-      `
+      `,
       )
       .order("created_at", { ascending: false })
 
-    if (error) {
-      console.error("Error fetching submissions:", error)
-      throw error
-    }
+    if (error) throw error
 
-    // Manually map brand name to top-level for easier client-side access
-    const submissionsWithBrandName = data.map((submission: any) => ({
-      ...submission,
-      brand_name: submission.brand?.name || "Unknown Brand",
-      brand: undefined, // remove the nested brand object
+    // The Supabase query returns brand as an object { name: '...' } or null.
+    // We'll flatten it for easier use on the client.
+    const formattedSubmissions = submissions.map((s: any) => ({
+      ...s,
+      brand_name: s.brands?.name || "Unknown Brand",
+      brands: undefined, // remove the nested object
     }))
 
-    return NextResponse.json(submissionsWithBrandName)
+    return NextResponse.json(formattedSubmissions)
   } catch (error) {
+    console.error("Error fetching submissions:", error)
     return NextResponse.json({ error: "Failed to fetch submissions" }, { status: 500 })
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  const supabase = createServerSupabaseClient()
-  try {
-    const { ids } = await request.json()
-
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return NextResponse.json({ error: "Submission IDs are required" }, { status: 400 })
-    }
-
-    const { error } = await supabase.from("submissions").delete().in("id", ids)
-
-    if (error) {
-      console.error("Error deleting submissions:", error)
-      throw error
-    }
-
-    return NextResponse.json({ message: `${ids.length} submission(s) deleted successfully.` })
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to delete submissions" }, { status: 500 })
   }
 }

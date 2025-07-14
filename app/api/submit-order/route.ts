@@ -2,7 +2,40 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase"
 import { put } from "@vercel/blob"
 import { jsPDF } from "jspdf"
-import { sendNewOrderEmail } from "@/lib/email" // Import the new centralized function
+import { sendEmail, generateOrderEmailTemplate } from "@/lib/email"
+
+async function sendOrderEmail(
+  to: string,
+  subject: string,
+  formData: any,
+  brandName: string,
+  pdfBuffer: Buffer,
+  orderNumber: string,
+  originalSubmitterEmail?: string,
+) {
+  const selectedItems = Object.values(formData.items || {}).map((item: any) => ({
+    code: item.code,
+    name: item.name,
+    quantity: item.quantity === "other" ? `${item.customQuantity} (custom)` : item.quantity,
+    description: item.description || "",
+  }))
+
+  const emailHtml = generateOrderEmailTemplate(brandName, formData, selectedItems, orderNumber)
+
+  return await sendEmail({
+    to,
+    cc: originalSubmitterEmail,
+    subject,
+    html: emailHtml,
+    attachments: [
+      {
+        filename: `${orderNumber}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  })
+}
 
 function generatePDF(formData: any, brandName: string, orderNumber: string) {
   const doc = new jsPDF()
@@ -27,10 +60,11 @@ function generatePDF(formData: any, brandName: string, orderNumber: string) {
   doc.text(`Email: ${formData.email}`, 20, yPos + 7)
   doc.text(`Bill to Clinic: ${formData.billTo}`, 20, yPos + 14)
   doc.text(`Deliver to Clinic: ${formData.deliverTo}`, 20, yPos + 21)
-
-  // FIX: Check if formData.date is valid before creating a new Date
-  const orderDate = formData.date ? new Date(formData.date) : null
-  doc.text(`Date: ${orderDate ? orderDate.toLocaleDateString("en-AU") : "Not specified"}`, 120, yPos + 21)
+  doc.text(
+    `Date: ${formData.date ? new Date(formData.date).toLocaleDateString("en-AU") : "Not specified"}`,
+    120,
+    yPos + 21,
+  )
 
   yPos += 40
   doc.setFontSize(8)
@@ -76,12 +110,6 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createServerSupabaseClient()
-
-    // Fetch full brand data for email template
-    const { data: brand, error: brandError } = await supabase.from("brands").select("*").eq("id", brandId).single()
-    if (brandError || !brand) {
-      throw new Error("Could not retrieve brand details for email.")
-    }
 
     const { data: submission, error: rpcError } = await supabase
       .rpc("create_new_order", {
@@ -130,12 +158,15 @@ export async function POST(request: NextRequest) {
       // Not a fatal error, we can still send the email
     }
 
-    // Use the new centralized email function
-    const emailResult = await sendNewOrderEmail({
-      submission,
-      brand,
-      pdfBuffer: Buffer.from(pdfBuffer),
-    })
+    const emailResult = await sendOrderEmail(
+      brandEmail,
+      `New Printing Order: ${orderNumber} - ${brandName}`,
+      formData,
+      brandName,
+      Buffer.from(pdfBuffer),
+      orderNumber,
+      formData.email,
+    )
 
     const finalStatus = emailResult.success ? "sent" : "failed"
     await supabase.from("submissions").update({ status: finalStatus }).eq("id", submission.id)

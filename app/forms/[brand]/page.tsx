@@ -12,7 +12,7 @@ async function getBrandData(slug: string): Promise<Brand | null> {
     .from("brands")
     .select(
       `
-      id, name, slug, logo, email, clinics, initials,
+      id, name, slug, logo, primary_color, email, clinics,
       product_sections (
         id, title, sort_order, brand_id,
         product_items (

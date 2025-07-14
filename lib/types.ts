@@ -20,19 +20,15 @@ export interface ProductSection {
   product_items: ProductItem[]
 }
 
-export interface Clinic {
-  name: string
-  address: string
-}
-
 export interface Brand {
   id: string
   name: string
   slug: string
   logo: string | null
+  primary_color: string
   email: string
   active: boolean
-  clinics: Clinic[]
+  clinics: string[]
   product_sections: ProductSection[]
   initials?: string | null
 }

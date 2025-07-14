@@ -1,7 +1,8 @@
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
 import { BrandGrid } from "@/components/brand-grid"
 
+// Define the type for a brand on the homepage, matching what BrandGrid expects.
 interface Brand {
   id: string
   name: string
@@ -9,11 +10,13 @@ interface Brand {
   logo: string | null
 }
 
-export const revalidate = 0
+export const revalidate = 0 // Revalidate data on every request
 
 async function getBrands(): Promise<Brand[]> {
-  const supabase = createClient()
+  const supabase = createServerSupabaseClient()
 
+  // This query now correctly fetches all required columns, including 'logo'.
+  // This will work once the database schema is updated with the provided SQL script.
   const { data: brands, error } = await supabase
     .from("brands")
     .select("id, name, slug, logo")
@@ -22,6 +25,8 @@ async function getBrands(): Promise<Brand[]> {
 
   if (error) {
     console.error("Error fetching brands:", error)
+    // This error will occur if the database schema is not up-to-date.
+    // Please run the `000-initial-schema.sql` script.
     return []
   }
 
@@ -36,9 +41,7 @@ export default async function HomePage() {
       <main className="flex-grow">
         <div className="container mx-auto px-4 py-12">
           <div className="text-center mb-12">
-            <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
-              Crowd IT Print Ordering System
-            </h1>
+            <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">Printed Form Ordering</h1>
             <p className="mt-4 text-lg leading-8 text-gray-600">
               Select your brand to access the customised printing order form for your radiology practice.
             </p>
