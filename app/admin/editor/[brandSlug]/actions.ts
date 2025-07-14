@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import type { Section } from "@/lib/types"
 import { parseFormWithAI } from "@/lib/scraping"
 import { randomUUID } from "crypto"
+import { slugify } from "@/lib/utils"
 
 export async function saveFormChanges(
   brandId: string,
@@ -47,15 +48,19 @@ export async function saveFormChanges(
 
       // Explicitly generate UUIDs for new items
       for (const i of s.items) {
-        let itemId = i.id
-        if (i.id.toString().startsWith("new-")) {
-          itemId = randomUUID()
-        }
+        const isNewItem = i.id.toString().startsWith("new-")
+        const itemId = isNewItem ? randomUUID() : i.id
+
+        // Generate a 'code' from the item name if it's a new item.
+        // For existing items, use the code that's already there.
+        const itemCode = isNewItem ? slugify(i.name) : i.code
+
         itemUpserts.push({
           id: itemId,
           brand_id: brandId,
           section_id: sectionIdMap.get(s.id) || s.id,
           name: i.name,
+          code: itemCode, // Ensure 'code' is always provided
           description: i.description,
           field_type: i.field_type,
           is_required: i.is_required,
@@ -68,12 +73,18 @@ export async function saveFormChanges(
     // Perform upserts
     if (sectionUpserts.length > 0) {
       const { error: sectionError } = await supabase.from("sections").upsert(sectionUpserts)
-      if (sectionError) throw new Error(`Section Save Error: ${sectionError.message}`)
+      if (sectionError) {
+        console.error("Section Save Error Details:", sectionError)
+        throw new Error(`Section Save Error: ${sectionError.message}`)
+      }
     }
 
     if (itemUpserts.length > 0) {
       const { error: itemError } = await supabase.from("items").upsert(itemUpserts)
-      if (itemError) throw new Error(`Item Save Error: ${itemError.message}`)
+      if (itemError) {
+        console.error("Item Save Error Details:", itemError)
+        throw new Error(`Item Save Error: ${itemError.message}`)
+      }
     }
 
     revalidatePath(`/admin/editor/${brandId}`)

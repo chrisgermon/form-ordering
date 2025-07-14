@@ -18,7 +18,7 @@ export interface Item {
   id: string
   section_id: string
   brand_id: string
-  code: string | null
+  code: string // Changed from `string | null` to `string` for type safety
   name: string
   description: string | null
   sample_link: string | null
