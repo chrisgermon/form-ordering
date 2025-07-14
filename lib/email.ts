@@ -108,7 +108,7 @@ export function generateOrderEmailTemplate(submission: Submission, brand: Brand)
 `
 }
 
-export async function sendOrderCompletionEmail(submission: Submission) {
+export async function sendOrderCompletionEmail(submission: Submission & { brand?: Brand }) {
   console.log("sendOrderCompletionEmail called with submission data:", JSON.stringify(submission, null, 2))
 
   if (!fromEmail) {
@@ -146,12 +146,9 @@ export async function sendOrderCompletionEmail(submission: Submission) {
   }
 }
 
-export function generateOrderCompletionEmailTemplate(submission: Submission) {
+export function generateOrderCompletionEmailTemplate(submission: Submission & { brand?: Brand }) {
   const completionDate = submission.completed_at ? format(new Date(submission.completed_at), "dd/MM/yyyy") : "N/A"
-  const expectedDeliveryDate = submission.expected_delivery_date
-    ? format(new Date(submission.expected_delivery_date), "dd/MM/yyyy")
-    : "Not specified"
-  const brandName = submission.brand_name || "Your Brand"
+  const brandName = submission.brand?.name || submission.brand_name || "Your Brand"
 
   return `
 <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
@@ -160,13 +157,10 @@ export function generateOrderCompletionEmailTemplate(submission: Submission) {
 <p>Great news! Your order for <strong>${brandName}</strong> has been completed and dispatched on ${completionDate}.</p>
 <h3>Dispatch Details:</h3>
 <ul>
-<li><strong>Expected Delivery Date:</strong> ${expectedDeliveryDate}</li>
+<li><strong>Courier:</strong> ${submission.completion_courier || "N/A"}</li>
+<li><strong>Tracking Number:</strong> ${submission.completion_tracking || "N/A"}</li>
+<li><strong>Notes:</strong> ${submission.completion_notes || "None"}</li>
 </ul>
-${
-  submission.delivery_details
-    ? `<h3>Delivery Notes:</h3><p style="white-space: pre-wrap;">${submission.delivery_details}</p>`
-    : ""
-}
 <p>Thank you for your order!</p>
 </div>
 `

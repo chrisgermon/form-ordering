@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
@@ -38,7 +38,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
-import { RefreshButton } from "./admin-components"
+import { RefreshButton, MarkAsCompleteButton } from "./admin-components"
+import { deleteBrand } from "./actions"
+import { useToast } from "@/components/ui/use-toast"
 
 function DatePickerWithRange({
   className,
@@ -621,6 +623,8 @@ export default function AdminDashboard({
   const [submissions, setSubmissions] = useState(initialSubmissions)
   const [brands, setBrands] = useState(initialBrands)
   const [uploadedFiles, setUploadedFiles] = useState(initialUploadedFiles)
+  const [isPending, startTransition] = useTransition()
+  const { toast } = useToast()
 
   // Dialog states
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
@@ -676,6 +680,25 @@ export default function AdminDashboard({
   const handleCompletionSuccess = () => {
     router.refresh()
     setIsCompleteDialogOpen(false)
+  }
+
+  const handleDelete = (slug: string) => {
+    startTransition(async () => {
+      const result = await deleteBrand(slug)
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: result.message,
+        })
+        setBrands((prevBrands) => prevBrands.filter((b) => b.slug !== slug))
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result.message,
+        })
+      }
+    })
   }
 
   return (
@@ -791,6 +814,78 @@ export default function AdminDashboard({
           </div>
         </div>
       </main>
+
+      <div className="p-4 md:p-8">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+          <div className="flex items-center gap-2">
+            <RefreshButton />
+            <Button asChild>
+              <Link href="/admin/editor/new">Create New Brand</Link>
+            </Button>
+          </div>
+        </div>
+
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold mb-4">Brands</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {brands.map((brand) => (
+              <div key={brand.id} className="border rounded-lg p-4">
+                <h3 className="font-semibold">{brand.name}</h3>
+                <div className="flex gap-2 mt-4">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/admin/editor/${brand.slug}`}>Edit</Link>
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => handleDelete(brand.slug)} disabled={isPending}>
+                    {isPending ? "Deleting..." : "Delete"}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h2 className="text-xl font-semibold mb-4">Recent Submissions</h2>
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Order #</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Brand</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {submissions.map((submission) => (
+                  <TableRow key={submission.id}>
+                    <TableCell>{submission.order_number}</TableCell>
+                    <TableCell>{format(new Date(submission.created_at), "dd MMM yyyy")}</TableCell>
+                    <TableCell>{submission.brand.name}</TableCell>
+                    <TableCell>{submission.name}</TableCell>
+                    <TableCell>{submission.email}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={submission.is_complete ? "default" : "secondary"}
+                        className={submission.is_complete ? "bg-green-500 text-white" : ""}
+                      >
+                        {submission.is_complete ? "Complete" : "Pending"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <MarkAsCompleteButton submission={submission} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </div>
 
       <CompleteSubmissionDialog
         open={isCompleteDialogOpen}
