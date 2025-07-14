@@ -1,4 +1,4 @@
-import chromium from "chrome-aws-lambda"
+import chromium from "@sparticuz/chromium"
 import puppeteer from "puppeteer-core"
 import type { OrderPayload, Brand, ClinicLocation } from "@/lib/types"
 import { getPublicUrl } from "@/lib/utils"
@@ -115,8 +115,9 @@ export async function generatePdf(order: OrderPayload, brand: Brand): Promise<Bu
   const browser = await puppeteer.launch({
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath,
+    executablePath: await chromium.executablePath(),
     headless: chromium.headless,
+    ignoreHTTPSErrors: true,
   })
 
   const page = await browser.newPage()
