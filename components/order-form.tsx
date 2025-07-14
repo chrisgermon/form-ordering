@@ -1,6 +1,6 @@
 "use client"
 import { useState, useMemo } from "react"
-import { useForm, FormProvider, useFormContext } from "react-hook-form"
+import { useForm, FormProvider, useFormContext, useWatch } from "react-hook-form"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -86,8 +86,11 @@ const ItemRow = ({ item }: { item: ProductItem }) => {
 }
 
 function OrderSummary({ allItemsMap }: { allItemsMap: Map<string, ProductItem> }) {
-  const { watch } = useFormContext<FormValues>()
-  const selectedItems = watch("items")
+  const { control } = useFormContext<FormValues>()
+  const selectedItems = useWatch({
+    control,
+    name: "items",
+  })
 
   const itemsToDisplay = useMemo(() => {
     if (!selectedItems) return []
@@ -165,6 +168,9 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
     control,
     handleSubmit,
     reset,
+    register,
+    setValue,
+    watch,
     formState: { errors },
   } = methods
 
@@ -255,7 +261,7 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
             <div className="w-[188px] mr-auto"></div> {/* Spacer to balance the back button */}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2">
               <div className="bg-white rounded-xl shadow-lg">
                 <div className="bg-[#2a3760] text-white text-center py-4 rounded-t-xl">
@@ -271,7 +277,7 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                       <Input
                         id="orderedBy"
                         className="bg-gray-100 border-gray-300"
-                        {...methods.register("orderedBy", { required: "Ordered By is required." })}
+                        {...register("orderedBy", { required: "Ordered By is required." })}
                       />
                       {errors.orderedBy && <p className="text-xs text-red-500">{errors.orderedBy.message}</p>}
                     </div>
@@ -283,7 +289,7 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                         id="email"
                         type="email"
                         className="bg-gray-100 border-gray-300"
-                        {...methods.register("email", {
+                        {...register("email", {
                           required: "Email is required.",
                           pattern: { value: /^\S+@\S+$/i, message: "Invalid email address." },
                         })}
@@ -294,10 +300,7 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                       <label htmlFor="billTo" className="text-sm font-medium text-gray-800">
                         Bill to Clinic: <span className="text-red-500">*</span>
                       </label>
-                      <Select
-                        onValueChange={(value) => methods.setValue("billTo", value)}
-                        value={methods.watch("billTo")}
-                      >
+                      <Select onValueChange={(value) => setValue("billTo", value)} value={watch("billTo")}>
                         <SelectTrigger id="billTo" className="bg-gray-100 border-gray-300">
                           <SelectValue placeholder="Select a clinic" />
                         </SelectTrigger>
@@ -315,10 +318,7 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                       <label htmlFor="deliverTo" className="text-sm font-medium text-gray-800">
                         Deliver to Clinic: <span className="text-red-500">*</span>
                       </label>
-                      <Select
-                        onValueChange={(value) => methods.setValue("deliverTo", value)}
-                        value={methods.watch("deliverTo")}
-                      >
+                      <Select onValueChange={(value) => setValue("deliverTo", value)} value={watch("deliverTo")}>
                         <SelectTrigger id="deliverTo" className="bg-gray-100 border-gray-300">
                           <SelectValue placeholder="Select a clinic" />
                         </SelectTrigger>
@@ -342,18 +342,18 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                             variant={"outline"}
                             className={cn(
                               "w-full justify-start text-left font-normal bg-gray-100 border-gray-300",
-                              !methods.watch("date") && "text-muted-foreground",
+                              !watch("date") && "text-muted-foreground",
                             )}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {methods.watch("date") ? format(methods.watch("date")!, "PPP") : <span>Pick a date</span>}
+                            {watch("date") ? format(watch("date")!, "PPP") : <span>Pick a date</span>}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
                           <Calendar
                             mode="single"
-                            selected={methods.watch("date")}
-                            onSelect={(date) => methods.setValue("date", date)}
+                            selected={watch("date")}
+                            onSelect={(date) => setValue("date", date)}
                             initialFocus
                           />
                         </PopoverContent>
