@@ -44,12 +44,12 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     if (updatedSubmission) {
-      // Manually map brand name for consistency
+      // Manually map brand name for consistency and prepare for email
       const submissionForEmail = {
         ...updatedSubmission,
         brand_name: updatedSubmission.brand?.name || "Unknown Brand",
       }
-      // Fire and forget the email
+      // Fire and forget the email to the user who placed the order
       sendOrderCompletionEmail(submissionForEmail).catch((e) =>
         console.error(`Failed to send completion email for submission ${updatedSubmission.id}:`, e),
       )

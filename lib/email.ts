@@ -72,35 +72,35 @@ export function generateOrderEmailTemplate(submission: Submission, brand: Brand)
 <p>A new order has been placed for <strong>${brand.name}</strong>.</p>
 <h3>Order Details:</h3>
 <ul style="list-style: none; padding: 0;">
-  <li><strong>Order Number:</strong> ${submission.order_number}</li>
-  <li><strong>Date Submitted:</strong> ${submissionDate}</li>
-  <li><strong>Ordered By:</strong> ${submission.ordered_by}</li>
-  <li><strong>Email:</strong> ${submission.email}</li>
-  <li><strong>Bill to Clinic:</strong> ${submission.bill_to}</li>
-  <li><strong>Deliver to Clinic:</strong><br><pre style="font-family: sans-serif; margin: 0;">${submission.deliver_to}</pre></li>
+ <li><strong>Order Number:</strong> ${submission.order_number}</li>
+ <li><strong>Date Submitted:</strong> ${submissionDate}</li>
+ <li><strong>Ordered By:</strong> ${submission.ordered_by}</li>
+ <li><strong>Email:</strong> ${submission.email}</li>
+ <li><strong>Bill to Clinic:</strong> ${submission.bill_to}</li>
+ <li><strong>Deliver to Clinic:</strong><br><pre style="font-family: sans-serif; margin: 0;">${submission.deliver_to}</pre></li>
 </ul>
 <h3>Items Ordered:</h3>
 <table style="width: 100%; border-collapse: collapse;">
-  <thead>
-    <tr>
-      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Code</th>
-      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Item</th>
-      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Quantity</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${orderedItems
-      .map(
-        (item) => `
-      <tr>
-        <td style="border: 1px solid #ddd; padding: 8px;">${item.code}</td>
-        <td style="border: 1px solid #ddd; padding: 8px;">${item.name}</td>
-        <td style="border: 1px solid #ddd; padding: 8px;">${item.quantity === "other" ? item.customQuantity || "N/A" : item.quantity}</td>
-      </tr>
-    `,
-      )
-      .join("")}
-  </tbody>
+ <thead>
+   <tr>
+     <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Code</th>
+     <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Item</th>
+     <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Quantity</th>
+   </tr>
+ </thead>
+ <tbody>
+   ${orderedItems
+     .map(
+       (item) => `
+     <tr>
+       <td style="border: 1px solid #ddd; padding: 8px;">${item.code}</td>
+       <td style="border: 1px solid #ddd; padding: 8px;">${item.name}</td>
+       <td style="border: 1px solid #ddd; padding: 8px;">${item.quantity === "other" ? item.customQuantity || "N/A" : item.quantity}</td>
+     </tr>
+   `,
+     )
+     .join("")}
+ </tbody>
 </table>
 </div>
 `
@@ -145,7 +145,7 @@ export function generateOrderCompletionEmailTemplate(submission: Submission) {
 <p>Great news! Your order for <strong>${brandName}</strong> has been completed and dispatched on ${completionDate}.</p>
 <h3>Dispatch Details:</h3>
 <ul>
-  <li><strong>Expected Delivery Date:</strong> ${expectedDeliveryDate}</li>
+ <li><strong>Expected Delivery Date:</strong> ${expectedDeliveryDate}</li>
 </ul>
 ${
   submission.delivery_details
