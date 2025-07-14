@@ -1,8 +1,4 @@
-"use client"
-
-import { useRouter } from "next/navigation"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import Link from "next/link"
 import Image from "next/image"
 
 interface Brand {
@@ -13,49 +9,44 @@ interface Brand {
 }
 
 interface BrandGridProps {
-  brands: Brand[]
+  brands: (Brand | null | undefined)[]
 }
 
 export function BrandGrid({ brands }: BrandGridProps) {
-  const router = useRouter()
+  // Filter out any null or undefined brand objects to prevent runtime errors.
+  const validBrands = brands ? brands.filter((brand): brand is Brand => !!brand && !!brand.id) : []
 
-  const handleBrandClick = (slug: string) => {
-    router.push(`/forms/${slug}`)
-  }
-
-  if (!brands || brands.length === 0) {
+  if (validBrands.length === 0) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-500 text-lg mb-4">No brands available at the moment.</p>
-        <p className="text-gray-400">Please check back later or contact support.</p>
+      <div className="text-center py-10">
+        <p className="text-gray-500">No brands are available at the moment.</p>
       </div>
     )
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-      {brands.map((brand) => (
-        <Card
+    <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+      {validBrands.map((brand) => (
+        <Link
+          href={`/forms/${brand.slug}`}
           key={brand.id}
-          className="hover:shadow-lg transition-shadow cursor-pointer group"
-          onClick={() => handleBrandClick(brand.slug)}
+          className="group relative flex flex-col items-center justify-center rounded-lg border border-gray-200 bg-white p-8 shadow-sm transition-all hover:shadow-lg hover:-translate-y-1"
         >
-          <CardContent className="p-6 flex flex-col items-center justify-between text-center space-y-4 h-full">
-            <div className="relative w-48 h-24 flex-shrink-0">
-              <Image
-                src={brand.logo || "/placeholder.svg?height=96&width=192&query=Logo"}
-                alt={`${brand.name} Logo`}
-                fill
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                className="object-contain"
-              />
+          {brand.logo ? (
+            <Image
+              src={brand.logo || "/placeholder.svg"}
+              alt={`${brand.name} Logo`}
+              width={200}
+              height={100}
+              className="h-24 w-auto object-contain"
+            />
+          ) : (
+            <div className="flex h-24 items-center justify-center">
+              <span className="text-2xl font-bold text-gray-700">{brand.name}</span>
             </div>
-            <div className="w-full">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">{brand.name}</h3>
-              <Button className="w-full bg-blue-600 hover:bg-blue-700">Create Order</Button>
-            </div>
-          </CardContent>
-        </Card>
+          )}
+          <span className="mt-6 text-lg font-semibold text-gray-800">{brand.name}</span>
+        </Link>
       ))}
     </div>
   )

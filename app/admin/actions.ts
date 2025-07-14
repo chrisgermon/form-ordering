@@ -1,172 +1,74 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { createClient } from "@/lib/supabase/server"
 import { sendOrderCompletionEmail } from "@/lib/email"
-import { exec } from "child_process"
-import { promisify } from "util"
-import { put } from "@vercel/blob"
-import fs from "fs/promises"
-import path from "path"
-
-const execAsync = promisify(exec)
-
-export async function scrapeClinicsFromWebsite(brandId: number, url: string) {
-  if (!url) {
-    return { success: false, error: "URL is required." }
-  }
-
-  try {
-    const response = await fetch(url)
-    if (!response.ok) {
-      return { success: false, error: `Failed to fetch URL: ${response.statusText}` }
-    }
-    const html = await response.text()
-
-    // This is a very basic scraper and might need to be adjusted for specific site structures.
-    // It looks for list items within a 'locations' or 'clinics' class/id, or just all `<li>` as a fallback.
-    const cheerio = await import("cheerio")
-    const $ = cheerio.load(html)
-
-    let clinics: string[] = []
-    const potentialSelectors = [
-      ".locations li",
-      "#locations li",
-      ".clinics li",
-      "#clinics li",
-      ".location-list li",
-      "article.location .location-name",
-      ".clinic-name",
-    ]
-
-    for (const selector of potentialSelectors) {
-      if ($(selector).length > 0) {
-        $(selector).each((i, el) => {
-          clinics.push($(el).text().trim())
-        })
-        break // Stop after first successful selector
-      }
-    }
-
-    // Fallback if no specific selectors found
-    if (clinics.length === 0) {
-      $("li").each((i, el) => {
-        const text = $(el).text().trim()
-        // A simple heuristic to guess if it's a location
-        if (text.length > 5 && text.length < 100 && !text.startsWith("Phone")) {
-          clinics.push(text)
-        }
-      })
-    }
-
-    // Remove duplicates and filter out empty strings
-    clinics = [...new Set(clinics)].filter(Boolean)
-
-    if (clinics.length === 0) {
-      return { success: false, error: "Could not find any clinics on the page." }
-    }
-
-    const supabase = createClient()
-    const { error } = await supabase.from("brands").update({ clinics }).eq("id", brandId)
-
-    if (error) {
-      console.error("Error updating clinics in DB:", error)
-      return { success: false, error: "Failed to save clinics to the database." }
-    }
-
-    revalidatePath("/admin")
-    return { success: true, message: `Successfully imported ${clinics.length} clinics.`, clinics }
-  } catch (e) {
-    const error = e as Error
-    console.error("Error scraping clinics:", error)
-    return { success: false, error: error.message }
-  }
-}
+import type { Submission, Clinic } from "@/lib/types"
+import { generateObject } from "ai"
+import { xai } from "@ai-sdk/xai"
+import { z } from "zod"
+import { seedDatabase } from "@/lib/seed-database"
 
 export async function runSeed() {
   try {
-    const command = "pnpm tsx lib/seed-database.ts"
-    const { stdout, stderr } = await execAsync(command)
-
-    if (stderr) {
-      console.error(`Seed script stderr: ${stderr}`)
-      // Check for specific, non-fatal errors if any
-      if (!stderr.includes("Warning:")) {
-        return { success: false, error: stderr }
-      }
-    }
-
+    await seedDatabase()
     revalidatePath("/admin")
-    return { success: true, message: `Database seeded successfully. Output: ${stdout}` }
-  } catch (e) {
-    const error = e as Error & { stdout?: string; stderr?: string }
-    console.error("Error running seed script:", error)
-    return { success: false, error: error.stderr || error.message }
+    return { success: true, message: "Database seeded successfully!" }
+  } catch (error) {
+    console.error("Seeding failed:", error)
+    return { success: false, message: `Seeding failed: ${error instanceof Error ? error.message : "Unknown error"}` }
   }
 }
 
-export async function autoAssignPdfs(brandId: number) {
+export async function autoAssignPdfs() {
   const supabase = createClient()
-
   try {
-    const { data: brand, error: brandError } = await supabase.from("brands").select("slug").eq("id", brandId).single()
-
-    if (brandError) throw brandError
-
-    const sampleDir = path.join(process.cwd(), "public", "samples", brand.slug)
-    const files = await fs.readdir(sampleDir)
-    const pdfFiles = files.filter((f) => f.toLowerCase().endsWith(".pdf"))
-
-    if (pdfFiles.length === 0) {
-      return { success: false, error: "No PDF files found in the sample directory." }
-    }
-
-    const { data: items, error: itemsError } = await supabase.from("items").select("id, code").eq("brand_id", brandId)
-
+    const { data: items, error: itemsError } = await supabase.from("product_items").select("id, code")
     if (itemsError) throw itemsError
 
-    const itemCodeMap = new Map(items.map((item) => [item.code, item.id]))
-    let updatedCount = 0
-    const updatePromises = []
+    const { data: files, error: filesError } = await supabase.from("uploaded_files").select("id, original_name, url")
+    if (filesError) throw filesError
 
-    for (const pdfFile of pdfFiles) {
-      const code = path.basename(pdfFile, ".pdf").toUpperCase()
-      if (itemCodeMap.has(code)) {
-        const itemId = itemCodeMap.get(code)
-        const filePath = path.join(sampleDir, pdfFile)
-        const fileBuffer = await fs.readFile(filePath)
+    let assignments = 0
+    const unmatchedFiles: string[] = []
 
-        const { url } = await put(`pdfs/${brand.slug}/${pdfFile}`, fileBuffer, {
-          access: "public",
-          contentType: "application/pdf",
-        })
+    const itemCodeMap = new Map(items.map((item) => [item.code.toUpperCase(), item.id]))
 
-        updatePromises.push(supabase.from("items").update({ pdf_url: url }).eq("id", itemId))
-        updatedCount++
+    for (const file of files) {
+      const fileCode = file.original_name.replace(/\.pdf$/i, "").toUpperCase()
+      if (itemCodeMap.has(fileCode)) {
+        const itemId = itemCodeMap.get(fileCode)
+        const { error: updateError } = await supabase
+          .from("product_items")
+          .update({ sample_link: file.url })
+          .eq("id", itemId)
+
+        if (updateError) {
+          console.error(`Failed to update item ${fileCode}:`, updateError.message)
+        } else {
+          assignments++
+        }
+      } else {
+        unmatchedFiles.push(file.original_name)
       }
     }
 
-    const results = await Promise.all(updatePromises)
-    const failedUpdates = results.filter((res) => res.error)
+    revalidatePath("/admin", "layout")
+    revalidatePath("/forms", "layout")
 
-    if (failedUpdates.length > 0) {
-      console.error(
-        "Some PDF assignments failed:",
-        failedUpdates.map((f) => f.error),
-      )
-      return {
-        success: false,
-        error: `Assigned ${updatedCount - failedUpdates.length} PDFs, but ${failedUpdates.length} assignments failed.`,
-      }
+    let message = `${assignments} PDF(s) were successfully assigned.`
+    if (unmatchedFiles.length > 0) {
+      message += ` The following files could not be matched: ${unmatchedFiles.join(", ")}.`
+    }
+    if (assignments === 0 && unmatchedFiles.length === 0) {
+      message = "No new PDFs found to assign."
     }
 
-    revalidatePath("/admin")
-    revalidatePath(`/admin/editor/${brand.slug}`)
-    return { success: true, message: `Successfully assigned ${updatedCount} PDFs.` }
-  } catch (e) {
-    const error = e as Error
-    console.error("Error in autoAssignPdfs:", error)
-    return { success: false, error: error.message }
+    return { success: true, message }
+  } catch (error) {
+    console.error("Error auto-assigning PDFs:", error)
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+    return { success: false, message: `Failed to assign PDFs: ${errorMessage}` }
   }
 }
 
@@ -174,70 +76,124 @@ export async function reloadSchemaCache() {
   const supabase = createClient()
   try {
     const { error } = await supabase.rpc("reload_schema_cache")
-    if (error) throw error
+    if (error) {
+      throw error
+    }
     revalidatePath("/admin")
-    return { success: true, message: "Schema cache reloaded." }
-  } catch (e) {
-    const error = e as Error
+    return { success: true, message: "Schema cache reloaded successfully." }
+  } catch (error) {
     console.error("Error reloading schema cache:", error)
-    return { success: false, error: error.message }
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+    return { success: false, message: `Failed to reload schema cache: ${errorMessage}` }
   }
 }
 
 export async function refreshSubmissions() {
   revalidatePath("/admin")
-  return { success: true, message: "Submissions refreshed." }
 }
 
-export async function markOrderAsComplete(
+export async function scrapeClinicsFromWebsite(
+  url: string,
+): Promise<{ success: boolean; data?: Clinic[]; error?: string }> {
+  if (!url) {
+    return { success: false, error: "URL is required." }
+  }
+
+  console.log(`Scraping clinics from URL: ${url} using Grok`)
+
+  try {
+    const { object } = await generateObject({
+      model: xai("grok-3"),
+      schema: z.object({
+        clinics: z.array(
+          z.object({
+            name: z.string().describe("The full name of the clinic or practice."),
+            address: z.string().describe("The full street address of the clinic."),
+            phone: z.string().optional().describe("The primary phone number."),
+            email: z.string().email().optional().describe("The primary contact email address."),
+          }),
+        ),
+      }),
+      prompt: `Scrape the content of the website at the URL ${url}. Identify and extract a list of all clinic locations mentioned on the page. For each clinic, provide its name, full address, phone number, and email address if available.`,
+    })
+    console.log("Successfully scraped clinics:", object.clinics)
+    return { success: true, data: object.clinics }
+  } catch (error) {
+    console.error("Error scraping clinics with Grok:", error)
+    return { success: false, error: "Failed to scrape clinic data. The website structure might be unsupported." }
+  }
+}
+
+export async function deleteBrand(slug: string) {
+  const supabase = createClient()
+  const { error } = await supabase.from("brands").delete().eq("slug", slug)
+
+  if (error) {
+    console.error("Error deleting brand:", error)
+    return { success: false, message: error.message }
+  }
+
+  revalidatePath("/admin")
+  return { success: true, message: "Brand deleted successfully." }
+}
+
+export async function updateSubmissionStatus(
   submissionId: number,
-  completionData: {
-    completion_courier: string
-    completion_tracking: string
-    completion_notes: string
+  isComplete: boolean,
+  completionDetails?: {
+    courier: string
+    trackingNumber: string
+    notes: string
   },
 ) {
   const supabase = createClient()
-  try {
-    const { data: updatedSubmission, error } = await supabase
+
+  const updatePayload: Partial<Submission> & { status: "completed" | "pending" } = {
+    is_complete: isComplete,
+    status: isComplete ? "completed" : "pending",
+  }
+
+  if (isComplete) {
+    updatePayload.completed_at = new Date().toISOString()
+    if (completionDetails) {
+      updatePayload.completion_courier = completionDetails.courier
+      updatePayload.completion_tracking = completionDetails.trackingNumber
+      updatePayload.completion_notes = completionDetails.notes
+    }
+  } else {
+    updatePayload.completed_at = null
+    updatePayload.completion_courier = null
+    updatePayload.completion_tracking = null
+    updatePayload.completion_notes = null
+  }
+
+  const { error: updateError } = await supabase.from("submissions").update(updatePayload).eq("id", submissionId)
+
+  if (updateError) {
+    console.error("Error updating submission status:", updateError)
+    return { success: false, message: updateError.message }
+  }
+
+  if (isComplete) {
+    const { data: submission, error: fetchError } = await supabase
       .from("submissions")
-      .update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-        ...completionData,
-      })
+      .select("*, brand:brands(*)")
       .eq("id", submissionId)
-      .select(
-        `
-        *,
-        brand:brands (
-          name,
-          logo
-        )
-      `,
-      )
       .single()
 
-    if (error) {
-      console.error("Error marking order as complete:", error)
-      return { success: false, error: "Failed to update order status." }
-    }
-
-    if (updatedSubmission) {
+    if (fetchError || !submission) {
+      console.error("Error fetching submission for email:", fetchError)
+      // Don't block success response if email fails
+    } else {
       try {
-        await sendOrderCompletionEmail(updatedSubmission)
-        console.log(`Completion email sent for submission ${submissionId}`)
+        await sendOrderCompletionEmail(submission as any)
       } catch (emailError) {
-        console.error(`Failed to send completion email for submission ${submissionId}:`, emailError)
-        // Don't block the response for email failure, but maybe log it or notify admin
+        console.error("Failed to send completion email:", emailError)
+        // Don't block the success response for a failed email
       }
     }
-
-    revalidatePath("/admin")
-    return { success: true, message: "Order marked as complete." }
-  } catch (e) {
-    const error = e as Error
-    console.error("Unexpected error in markOrderAsComplete:", error)
-    return { success: false, error: error.message }
   }
+
+  revalidatePath("/admin")
+  return { success: true, message: "Order status updated." }
 }
