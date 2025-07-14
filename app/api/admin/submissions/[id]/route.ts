@@ -25,12 +25,18 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     if (error) {
       console.error("Error updating submission:", error)
+      // The error object from Supabase contains the specific message
       throw error
     }
 
     return NextResponse.json(data)
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to update submission"
+    // Log the full error for better debugging
+    console.error("Full error in PUT /api/admin/submissions/[id]:", error)
+    const errorMessage =
+      error && typeof error === "object" && "message" in error
+        ? (error as { message: string }).message
+        : "An unknown error occurred"
     return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }

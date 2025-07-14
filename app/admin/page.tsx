@@ -11,26 +11,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import {
-  Trash2,
-  Edit,
-  Plus,
-  Upload,
-  Eye,
-  Download,
-  Database,
-  Loader2,
-  Link2,
-  ArrowLeft,
-  RefreshCw,
-  CheckCircle,
-  CalendarIcon,
-  Search,
-  ClipboardCopy,
-} from "lucide-react"
+import { Trash2, Edit, Plus, Upload, Eye, Download, Database, Loader2, Link2, ArrowLeft, RefreshCw, CheckCircle, CalendarIcon, Search, ClipboardCopy } from 'lucide-react'
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { runSeed, autoAssignPdfs, reloadSchemaCache } from "./actions"
@@ -978,9 +970,12 @@ function CompleteSubmissionDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Mark Order as Complete</DialogTitle>
+          <DialogDescription>
+            Add delivery details for order {submission?.order_number}.
+          </DialogDescription>
         </DialogHeader>
         {submission && (
-          <div className="text-sm text-muted-foreground border-b pb-4">
+          <div className="text-sm text-muted-foreground border-y py-4 my-4">
             <p>
               <strong>Order #:</strong> {submission.order_number}
             </p>
@@ -992,7 +987,7 @@ function CompleteSubmissionDialog({
             </p>
           </div>
         )}
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
             <Label htmlFor="delivery_details">Delivery Details (Courier, Tracking #, etc.)</Label>
             <Controller
@@ -1069,14 +1064,14 @@ function SubmissionDetailsDialog({
       <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Order Details: {submission.order_number}</DialogTitle>
-          <AlertDescription>
+          <DialogDescription>
             A complete summary of the order submitted on{" "}
-            {new Date(submission.created_at).toLocaleDateString("en-AU", {
+            {new Date(submission.created_at).toLocaleString("en-AU", {
               dateStyle: "full",
               timeStyle: "short",
             })}
             .
-          </AlertDescription>
+          </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 max-h-[70vh] overflow-y-auto pr-4">
           <Card>

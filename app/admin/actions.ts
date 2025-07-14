@@ -1,89 +1,67 @@
 "use server"
 
-import seedDatabase from "@/lib/seed-database"
-import { revalidatePath } from "next/cache"
+import { seedDatabase } from "@/lib/seed-database"
 import { createServerSupabaseClient } from "@/lib/supabase"
+import { revalidatePath } from "next/cache"
 
 export async function runSeed() {
   try {
     await seedDatabase()
-    revalidatePath("/")
     revalidatePath("/admin")
     return { success: true, message: "Database seeded successfully!" }
   } catch (error) {
-    console.error("Error seeding database:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return { success: false, message: `Failed to seed database: ${errorMessage}` }
+    console.error("Seeding failed:", error)
+    return { success: false, message: `Seeding failed: ${error instanceof Error ? error.message : "Unknown error"}` }
   }
 }
 
 export async function autoAssignPdfs() {
+  const supabase = createServerSupabaseClient()
   try {
-    const supabase = createServerSupabaseClient()
-
-    const { data: files, error: filesError } = await supabase
-      .from("uploaded_files")
-      .select("id, original_name, url")
-      .ilike("original_name", "%.pdf") // Only get PDF files
-
-    if (filesError) throw filesError
-
-    const { data: items, error: itemsError } = await supabase.from("product_items").select("id, code")
+    const { data: items, error: itemsError } = await supabase.from("items").select("id, code")
     if (itemsError) throw itemsError
 
-    const itemCodeMap = new Map(items.map((item) => [item.code.toUpperCase(), item.id]))
-    const updatePromises = []
-    let updatedCount = 0
-    const unmatchedFiles = []
+    const { data: files, error: filesError } = await supabase.from("uploaded_files").select("id, original_name, url")
+    if (filesError) throw filesError
 
-    for (const file of files) {
-      const fileCode = file.original_name.replace(/\.pdf$/i, "").toUpperCase()
-      if (itemCodeMap.has(fileCode)) {
-        const itemId = itemCodeMap.get(fileCode)
-        updatePromises.push(supabase.from("product_items").update({ sample_link: file.url }).eq("id", itemId))
-        updatedCount++
-      } else {
-        unmatchedFiles.push(file.original_name)
+    let assignments = 0
+    for (const item of items) {
+      const matchingFile = files.find((file) => {
+        const fileNameWithoutExt = file.original_name.split(".").slice(0, -1).join(".")
+        return fileNameWithoutExt.toUpperCase() === item.code.toUpperCase()
+      })
+
+      if (matchingFile) {
+        const { error: updateError } = await supabase
+          .from("items")
+          .update({ pdf_url: matchingFile.url })
+          .eq("id", item.id)
+
+        if (updateError) {
+          console.error(`Failed to update item ${item.code}:`, updateError.message)
+        } else {
+          assignments++
+        }
       }
     }
-
-    if (updatePromises.length > 0) {
-      const results = await Promise.all(updatePromises)
-      const dbError = results.find((res) => res.error)
-      if (dbError) throw dbError.error
-    }
-
-    revalidatePath("/admin", "layout")
-    revalidatePath("/forms", "layout")
-
-    let message = `${updatedCount} PDF(s) were successfully assigned.`
-    if (unmatchedFiles.length > 0) {
-      message += ` The following files could not be matched: ${unmatchedFiles.join(", ")}.`
-    }
-    if (updatedCount === 0 && unmatchedFiles.length === 0) {
-      message = "No new PDFs found to assign."
-    }
-
-    return { success: true, message }
+    revalidatePath("/admin")
+    return { message: `Auto-assignment complete. ${assignments} PDFs linked to items.` }
   } catch (error) {
-    console.error("Error auto-assigning PDFs:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return { success: false, message: `Failed to assign PDFs: ${errorMessage}` }
+    return { message: `An error occurred: ${error instanceof Error ? error.message : "Unknown error"}` }
   }
 }
 
 export async function reloadSchemaCache() {
+  const supabase = createServerSupabaseClient()
   try {
-    const supabase = createServerSupabaseClient()
-    // This calls the PostgreSQL function we created in the new SQL script.
-    const { error } = await supabase.rpc("reload_schema_cache")
-
-    if (error) throw error
-
-    return { success: true, message: "Schema cache reloaded successfully!" }
+    // This RPC call will trigger the PostgREST schema cache reload
+    const { error } = await supabase.rpc("reload_schema")
+    if (error) {
+      throw error
+    }
+    return { message: "Schema cache reloaded successfully." }
   } catch (error) {
     console.error("Error reloading schema cache:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return { success: false, message: `Failed to reload schema: ${errorMessage}` }
+    return { message: `Failed to reload schema cache: ${error instanceof Error ? error.message : "Unknown error"}` }
   }
 }

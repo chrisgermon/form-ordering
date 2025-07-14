@@ -1,6 +1,6 @@
 import { createServerSupabaseClient } from "./supabase"
 
-export default async function seedDatabase() {
+export async function seedDatabase() {
   const supabase = createServerSupabaseClient()
 
   // Create brands
