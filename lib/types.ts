@@ -30,6 +30,7 @@ export interface Brand {
   active: boolean
   clinics: string[]
   product_sections: ProductSection[]
+  initials?: string | null
 }
 
 export interface UploadedFile {
@@ -60,4 +61,5 @@ export interface Submission {
   expected_delivery_date?: string | null
   completed_at?: string | null
   completed_by?: string | null
+  order_number?: string | null
 }

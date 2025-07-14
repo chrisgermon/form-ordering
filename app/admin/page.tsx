@@ -247,7 +247,8 @@ export default function AdminDashboard() {
       const matchesSearch =
         submissionSearch === "" ||
         submission.ordered_by.toLowerCase().includes(searchLower) ||
-        submission.email.toLowerCase().includes(searchLower)
+        submission.email.toLowerCase().includes(searchLower) ||
+        submission.order_number?.toLowerCase().includes(searchLower)
 
       const matchesBrand = selectedBrandFilter === "all" || submission.brand_id === selectedBrandFilter
 
@@ -330,6 +331,7 @@ export default function AdminDashboard() {
                       <TableRow>
                         <TableHead>Logo</TableHead>
                         <TableHead>Name</TableHead>
+                        <TableHead>Initials</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -346,6 +348,7 @@ export default function AdminDashboard() {
                               />
                             </TableCell>
                             <TableCell className="font-medium">{brand.name}</TableCell>
+                            <TableCell className="font-mono text-sm">{brand.initials || "N/A"}</TableCell>
                             <TableCell>
                               <Badge variant={brand.active ? "default" : "secondary"}>
                                 {brand.active ? "Active" : "Inactive"}
@@ -407,7 +410,7 @@ export default function AdminDashboard() {
                     </label>
                     <Input
                       id="submission-search"
-                      placeholder="Search by name or email..."
+                      placeholder="Search by name, email, or order #"
                       className="pl-10"
                       value={submissionSearch}
                       onChange={(e) => setSubmissionSearch(e.target.value)}
@@ -454,11 +457,11 @@ export default function AdminDashboard() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Order #</TableHead>
                         <TableHead>Brand</TableHead>
                         <TableHead>Ordered By</TableHead>
                         <TableHead>Date</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead>IP Address</TableHead>
                         <TableHead>PDF</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -467,6 +470,7 @@ export default function AdminDashboard() {
                       {filteredSubmissions.length > 0 ? (
                         filteredSubmissions.map((submission) => (
                           <TableRow key={submission.id}>
+                            <TableCell className="font-mono text-sm">{submission.order_number}</TableCell>
                             <TableCell className="font-medium">{submission.brand_name}</TableCell>
                             <TableCell>
                               <div>{submission.ordered_by}</div>
@@ -495,7 +499,6 @@ export default function AdminDashboard() {
                                 {submission.status}
                               </Badge>
                             </TableCell>
-                            <TableCell className="font-mono text-xs">{submission.ip_address}</TableCell>
                             <TableCell>
                               <Button size="sm" variant="outline" asChild>
                                 <a href={submission.pdf_url} target="_blank" rel="noopener noreferrer">
@@ -664,6 +667,7 @@ function BrandForm({
   const [formData, setFormData] = useState({
     id: brand?.id || undefined,
     name: brand?.name || "",
+    initials: brand?.initials || "",
     logo: brand?.logo || "",
     primaryColor: brand?.primary_color || "",
     email: brand?.email || "",
@@ -676,6 +680,7 @@ function BrandForm({
       setFormData({
         id: brand.id,
         name: brand.name,
+        initials: brand.initials || "",
         logo: brand.logo || "",
         primaryColor: brand.primary_color || "",
         email: brand.email,
@@ -686,6 +691,7 @@ function BrandForm({
       setFormData({
         id: undefined,
         name: "",
+        initials: "",
         logo: "",
         primaryColor: "",
         email: "",
@@ -706,14 +712,26 @@ function BrandForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <div>
-        <Label htmlFor="name">Brand Name</Label>
-        <Input
-          id="name"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          required
-        />
+      <div className="grid grid-cols-3 gap-4">
+        <div className="col-span-2">
+          <Label htmlFor="name">Brand Name</Label>
+          <Input
+            id="name"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            required
+          />
+        </div>
+        <div>
+          <Label htmlFor="initials">Initials</Label>
+          <Input
+            id="initials"
+            placeholder="e.g., FR"
+            value={formData.initials}
+            onChange={(e) => setFormData({ ...formData, initials: e.target.value.toUpperCase() })}
+            required
+          />
+        </div>
       </div>
       <div>
         <Label htmlFor="primaryColor">Primary Color</Label>
@@ -864,7 +882,7 @@ function CompleteSubmissionDialog({
         {submission && (
           <div className="text-sm text-muted-foreground border-b pb-4">
             <p>
-              <strong>Order ID:</strong> {submission.id.substring(0, 8)}...
+              <strong>Order #:</strong> {submission.order_number}
             </p>
             <p>
               <strong>Brand:</strong> {submission.brand_name}

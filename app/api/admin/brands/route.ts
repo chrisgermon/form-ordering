@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
         email: body.email,
         active: body.active,
         clinics: body.clinics || [],
+        initials: body.initials,
       })
       .select()
       .single()
@@ -91,6 +92,7 @@ export async function PUT(request: NextRequest) {
         email: body.email,
         active: body.active,
         clinics: body.clinics || [],
+        initials: body.initials,
       })
       .eq("id", body.id)
       .select()
