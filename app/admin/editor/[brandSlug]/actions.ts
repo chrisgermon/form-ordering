@@ -45,6 +45,54 @@ export async function updateItemOrder(brandSlug: string, orderedItemIds: string[
   }
 }
 
+/**
+ * Parses the HTML content from a JotForm question's text to extract item details.
+ * @param html The HTML string from JotForm.
+ * @returns An object containing the parsed code, name, description, and sample_link.
+ */
+function parseJotformItemHTML(html: string): {
+  code: string | null
+  name: string | null
+  description: string | null
+  sample_link: string | null
+} {
+  if (!html) {
+    return { code: null, name: null, description: null, sample_link: null }
+  }
+
+  // Decode HTML entities like &amp; -> &
+  const cleanHtml = html.replace(/&amp;/g, "&")
+
+  const codeMatch = cleanHtml.match(/<strong>CODE:\s*([^<]+)<\/strong>/)
+  const nameMatch = cleanHtml.match(/<strong>ITEM:\s*([^<]+)<\/strong>/)
+
+  // This regex captures the content within the DESCRIPTION strong tag
+  const descBlockMatch = cleanHtml.match(/<strong>DESCRIPTION:\s*([\s\S]+?)<\/strong>/)
+
+  let description: string | null = null
+  let sample_link: string | null = null
+
+  if (descBlockMatch && descBlockMatch[1]) {
+    const descContent = descBlockMatch[1]
+    const sampleLinkMatch = descContent.match(/<a href="([^"]+)"/)
+
+    if (sampleLinkMatch && sampleLinkMatch[1]) {
+      sample_link = sampleLinkMatch[1]
+      // Get the part before the sample link line by splitting
+      description = descContent.split(/<br\s*\/?>\s*SAMPLE:/)[0].trim()
+    } else {
+      description = descContent.trim()
+    }
+  }
+
+  return {
+    code: codeMatch ? codeMatch[1].trim() : null,
+    name: nameMatch ? nameMatch[1].trim() : null,
+    description,
+    sample_link,
+  }
+}
+
 export async function importFromJotform(brandId: string, brandSlug: string, jotformId: string) {
   const apiKey = process.env.JOTFORM_API_KEY
   if (!apiKey) {
@@ -76,14 +124,14 @@ export async function importFromJotform(brandId: string, brandSlug: string, jotf
       .single()
     sectionSortOrder = (maxSortOrderData?.sort_order ?? -1) + 1
 
-    for (let i = 0; i < questions.length; i++) {
-      const question = questions[i] as any
+    for (const question of questions) {
+      const q = question as any
 
-      if (question.type === "control_head") {
+      if (q.type === "control_head") {
         const { data: newSection, error } = await supabase
           .from("product_sections")
           .insert({
-            title: question.text,
+            title: q.text,
             brand_id: brandId,
             sort_order: sectionSortOrder++,
           })
@@ -91,51 +139,34 @@ export async function importFromJotform(brandId: string, brandSlug: string, jotf
           .single()
 
         if (error) {
-          console.warn(`Failed to create section "${question.text}": ${error.message}`)
-          continue // Skip to next question
+          console.warn(`Failed to create section "${q.text}": ${error.message}`)
+          continue
         }
         currentSectionId = newSection.id
-        // Reset item sort order for the new section
-        itemSortOrder = 0
+        itemSortOrder = 0 // Reset item sort order for the new section
       } else if (
-        (question.type === "control_checkbox" ||
-          question.type === "control_radio" ||
-          question.type === "control_dropdown") &&
+        (q.type === "control_checkbox" || q.type === "control_radio" || q.type === "control_dropdown") &&
         currentSectionId
       ) {
-        const quantities = question.options ? question.options.split("|").map((opt: string) => opt.trim()) : []
+        const quantities = q.options ? q.options.split("|").map((opt: string) => opt.trim()) : []
 
-        const newItem: any = {
-          name: question.text,
-          code: question.name,
-          description: question.subLabel || null,
+        // Use the new parsing function to extract details from HTML
+        const parsedData = parseJotformItemHTML(q.text)
+
+        const newItem = {
+          name: parsedData.name || q.text, // Fallback to full text if parsing fails
+          code: parsedData.code || q.name, // Fallback to JotForm's internal name
+          description: parsedData.description || q.subLabel || null, // Fallback to subLabel
+          sample_link: parsedData.sample_link,
           quantities: quantities,
           section_id: currentSectionId,
           brand_id: brandId,
           sort_order: itemSortOrder++,
-          sample_link: null,
-        }
-
-        // Look ahead for a sample link
-        if (i + 1 < questions.length) {
-          const nextQuestion = questions[i + 1] as any
-          // Check if the next element is a text field that looks like a sample link
-          if (
-            nextQuestion.type === "control_text" &&
-            nextQuestion.text &&
-            nextQuestion.text.toLowerCase().includes("check here")
-          ) {
-            const urlMatch = nextQuestion.text.match(/href="([^"]+)"/)
-            if (urlMatch && urlMatch[1]) {
-              newItem.sample_link = urlMatch[1]
-              i++ // Increment i to skip this text field in the next iteration
-            }
-          }
         }
 
         const { error } = await supabase.from("product_items").insert(newItem)
         if (error) {
-          console.warn(`Could not import item "${question.text}": ${error.message}`)
+          console.warn(`Could not import item "${newItem.name}": ${error.message}`)
         }
       }
     }
