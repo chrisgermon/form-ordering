@@ -1,6 +1,6 @@
 "use client"
 
-import { useForm, Controller } from "react-hook-form"
+import { useForm, Controller, useFormState } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { toast } from "sonner"
@@ -10,53 +10,168 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import type { BrandData, Item } from "@/lib/types"
 
-const createOrderSchema = (items: Item[]) => {
-  const itemSchemas = items.reduce(
+// This function now dynamically builds a validation schema based on the items' field types.
+const createOrderSchema = (brandData: BrandData) => {
+  const allItems = brandData.sections.flatMap((s) => s.items)
+
+  const dynamicItemSchemas = allItems.reduce(
     (acc, item) => {
-      acc[item.code] = z.object({
-        quantity: z.string(),
-        customQuantity: z.string().optional(),
-      })
+      let fieldSchema: z.ZodTypeAny
+
+      switch (item.field_type) {
+        case "checkbox":
+          fieldSchema = z.boolean().default(false)
+          break
+        case "number":
+          fieldSchema = z.string().optional()
+          break
+        default: // text, textarea, date, select, radio
+          fieldSchema = z.string()
+          if (item.is_required) {
+            fieldSchema = fieldSchema.min(1, `${item.name} is required.`)
+          } else {
+            fieldSchema = fieldSchema.optional()
+          }
+      }
+      acc[item.code] = fieldSchema
       return acc
     },
-    {} as Record<string, z.ZodObject<any>>,
+    {} as Record<string, z.ZodTypeAny>,
   )
 
-  return z
-    .object({
-      orderedBy: z.string().min(1, "Your name is required."),
-      email: z.string().email("A valid email is required."),
-      billToId: z.string().min(1, "Please select a billing location."),
-      deliverToId: z.string().min(1, "Please select a delivery location."),
-      notes: z.string().optional(),
-      items: z.object(itemSchemas),
-    })
-    .refine(
-      (data) => {
-        const hasItems = Object.values(data.items).some(
-          (item) => item.quantity && item.quantity !== "0" && item.quantity !== "",
+  return z.object({
+    orderedBy: z.string().min(1, "Your name is required."),
+    email: z.string().email("A valid email is required."),
+    billToId: z.string().min(1, "Please select a billing location."),
+    deliverToId: z.string().min(1, "Please select a delivery location."),
+    notes: z.string().optional(),
+    items: z.object(dynamicItemSchemas),
+  })
+}
+
+// A new helper component to render the correct form field based on its type.
+const FormField = ({ item, control }: { item: Item; control: any }) => {
+  const fieldName = `items.${item.code}` as const
+  const { errors } = useFormState({ control, name: fieldName })
+  const fieldError = errors.items?.[item.code]
+
+  const renderField = () => {
+    switch (item.field_type) {
+      case "checkbox":
+        return (
+          <Controller
+            name={fieldName}
+            control={control}
+            render={({ field }) => (
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox id={fieldName} checked={field.value} onCheckedChange={field.onChange} />
+                <Label htmlFor={fieldName} className="font-semibold leading-none">
+                  {item.name}
+                </Label>
+              </div>
+            )}
+          />
         )
-        return hasItems
-      },
-      {
-        message: "You must order at least one item.",
-        path: ["items"],
-      },
-    )
+      case "select":
+        return (
+          <Controller
+            name={fieldName}
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger>
+                  <SelectValue placeholder={item.placeholder || "Select an option"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {item.options?.map((option) => (
+                    <SelectItem key={option.id} value={option.value}>
+                      {option.label || option.value}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+        )
+      case "radio":
+        return (
+          <Controller
+            name={fieldName}
+            control={control}
+            render={({ field }) => (
+              <RadioGroup onValueChange={field.onChange} value={field.value} className="space-y-2">
+                {item.options?.map((option) => (
+                  <div key={option.id} className="flex items-center space-x-2">
+                    <RadioGroupItem value={option.value} id={`${fieldName}-${option.id}`} />
+                    <Label htmlFor={`${fieldName}-${option.id}`}>{option.label || option.value}</Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            )}
+          />
+        )
+      case "textarea":
+        return (
+          <Controller
+            name={fieldName}
+            control={control}
+            render={({ field }) => <Textarea {...field} placeholder={item.placeholder || ""} />}
+          />
+        )
+      case "date":
+        return (
+          <Controller
+            name={fieldName}
+            control={control}
+            render={({ field }) => <Input type="date" {...field} placeholder={item.placeholder || ""} />}
+          />
+        )
+      case "number":
+        return (
+          <Controller
+            name={fieldName}
+            control={control}
+            render={({ field }) => <Input type="number" {...field} placeholder={item.placeholder || ""} />}
+          />
+        )
+      default: // 'text' and any other case
+        return (
+          <Controller
+            name={fieldName}
+            control={control}
+            render={({ field }) => <Input {...field} placeholder={item.placeholder || ""} />}
+          />
+        )
+    }
+  }
+
+  return (
+    <div key={item.id} className="space-y-2 border-t pt-4">
+      {item.field_type !== "checkbox" && (
+        <Label htmlFor={fieldName} className="font-semibold">
+          {item.name}
+        </Label>
+      )}
+      {renderField()}
+      {item.description && <p className="text-sm text-muted-foreground">{item.description}</p>}
+      {fieldError && <p className="text-sm text-destructive">{fieldError.message}</p>}
+    </div>
+  )
 }
 
 export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
+  const validationSchema = createOrderSchema(brandData)
   const allItems = brandData.sections.flatMap((s) => s.items)
-  const validationSchema = createOrderSchema(allItems)
 
   const {
     control,
     handleSubmit,
-    watch,
     formState: { errors, isSubmitting },
     reset,
   } = useForm<z.infer<typeof validationSchema>>({
@@ -64,17 +179,15 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
     defaultValues: {
       orderedBy: "",
       email: "",
-      billToId: "", // Add this line
-      deliverToId: "", // Add this line
+      billToId: "",
+      deliverToId: "",
       notes: "",
       items: allItems.reduce((acc, item) => {
-        acc[item.code] = { quantity: "0", customQuantity: "" }
+        acc[item.code] = item.field_type === "checkbox" ? false : ""
         return acc
       }, {} as any),
     },
   })
-
-  const watchedItems = watch("items")
 
   if (!brandData || !brandData.sections) {
     return (
@@ -85,23 +198,6 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
   }
 
   const onSubmit = async (data: z.infer<typeof validationSchema>) => {
-    const orderedItems = Object.entries(data.items)
-      .filter(([, itemData]) => itemData.quantity && itemData.quantity !== "0")
-      .reduce(
-        (acc, [code, itemData]) => {
-          const itemInfo = allItems.find((i) => i.code === code)
-          if (itemInfo) {
-            acc[code] = {
-              code: itemInfo.code,
-              name: itemInfo.name,
-              ...itemData,
-            }
-          }
-          return acc
-        },
-        {} as Record<string, any>,
-      )
-
     const payload = {
       brandSlug: brandData.slug,
       orderInfo: {
@@ -111,7 +207,7 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
         deliverToId: data.deliverToId,
         notes: data.notes,
       },
-      items: orderedItems,
+      items: data.items, // Send the raw item data
     }
 
     const promise = fetch("/api/submit-order", {
@@ -224,44 +320,9 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
             <CardHeader>
               <CardTitle>{section.title}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
               {section.items.map((item) => (
-                <div key={item.id} className="grid grid-cols-3 items-center gap-4 border-t pt-4">
-                  <div className="col-span-3 sm:col-span-2">
-                    <Label htmlFor={`items.${item.code}.quantity`} className="font-semibold">
-                      {item.name}
-                    </Label>
-                    <p className="text-sm text-muted-foreground">Code: {item.code}</p>
-                  </div>
-                  <div className="col-span-3 sm:col-span-1 grid grid-cols-2 gap-2">
-                    <Controller
-                      name={`items.${item.code}.quantity`}
-                      control={control}
-                      render={({ field }) => (
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Qty" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {[...Array(11).keys()].map((i) => (
-                              <SelectItem key={i} value={String(i)}>
-                                {i}
-                              </SelectItem>
-                            ))}
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                    {watchedItems?.[item.code]?.quantity === "other" && (
-                      <Controller
-                        name={`items.${item.code}.customQuantity`}
-                        control={control}
-                        render={({ field }) => <Input {...field} placeholder="Custom" type="number" />}
-                      />
-                    )}
-                  </div>
-                </div>
+                <FormField key={item.id} item={item} control={control} />
               ))}
             </CardContent>
           </Card>
@@ -279,8 +340,6 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
             />
           </CardContent>
         </Card>
-
-        {errors.items && <p className="text-sm font-medium text-destructive text-center">{errors.items.message}</p>}
 
         <div className="flex justify-end">
           <Button type="submit" size="lg" disabled={isSubmitting}>
