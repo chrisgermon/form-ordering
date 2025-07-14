@@ -5,7 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
 import { generateObject } from "ai"
 import { openai } from "@ai-sdk/openai"
-import { z } from "zod"
+import { z } from "ai/zod" // Changed from "zod"
 import * as cheerio from "cheerio"
 
 export async function runSeed() {
