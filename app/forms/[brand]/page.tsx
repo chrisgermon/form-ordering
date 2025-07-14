@@ -21,15 +21,15 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     `,
     )
     .eq("slug", slug)
-    .eq("active", true)
+    .eq("active", true) // The brand MUST be active to be found
     .single()
 
   if (error) {
-    console.error("Error fetching brand data:", error.message)
+    console.error(`Error fetching brand data for slug '${slug}':`, error.message)
     return null
   }
 
-  // Sort sections and items by position
+  // Sort sections and items by position for consistent display
   if (data.sections) {
     data.sections.sort((a, b) => a.position - b.position)
     for (const section of data.sections) {
@@ -43,8 +43,11 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
 }
 
 export default async function BrandPage({ params }: { params: { brand: string } }) {
+  // This function fetches the brand data based on the URL slug (e.g., 'FR')
   const brandData = await getBrandData(params.brand)
 
+  // If no brand is found (or it's not active), we explicitly show a 404 page.
+  // This is the source of the "Not Found" error.
   if (!brandData) {
     notFound()
   }
