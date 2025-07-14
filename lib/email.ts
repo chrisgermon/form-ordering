@@ -1,17 +1,19 @@
-import { Resend } from "resend"
+import nodemailer from "nodemailer"
 import type { Submission, Brand } from "./types"
 import { format } from "date-fns"
 
 const fromEmail = process.env.FROM_EMAIL
 
-function getResendClient() {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) {
-    console.error("RESEND_API_KEY environment variable is not set.")
-    throw new Error("Server configuration error: RESEND_API_KEY is not set.")
-  }
-  return new Resend(apiKey)
-}
+// Create a reusable transporter object using the Mailgun SMTP transport
+const transporter = nodemailer.createTransport({
+  host: "smtp.mailgun.org",
+  port: 587,
+  secure: false, // use TLS
+  auth: {
+    user: process.env.MAILGUN_SMTP_USERNAME,
+    pass: process.env.MAILGUN_SMTP_PASSWORD,
+  },
+})
 
 // Centralized function to send a new order email
 export async function sendNewOrderEmail({
@@ -24,34 +26,35 @@ export async function sendNewOrderEmail({
   pdfBuffer: Buffer
 }) {
   if (!fromEmail) {
-    console.error("FROM_EMAIL environment variable is not set.")
-    throw new Error("Server configuration error: FROM_EMAIL is not set.")
+    const errorMsg = "Server configuration error: FROM_EMAIL is not set."
+    console.error(errorMsg)
+    return { success: false, error: errorMsg }
+  }
+  if (!process.env.MAILGUN_SMTP_USERNAME || !process.env.MAILGUN_SMTP_PASSWORD) {
+    const errorMsg = "Server configuration error: Mailgun credentials are not set."
+    console.error(errorMsg)
+    return { success: false, error: errorMsg }
   }
 
-  const to = [brand.email]
-  const cc = submission.email ? [submission.email] : []
-  const subject = `New Printing Order: ${submission.order_number} - ${brand.name}`
-  const html = generateOrderEmailTemplate(submission, brand)
-  const attachments = [
-    {
-      filename: `${submission.order_number}.pdf`,
-      content: pdfBuffer,
-      contentType: "application/pdf",
-    },
-  ]
+  const mailOptions = {
+    from: fromEmail,
+    to: brand.email,
+    cc: submission.email ? submission.email : undefined,
+    subject: `New Printing Order: ${submission.order_number} - ${brand.name}`,
+    html: generateOrderEmailTemplate(submission, brand),
+    attachments: [
+      {
+        filename: `${submission.order_number}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  }
 
   try {
-    const resend = getResendClient()
-    const data = await resend.emails.send({
-      from: fromEmail,
-      to,
-      cc,
-      subject,
-      html,
-      attachments,
-    })
-    console.log("Order email sent successfully:", data.id)
-    return { success: true, data }
+    const info = await transporter.sendMail(mailOptions)
+    console.log("Order email sent successfully:", info.messageId)
+    return { success: true, data: info }
   } catch (error) {
     console.error("Error sending order email:", error)
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
@@ -105,24 +108,23 @@ export function generateOrderEmailTemplate(submission: Submission, brand: Brand)
 
 export async function sendOrderCompletionEmail(submission: Submission) {
   if (!fromEmail) {
-    console.error("FROM_EMAIL environment variable is not set.")
     throw new Error("Server configuration error: FROM_EMAIL is not set.")
   }
+  if (!process.env.MAILGUN_SMTP_USERNAME || !process.env.MAILGUN_SMTP_PASSWORD) {
+    throw new Error("Server configuration error: Mailgun credentials are not set.")
+  }
 
-  const to = [submission.email]
-  const subject = `Your order #${submission.order_number} has been dispatched!`
-  const html = generateOrderCompletionEmailTemplate(submission)
+  const mailOptions = {
+    from: fromEmail,
+    to: submission.email,
+    subject: `Your order #${submission.order_number} has been dispatched!`,
+    html: generateOrderCompletionEmailTemplate(submission),
+  }
 
   try {
-    const resend = getResendClient()
-    const data = await resend.emails.send({
-      from: fromEmail,
-      to,
-      subject,
-      html,
-    })
-    console.log("Completion email sent successfully:", data.id)
-    return data
+    const info = await transporter.sendMail(mailOptions)
+    console.log("Completion email sent successfully:", info.messageId)
+    return info
   } catch (error) {
     console.error("Error sending completion email:", error)
     throw error
