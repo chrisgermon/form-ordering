@@ -1,10 +1,18 @@
 "use client"
 
 import { useState, useEffect, useTransition } from "react"
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { toast } from "sonner"
-import type { Brand, Section, Item } from "@/lib/types"
+import type { Section, Item, BrandWithSections } from "@/lib/types"
 import { saveFormChanges } from "./actions"
 import { EditorHeader } from "./editor-header"
 import { SortableSection } from "./SortableSection"
@@ -20,8 +28,8 @@ import { produce } from "immer"
 import { Button } from "@/components/ui/button"
 import { PlusCircle } from "lucide-react"
 
-export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
-  const [brand, setBrand] = useState<Brand>(initialBrand)
+export function FormEditor({ initialBrandData }: { initialBrandData: BrandWithSections }) {
+  const [brand, setBrand] = useState<BrandWithSections>(initialBrandData)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, startSaving] = useTransition()
 
@@ -40,9 +48,11 @@ export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
   const [deletedItemIds, setDeletedItemIds] = useState<string[]>([])
 
   useEffect(() => {
-    setBrand(initialBrand)
+    setBrand(initialBrandData)
     setIsDirty(false)
-  }, [initialBrand])
+    setDeletedItemIds([])
+    setDeletedSectionIds([])
+  }, [initialBrandData])
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -51,7 +61,7 @@ export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
     }),
   )
 
-  const handleStateChange = (updater: (draft: Brand) => void) => {
+  const handleStateChange = (updater: (draft: BrandWithSections) => void) => {
     setBrand(produce(brand, updater))
     setIsDirty(true)
   }
@@ -143,20 +153,20 @@ export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
     setDeletingForm(false)
   }
 
-  const handleDragEnd = (event: any) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     if (!over) return
 
     if (active.id !== over.id) {
-      if (active.data.current.type === "section") {
+      if (active.data.current?.type === "section") {
         handleStateChange((draft) => {
           const oldIndex = draft.sections.findIndex((s) => s.id === active.id)
           const newIndex = draft.sections.findIndex((s) => s.id === over.id)
           draft.sections = arrayMove(draft.sections, oldIndex, newIndex)
           draft.sections.forEach((s, i) => (s.position = i))
         })
-      } else if (active.data.current.type === "item") {
-        const sectionId = active.data.current.sectionId
+      } else if (active.data.current?.type === "item") {
+        const sectionId = active.data.current?.sectionId
         handleStateChange((draft) => {
           const section = draft.sections.find((s) => s.id === sectionId)
           if (section) {
@@ -188,7 +198,7 @@ export default function FormEditor({ initialBrand }: { initialBrand: Brand }) {
 
   return (
     <DndContext sensors={sensors} collisionDetector={closestCenter} onDragEnd={handleDragEnd}>
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full bg-gray-50">
         <EditorHeader
           brand={brand}
           onAddSection={() => setAddSectionOpen(true)}

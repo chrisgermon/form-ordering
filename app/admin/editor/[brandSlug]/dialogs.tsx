@@ -1,25 +1,25 @@
 "use client"
-
 import { useState, useTransition } from "react"
-import type { Item, Section } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
+  DialogDescription,
+  DialogClose,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { toast } from "sonner"
+import { Checkbox } from "@/components/ui/checkbox"
+import type { Item, Section } from "@/lib/types"
 import { importFormFromHtml } from "./actions"
+import { toast } from "sonner"
 
-// Confirm Delete Dialog
+// ConfirmDeleteDialog
 export function ConfirmDeleteDialog({
   isOpen,
   onClose,
@@ -37,7 +37,7 @@ export function ConfirmDeleteDialog({
         <DialogHeader>
           <DialogTitle>Are you sure?</DialogTitle>
           <DialogDescription>
-            This action cannot be undone. This will permanently delete the {itemName}.
+            This action cannot be undone. This will permanently delete the <strong>{itemName}</strong>.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -53,7 +53,7 @@ export function ConfirmDeleteDialog({
   )
 }
 
-// Add/Edit Section Dialogs
+// AddSectionDialog
 export function AddSectionDialog({
   isOpen,
   onClose,
@@ -64,6 +64,15 @@ export function AddSectionDialog({
   onAdd: (title: string) => void
 }) {
   const [title, setTitle] = useState("")
+
+  const handleSubmit = () => {
+    if (title.trim()) {
+      onAdd(title.trim())
+      setTitle("")
+      onClose()
+    }
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent>
@@ -71,20 +80,26 @@ export function AddSectionDialog({
           <DialogTitle>Add New Section</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-          <Label htmlFor="title">Section Title</Label>
-          <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Label htmlFor="section-title">Title</Label>
+          <Input
+            id="section-title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g., Patient Information"
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => onAdd(title)}>Add Section</Button>
+          <Button onClick={handleSubmit}>Add Section</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
+// EditSectionDialog
 export function EditSectionDialog({
   isOpen,
   onClose,
@@ -94,9 +109,17 @@ export function EditSectionDialog({
   isOpen: boolean
   onClose: () => void
   section: Section
-  onUpdate: (section: Section) => void
+  onUpdate: (updatedSection: Section) => void
 }) {
   const [title, setTitle] = useState(section.title)
+
+  const handleSubmit = () => {
+    if (title.trim()) {
+      onUpdate({ ...section, title: title.trim() })
+      onClose()
+    }
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent>
@@ -104,140 +127,9 @@ export function EditSectionDialog({
           <DialogTitle>Edit Section</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-          <Label htmlFor="title">Section Title</Label>
-          <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Label htmlFor="section-title">Title</Label>
+          <Input id="section-title" value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={() => onUpdate({ ...section, title })}>Save Changes</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// Add/Edit Item Dialogs
-const itemFieldTypes = ["text", "textarea", "select", "checkbox", "radio", "date", "file", "email", "phone"]
-
-function ItemForm({ item, setItem }: { item: Partial<Item>; setItem: (item: Partial<Item>) => void }) {
-  return (
-    <div className="space-y-4">
-      <div>
-        <Label htmlFor="name">Name / Label</Label>
-        <Input
-          id="name"
-          value={item.name || ""}
-          onChange={(e) => setItem({ ...item, name: e.target.value })}
-          placeholder="e.g., Patient Full Name"
-        />
-      </div>
-      <div>
-        <Label htmlFor="description">Description</Label>
-        <Input
-          id="description"
-          value={item.description || ""}
-          onChange={(e) => setItem({ ...item, description: e.target.value })}
-          placeholder="e.g., As it appears on the driver's license"
-        />
-      </div>
-      <div>
-        <Label htmlFor="field_type">Field Type</Label>
-        <Select value={item.field_type} onValueChange={(value) => setItem({ ...item, field_type: value })}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select a field type" />
-          </SelectTrigger>
-          <SelectContent>
-            {itemFieldTypes.map((type) => (
-              <SelectItem key={type} value={type}>
-                {type}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div>
-        <Label htmlFor="placeholder">Placeholder</Label>
-        <Input
-          id="placeholder"
-          value={item.placeholder || ""}
-          onChange={(e) => setItem({ ...item, placeholder: e.target.value })}
-        />
-      </div>
-      <div className="flex items-center space-x-2">
-        <Checkbox
-          id="is_required"
-          checked={item.is_required}
-          onCheckedChange={(checked) => setItem({ ...item, is_required: !!checked })}
-        />
-        <Label htmlFor="is_required">Required</Label>
-      </div>
-    </div>
-  )
-}
-
-export function AddItemDialog({
-  isOpen,
-  onClose,
-  onAdd,
-}: {
-  isOpen: boolean
-  onClose: () => void
-  onAdd: (item: Omit<Item, "id" | "position" | "brand_id" | "section_id">) => void
-}) {
-  const [item, setItem] = useState<Partial<Item>>({ is_required: false, field_type: "text" })
-  const handleSubmit = () => {
-    if (!item.name || !item.field_type) {
-      toast.error("Name and Field Type are required.")
-      return
-    }
-    onAdd(item as any)
-  }
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add New Item</DialogTitle>
-        </DialogHeader>
-        <ItemForm item={item} setItem={setItem} />
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit}>Add Item</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-export function EditItemDialog({
-  isOpen,
-  onClose,
-  item,
-  onUpdate,
-}: {
-  isOpen: boolean
-  onClose: () => void
-  item: Item
-  onUpdate: (item: Item) => void
-}) {
-  const [editedItem, setEditedItem] = useState<Item>(item)
-  const handleSubmit = () => {
-    if (!editedItem.name || !editedItem.field_type) {
-      toast.error("Name and Field Type are required.")
-      return
-    }
-    onUpdate(editedItem)
-  }
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Edit Item</DialogTitle>
-        </DialogHeader>
-        <ItemForm item={editedItem} setItem={(i) => setEditedItem(i as Item)} />
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
@@ -249,7 +141,161 @@ export function EditItemDialog({
   )
 }
 
-// Import Dialog
+// AddItemDialog
+export function AddItemDialog({
+  isOpen,
+  onClose,
+  onAdd,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onAdd: (item: Omit<Item, "id" | "position" | "brand_id" | "section_id">) => void
+}) {
+  const [name, setName] = useState("")
+  const [description, setDescription] = useState("")
+  const [fieldType, setFieldType] = useState<Item["field_type"]>("text")
+  const [isRequired, setIsRequired] = useState(false)
+  const [placeholder, setPlaceholder] = useState("")
+
+  const handleSubmit = () => {
+    if (name.trim() && fieldType) {
+      onAdd({ name, description, field_type: fieldType, is_required: isRequired, placeholder })
+      // Reset form
+      setName("")
+      setDescription("")
+      setFieldType("text")
+      setIsRequired(false)
+      setPlaceholder("")
+      onClose()
+    }
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Add New Item</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-2">
+            <Label htmlFor="item-name">Name / Label</Label>
+            <Input id="item-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="item-description">Description</Label>
+            <Input id="item-description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="item-placeholder">Placeholder</Label>
+            <Input id="item-placeholder" value={placeholder} onChange={(e) => setPlaceholder(e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="item-field-type">Field Type</Label>
+            <Select value={fieldType} onValueChange={(v) => setFieldType(v as Item["field_type"])}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a field type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Text</SelectItem>
+                <SelectItem value="textarea">Text Area</SelectItem>
+                <SelectItem value="date">Date</SelectItem>
+                <SelectItem value="checkbox">Checkbox</SelectItem>
+                <SelectItem value="select">Select (Dropdown)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox id="is-required" checked={isRequired} onCheckedChange={(c) => setIsRequired(!!c)} />
+            <Label htmlFor="is-required">Required</Label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit}>Add Item</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// EditItemDialog
+export function EditItemDialog({
+  isOpen,
+  onClose,
+  item,
+  onUpdate,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  item: Item
+  onUpdate: (updatedItem: Item) => void
+}) {
+  const [name, setName] = useState(item.name)
+  const [description, setDescription] = useState(item.description || "")
+  const [fieldType, setFieldType] = useState<Item["field_type"]>(item.field_type)
+  const [isRequired, setIsRequired] = useState(item.is_required)
+  const [placeholder, setPlaceholder] = useState(item.placeholder || "")
+
+  const handleSubmit = () => {
+    if (name.trim() && fieldType) {
+      onUpdate({ ...item, name, description, field_type: fieldType, is_required: isRequired, placeholder })
+      onClose()
+    }
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Edit Item</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-2">
+            <Label htmlFor="item-name">Name / Label</Label>
+            <Input id="item-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="item-description">Description</Label>
+            <Input id="item-description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="item-placeholder">Placeholder</Label>
+            <Input id="item-placeholder" value={placeholder} onChange={(e) => setPlaceholder(e.target.value)} />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="item-field-type">Field Type</Label>
+            <Select value={fieldType} onValueChange={(v) => setFieldType(v as Item["field_type"])}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a field type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Text</SelectItem>
+                <SelectItem value="textarea">Text Area</SelectItem>
+                <SelectItem value="date">Date</SelectItem>
+                <SelectItem value="checkbox">Checkbox</SelectItem>
+                <SelectItem value="select">Select (Dropdown)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox id="is-required" checked={isRequired} onCheckedChange={(c) => setIsRequired(!!c)} />
+            <Label htmlFor="is-required">Required</Label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit}>Save Changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ImportFormDialog
 export function ImportFormDialog({
   isOpen,
   onClose,
@@ -263,8 +309,8 @@ export function ImportFormDialog({
   const [isParsing, startParsing] = useTransition()
 
   const handleImport = () => {
-    if (!htmlContent) {
-      toast.error("Please paste HTML content to import.")
+    if (!htmlContent.trim()) {
+      toast.error("Please paste some HTML content.")
       return
     }
     startParsing(async () => {
@@ -273,6 +319,7 @@ export function ImportFormDialog({
       toast.dismiss()
       if (result.success) {
         toast.success(result.message)
+        setHtmlContent("")
         onClose()
       } else {
         toast.error(result.message)
@@ -282,29 +329,26 @@ export function ImportFormDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[625px]">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Import from HTML</DialogTitle>
           <DialogDescription>
-            Paste your form's HTML code below. The AI will parse it and create the form structure for you.
+            Paste your form's HTML code below. The AI will parse it and create the form structure for you. This will
+            replace the current form.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <Label htmlFor="html-content" className="sr-only">
-            HTML Content
-          </Label>
+        <div className="py-4">
           <Textarea
-            id="html-content"
+            placeholder="Paste your JotForm or other form HTML here..."
+            className="h-64"
             value={htmlContent}
             onChange={(e) => setHtmlContent(e.target.value)}
-            placeholder="<form>...</form>"
-            className="h-64 font-mono"
           />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
           <Button onClick={handleImport} disabled={isParsing}>
             {isParsing ? "Importing..." : "Parse & Import"}
           </Button>

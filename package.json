@@ -9,6 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ai-sdk/openai": "latest",
     "@ai-sdk/xai": "latest",
     "@dnd-kit/core": "latest",
     "@dnd-kit/sortable": "latest",

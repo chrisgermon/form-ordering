@@ -6,7 +6,6 @@ DECLARE
     new_section_id UUID;
 BEGIN
     -- Step 1: Clear existing form data for the brand
-    -- Note: ON DELETE CASCADE on sections table should handle items, but we delete items first to be safe.
     DELETE FROM items WHERE brand_id = p_brand_id;
     DELETE FROM sections WHERE brand_id = p_brand_id;
 

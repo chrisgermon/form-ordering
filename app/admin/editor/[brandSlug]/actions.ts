@@ -5,28 +5,6 @@ import { revalidatePath } from "next/cache"
 import type { Section } from "@/lib/types"
 import { parseFormWithAI } from "@/lib/scraping"
 
-export async function getBrandForEditor(slug: string) {
-  const supabase = createAdminClient()
-  const { data: brand, error } = await supabase
-    .from("brands")
-    .select("*, sections(*, items(*))")
-    .eq("slug", slug)
-    .single()
-
-  if (error) {
-    console.error("Error fetching brand:", error)
-    return null
-  }
-
-  // Sort sections and items by position
-  brand.sections.sort((a, b) => a.position - b.position)
-  brand.sections.forEach((section) => {
-    section.items.sort((a, b) => a.position - b.position)
-  })
-
-  return brand
-}
-
 export async function saveFormChanges(
   brandId: string,
   sections: Section[],
@@ -35,59 +13,70 @@ export async function saveFormChanges(
 ) {
   const supabase = createAdminClient()
 
-  const sectionUpserts = sections.map((s) => ({
+  // Handle deleted items and sections first
+  if (deletedItemIds.length > 0) {
+    const { error: deleteItemError } = await supabase.from("items").delete().in("id", deletedItemIds)
+    if (deleteItemError) {
+      console.error("Item Deletion Error:", deleteItemError)
+      return { success: false, message: "Failed to delete one or more items." }
+    }
+  }
+
+  if (deletedSectionIds.length > 0) {
+    const { error: deleteSectionError } = await supabase.from("sections").delete().in("id", deletedSectionIds)
+    if (deleteSectionError) {
+      console.error("Section Deletion Error:", deleteSectionError)
+      return {
+        success: false,
+        message: "Failed to delete one or more sections.",
+      }
+    }
+  }
+
+  // Prepare upserts for sections
+  const sectionUpserts = sections.map((s, index) => ({
     id: s.id.toString().startsWith("new-") ? undefined : s.id,
     brand_id: brandId,
     title: s.title,
-    position: s.position,
+    position: index,
   }))
 
   const { data: savedSections, error: sectionError } = await supabase.from("sections").upsert(sectionUpserts).select()
 
   if (sectionError) {
     console.error("Section Save Error:", sectionError)
-    return { success: false, message: `Section Save Error: ${sectionError.message}` }
+    return { success: false, message: "Failed to save sections." }
   }
 
-  const sectionIdMap = new Map(
-    sections.filter((s) => s.id.toString().startsWith("new-")).map((s, i) => [s.id, savedSections[i].id]),
-  )
+  // Map old new-IDs to newly created UUIDs
+  const sectionIdMap = new Map<string, string>()
+  sections.forEach((s, index) => {
+    if (s.id.toString().startsWith("new-")) {
+      sectionIdMap.set(s.id.toString(), savedSections[index].id)
+    }
+  })
 
-  const allItems = sections.flatMap((s) =>
-    s.items.map((i) => ({
-      ...i,
-      section_id: sectionIdMap.get(s.id) || s.id,
+  // Prepare upserts for items
+  const itemUpserts = sections.flatMap((s, sectionIndex) =>
+    s.items.map((i, itemIndex) => ({
+      id: i.id.toString().startsWith("new-") ? undefined : i.id,
+      brand_id: brandId,
+      section_id: sectionIdMap.get(s.id.toString()) || s.id,
+      name: i.name,
+      description: i.description,
+      field_type: i.field_type,
+      is_required: i.is_required,
+      placeholder: i.placeholder,
+      position: itemIndex,
     })),
   )
-
-  const itemUpserts = allItems.map((i) => ({
-    id: i.id.toString().startsWith("new-") ? undefined : i.id,
-    brand_id: brandId,
-    section_id: i.section_id,
-    name: i.name,
-    description: i.description,
-    field_type: i.field_type,
-    is_required: i.is_required,
-    placeholder: i.placeholder,
-    position: i.position,
-  }))
 
   if (itemUpserts.length > 0) {
     const { error: itemError } = await supabase.from("items").upsert(itemUpserts)
     if (itemError) {
       console.error("Item Save Error:", itemError)
-      return { success: false, message: `Item Save Error: ${itemError.message}` }
+      return { success: false, message: "Failed to save items." }
     }
-  }
-
-  if (deletedItemIds.length > 0) {
-    const { error: deleteItemError } = await supabase.from("items").delete().in("id", deletedItemIds)
-    if (deleteItemError) console.error("Error deleting items:", deleteItemError)
-  }
-
-  if (deletedSectionIds.length > 0) {
-    const { error: deleteSectionError } = await supabase.from("sections").delete().in("id", deletedSectionIds)
-    if (deleteSectionError) console.error("Error deleting sections:", deleteSectionError)
   }
 
   revalidatePath(`/admin/editor/${brandId}`)
@@ -95,28 +84,28 @@ export async function saveFormChanges(
 }
 
 export async function importFormFromHtml(brandId: string, htmlContent: string) {
-  const supabase = createAdminClient()
-
   try {
     const parsedForm = await parseFormWithAI(htmlContent)
-    if (!parsedForm || !parsedForm.sections) {
-      throw new Error("AI parsing failed to return a valid form structure.")
+    if (!parsedForm || parsedForm.length === 0) {
+      return { success: false, message: "Could not parse any sections from the HTML." }
     }
 
-    const { error: rpcError } = await supabase.rpc("import_form_from_ai", {
+    const supabase = createAdminClient()
+    const { error } = await supabase.rpc("import_form_from_ai", {
       p_brand_id: brandId,
-      p_sections: parsedForm.sections,
+      p_sections: parsedForm,
     })
 
-    if (rpcError) {
-      console.error("Error calling import_form_from_ai RPC:", rpcError)
-      throw new Error(`Database import failed: ${rpcError.message}`)
+    if (error) {
+      console.error("Database import function error:", error)
+      return { success: false, message: `Database error: ${error.message}` }
     }
 
     revalidatePath(`/admin/editor/${brandId}`)
     return { success: true, message: "Form imported successfully!" }
-  } catch (error: any) {
-    console.error("Import failed:", error)
-    return { success: false, message: error.message || "An unknown error occurred during import." }
+  } catch (error) {
+    console.error("Import Error:", error)
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+    return { success: false, message: `Failed to import form: ${errorMessage}` }
   }
 }
