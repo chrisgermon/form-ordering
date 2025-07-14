@@ -19,7 +19,7 @@ export default async function EditorPage({ params }: PageProps) {
     .from("brands")
     .select(
       `
-      id, name, slug, logo, primary_color, email, active,
+      id, name, slug, logo, primary_color, email, active, clinics,
       product_sections (
         id, title, sort_order, brand_id,
         product_items (

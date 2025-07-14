@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
         primary_color: body.primaryColor,
         email: body.email,
         active: body.active,
+        clinics: body.clinics || [],
       })
       .select()
       .single()
@@ -89,6 +90,7 @@ export async function PUT(request: NextRequest) {
         primary_color: body.primaryColor,
         email: body.email,
         active: body.active,
+        clinics: body.clinics || [],
       })
       .eq("id", body.id)
       .select()

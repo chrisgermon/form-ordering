@@ -11,7 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CalendarIcon, Loader2, Send, CheckCircle, XCircle } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
-import type { BrandData, ProductItem } from "@/lib/types"
+import type { Brand, ProductItem } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface FormValues {
@@ -83,7 +83,7 @@ const ItemRow = ({ item }: { item: ProductItem }) => {
   )
 }
 
-export function OrderForm({ brandData }: { brandData: BrandData }) {
+export function OrderForm({ brandData }: { brandData: Brand }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submissionStatus, setSubmissionStatus] = useState<"success" | "error" | null>(null)
   const [submissionMessage, setSubmissionMessage] = useState("")
@@ -116,30 +116,7 @@ export function OrderForm({ brandData }: { brandData: BrandData }) {
     formState: { errors },
   } = methods
 
-  const clinicLocations = [
-    "Botanic Ridge",
-    "Bulleen",
-    "Carnegie",
-    "Coburg",
-    "Diamond Creek",
-    "Greensborough",
-    "Hampton East",
-    "Kangaroo Flat",
-    "Kyabram",
-    "Lilydale",
-    "Lynbrook",
-    "Mentone",
-    "Mornington",
-    "Mulgrave",
-    "North Melbourne",
-    "Reservoir",
-    "Sebastopol",
-    "Shepparton",
-    "Thornbury",
-    "Torquay",
-    "Werribee",
-    "Williamstown",
-  ]
+  const clinicLocations = useMemo(() => brandData.clinics || [], [brandData.clinics])
 
   const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true)

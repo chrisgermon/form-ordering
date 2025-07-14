@@ -594,6 +594,7 @@ function BrandForm({
     email: brand?.email || "",
     active: brand?.active ?? true,
   })
+  const [clinicsText, setClinicsText] = useState(brand?.clinics?.join("\n") || "")
 
   useEffect(() => {
     if (brand) {
@@ -602,9 +603,10 @@ function BrandForm({
         name: brand.name,
         logo: brand.logo || "",
         primaryColor: brand.primary_color || "",
-        email: brand.email || "",
+        email: brand.email,
         active: brand.active,
       })
+      setClinicsText(brand.clinics?.join("\n") || "")
     } else {
       setFormData({
         id: undefined,
@@ -614,17 +616,21 @@ function BrandForm({
         email: "",
         active: true,
       })
+      setClinicsText("")
     }
   }, [brand])
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const clinicsArray = clinicsText
+      .split("\n")
+      .map((c) => c.trim())
+      .filter(Boolean)
+    onSave({ ...formData, clinics: clinicsArray })
+  }
+
   return (
-    <form
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault()
-        onSave(formData)
-      }}
-    >
+    <form className="space-y-4" onSubmit={handleSubmit}>
       <div>
         <Label htmlFor="name">Brand Name</Label>
         <Input
@@ -678,6 +684,16 @@ function BrandForm({
           placeholder="Or enter custom URL"
           value={formData.logo}
           onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
+        />
+      </div>
+      <div>
+        <Label htmlFor="clinics">Clinic Locations (one per line)</Label>
+        <Textarea
+          id="clinics"
+          value={clinicsText}
+          onChange={(e) => setClinicsText(e.target.value)}
+          rows={6}
+          placeholder={"Botanic Ridge\nBulleen\nCarnegie"}
         />
       </div>
       <div className="flex items-center space-x-2 pt-2">

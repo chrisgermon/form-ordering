@@ -8,7 +8,7 @@ export async function GET(request: NextRequest, { params }: { params: { slug: st
       .from("brands")
       .select(
         `
-        id, name, slug, logo, primary_color, email, active,
+        id, name, slug, logo, primary_color, email, active, clinics,
         product_sections (
           id, title, sort_order, brand_id,
           product_items (

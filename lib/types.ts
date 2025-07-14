@@ -28,6 +28,7 @@ export interface Brand {
   primary_color: string
   email: string
   active: boolean
+  clinics: string[]
   product_sections: ProductSection[]
 }
 
