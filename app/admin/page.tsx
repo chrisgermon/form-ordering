@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -29,10 +29,11 @@ import {
   CheckCircle,
   CalendarIcon,
   Search,
+  ClipboardCopy,
 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { runSeed, autoAssignPdfs } from "./actions"
+import { runSeed, autoAssignPdfs, reloadSchemaCache } from "./actions"
 import type { Brand, UploadedFile, Submission } from "@/lib/types"
 import { Textarea } from "@/components/ui/textarea"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -49,8 +50,10 @@ export default function AdminDashboard() {
   const [showBrandDialog, setShowBrandDialog] = useState(false)
   const [isSeeding, setIsSeeding] = useState(false)
   const [isAssigning, setIsAssigning] = useState(false)
+  const [isReloadingSchema, setIsReloadingSchema] = useState(false)
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
+  const [viewingSubmission, setViewingSubmission] = useState<Submission | null>(null)
   const router = useRouter()
 
   // States for submission filtering
@@ -128,6 +131,14 @@ export default function AdminDashboard() {
     } finally {
       setIsSeeding(false)
     }
+  }
+
+  const handleReloadSchema = async () => {
+    setIsReloadingSchema(true)
+    setMessage("Reloading schema cache...")
+    const result = await reloadSchemaCache()
+    setMessage(result.message)
+    setIsReloadingSchema(false)
   }
 
   const saveBrand = async (brandData: any) => {
@@ -264,6 +275,14 @@ export default function AdminDashboard() {
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
           <div className="flex items-center gap-4">
+            <Button onClick={handleReloadSchema} variant="secondary" disabled={isReloadingSchema || loading}>
+              {isReloadingSchema ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Reload Schema
+            </Button>
             <Button onClick={handleSeedDatabase} variant="secondary" disabled={isSeeding || loading}>
               {isSeeding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
               Seed Database
@@ -460,9 +479,10 @@ export default function AdminDashboard() {
                         <TableHead>Order #</TableHead>
                         <TableHead>Brand</TableHead>
                         <TableHead>Ordered By</TableHead>
+                        <TableHead>Deliver To</TableHead>
+                        <TableHead>Bill To</TableHead>
                         <TableHead>Date</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead>PDF</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -476,6 +496,8 @@ export default function AdminDashboard() {
                               <div>{submission.ordered_by}</div>
                               <div className="text-xs text-muted-foreground">{submission.email}</div>
                             </TableCell>
+                            <TableCell>{submission.deliver_to}</TableCell>
+                            <TableCell>{submission.bill_to}</TableCell>
                             <TableCell>
                               {new Date(submission.created_at).toLocaleDateString("en-AU", {
                                 day: "2-digit",
@@ -499,62 +521,30 @@ export default function AdminDashboard() {
                                 {submission.status}
                               </Badge>
                             </TableCell>
-                            <TableCell>
-                              <Button size="sm" variant="outline" asChild>
-                                <a href={submission.pdf_url} target="_blank" rel="noopener noreferrer">
-                                  <Download className="mr-2 h-4 w-4" /> View PDF
-                                </a>
-                              </Button>
-                            </TableCell>
                             <TableCell className="text-right">
-                              {submission.status === "completed" ? (
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <Button variant="outline" size="sm">
-                                      View Details
-                                    </Button>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-80">
-                                    <h4 className="font-semibold mb-2">Completion Details</h4>
-                                    <p className="text-sm">
-                                      <strong>Date:</strong>{" "}
-                                      {submission.completed_at
-                                        ? new Date(submission.completed_at).toLocaleDateString("en-AU")
-                                        : "N/A"}
-                                    </p>
-                                    <p className="text-sm">
-                                      <strong>Expected Delivery:</strong>{" "}
-                                      {submission.expected_delivery_date
-                                        ? new Date(submission.expected_delivery_date).toLocaleDateString("en-AU")
-                                        : "N/A"}
-                                    </p>
-                                    <p className="text-sm mt-2">
-                                      <strong>Details:</strong>
-                                    </p>
-                                    <p className="text-sm text-muted-foreground">
-                                      {submission.delivery_details || "No details provided."}
-                                    </p>
-                                  </PopoverContent>
-                                </Popover>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setSelectedSubmission(submission)
-                                    setIsCompleteDialogOpen(true)
-                                  }}
-                                >
-                                  <CheckCircle className="mr-2 h-4 w-4" />
-                                  Mark as Complete
+                              <div className="flex items-center justify-end gap-2">
+                                <Button size="sm" variant="outline" onClick={() => setViewingSubmission(submission)}>
+                                  <Eye className="h-4 w-4" />
                                 </Button>
-                              )}
+                                {submission.status !== "completed" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setSelectedSubmission(submission)
+                                      setIsCompleteDialogOpen(true)
+                                    }}
+                                  >
+                                    <CheckCircle className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={7} className="h-24 text-center">
+                          <TableCell colSpan={8} className="h-24 text-center">
                             No submissions found.
                           </TableCell>
                         </TableRow>
@@ -647,6 +637,15 @@ export default function AdminDashboard() {
           setSelectedSubmission(null)
           loadSubmissions()
           setMessage("Submission marked as complete.")
+        }}
+      />
+      <SubmissionDetailsDialog
+        submission={viewingSubmission}
+        open={!!viewingSubmission}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setViewingSubmission(null)
+          }
         }}
       />
     </div>
@@ -942,6 +941,158 @@ function CompleteSubmissionDialog({
             </Button>
           </div>
         </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function SubmissionDetailsDialog({
+  submission,
+  open,
+  onOpenChange,
+}: {
+  submission: Submission | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  if (!submission) return null
+
+  const orderedItems = Object.values(submission.items || {})
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Order Details: {submission.order_number}</DialogTitle>
+          <AlertDescription>
+            A complete summary of the order submitted on{" "}
+            {new Date(submission.created_at).toLocaleDateString("en-AU", {
+              dateStyle: "full",
+              timeStyle: "short",
+            })}
+            .
+          </AlertDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 max-h-[70vh] overflow-y-auto pr-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Order Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="font-semibold text-gray-600">Brand:</span>
+                <span>{submission.brand_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-gray-600">Status:</span>
+                <Badge
+                  variant={
+                    submission.status === "sent"
+                      ? "default"
+                      : submission.status === "failed"
+                        ? "destructive"
+                        : submission.status === "completed"
+                          ? "success"
+                          : "secondary"
+                  }
+                  className="capitalize"
+                >
+                  {submission.status}
+                </Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-gray-600">PDF:</span>
+                <a
+                  href={submission.pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline flex items-center gap-1"
+                >
+                  <Download className="h-3 w-3" />
+                  Download
+                </a>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Submitter Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="font-semibold text-gray-600">Ordered By:</span>
+                <span>{submission.ordered_by}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-gray-600">Email:</span>
+                <div className="flex items-center gap-2">
+                  <span>{submission.email}</span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => copyToClipboard(submission.email)}
+                  >
+                    <ClipboardCopy className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-gray-600">IP Address:</span>
+                <span>{submission.ip_address || "N/A"}</span>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-lg">Clinic Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="font-semibold text-gray-600">Deliver To:</span>
+                <span>{submission.deliver_to}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-gray-600">Bill To:</span>
+                <span>{submission.bill_to}</span>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-lg">Ordered Items ({orderedItems.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Quantity</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {orderedItems.map((item: any) => (
+                    <TableRow key={item.code}>
+                      <TableCell className="font-mono text-xs">{item.code}</TableCell>
+                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell>{item.quantity === "other" ? item.customQuantity || "N/A" : item.quantity}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="flex justify-end pt-4">
+          <DialogClose asChild>
+            <Button variant="outline">Close</Button>
+          </DialogClose>
+        </div>
       </DialogContent>
     </Dialog>
   )
