@@ -1,57 +1,86 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
-import { FormEditor } from "./form-editor"
+import { createClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
-import type { Brand, UploadedFile } from "@/lib/types"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { ArrowLeft, Eye } from "lucide-react"
+import { FormEditor } from "./form-editor"
+import type { BrandData } from "@/lib/types"
 
-interface PageProps {
-  params: {
-    brandSlug: string
-  }
-}
+export const revalidate = 0
 
-export default async function EditorPage({ params }: PageProps) {
-  const supabase = createServerSupabaseClient()
+export default async function BrandEditorPage({ params }: { params: { brandSlug: string } }) {
+  const supabase = createClient()
 
-  // Fetch the brand data with nested sections and items
-  const { data, error: brandError } = await supabase
+  // Step 1: Fetch the brand and its direct relations
+  const { data: brand, error: brandError } = await supabase
     .from("brands")
+    .select(`*, clinic_locations (*)`)
+    .eq("slug", params.brandSlug)
+    .single()
+
+  if (brandError || !brand) {
+    console.error("Error fetching brand:", brandError?.message)
+    notFound()
+  }
+
+  // Step 2: Fetch the sections and their nested items/options for that brand
+  const { data: sections, error: sectionsError } = await supabase
+    .from("sections")
     .select(
       `
-        id, name, slug, logo, primary_color, email, active,
-        product_sections (
-          id, title, sort_order, brand_id,
-          product_items (
-            id, code, name, description, quantities, sample_link, sort_order, section_id, brand_id
-          )
-        )
-      `,
+      *,
+      items (
+        *,
+        options (*)
+      )
+    `,
     )
-    .eq("slug", params.brandSlug)
-    .order("sort_order", { foreignTable: "product_sections", ascending: true })
-    .order("sort_order", { foreignTable: "product_sections.product_items", ascending: true })
-    .limit(1) // Use limit(1) instead of single()
+    .eq("brand_id", brand.id)
+    .order("position", { ascending: true })
 
-  if (brandError) {
-    console.error("Error fetching brand data:", brandError)
-    notFound()
+  if (sectionsError) {
+    console.error("Error fetching sections for editor:", sectionsError.message)
+    // Assign empty array to prevent crash, page will show "no sections"
+    brand.sections = []
+  } else {
+    brand.sections = sections || []
   }
 
-  if (!data || data.length === 0) {
-    notFound()
-  }
+  // Ensure items within each section are sorted by position
+  brand.sections.forEach((section) => {
+    if (section.items) {
+      section.items.sort((a, b) => a.position - b.position)
+    }
+  })
 
-  const brandData = data[0]
-
-  // Fetch uploaded files
-  const { data: uploadedFiles, error: filesError } = await supabase
-    .from("uploaded_files")
-    .select("*")
-    .order("uploaded_at", { ascending: false })
-
-  if (filesError) {
-    console.error("Error fetching uploaded files:", filesError)
-    // We can still render the page, but file selection will be empty.
-  }
-
-  return <FormEditor initialBrandData={brandData as Brand} uploadedFiles={(uploadedFiles as UploadedFile[]) || []} />
+  return (
+    <div className="flex flex-col h-full bg-muted/40">
+      <header className="bg-background border-b p-4 flex items-center justify-between sticky top-0 z-10">
+        <div>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/admin">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Brands
+            </Link>
+          </Button>
+        </div>
+        <h1 className="text-xl font-semibold text-center">
+          Editing: <span className="font-bold">{brand.name}</span>
+        </h1>
+        <div>
+          <Button variant="outline" size="sm" asChild>
+            <a href={`/forms/${brand.slug}`} target="_blank" rel="noopener noreferrer">
+              <Eye className="h-4 w-4 mr-2" />
+              Preview Form
+            </a>
+          </Button>
+        </div>
+      </header>
+      <main className="flex-1 overflow-auto p-4 md:p-6">
+        <div className="max-w-5xl mx-auto">
+          <FormEditor brand={brand as BrandData} />
+        </div>
+      </main>
+    </div>
+  )
 }

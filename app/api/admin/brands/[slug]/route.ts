@@ -1,18 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createAdminClient } from "@/utils/supabase/server"
 
 export async function GET(request: NextRequest, { params }: { params: { slug: string } }) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const { data: brand, error } = await supabase
       .from("brands")
       .select(
         `
-        id, name, slug, logo, primary_color, email, active,
-        product_sections (
-          id, title, sort_order, brand_id,
-          product_items (
-            id, code, name, description, quantities, sample_link, sort_order, section_id, brand_id
+        id, name, slug, logo, emails, active,
+        sections (
+          *,
+          items (
+            *,
+            options (*)
           )
         )
       `,
