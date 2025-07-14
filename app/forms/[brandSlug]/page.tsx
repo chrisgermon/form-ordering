@@ -4,6 +4,7 @@ import type { BrandData } from "@/lib/types"
 import { notFound } from "next/navigation"
 
 async function getBrandData(slug: string): Promise<BrandData | null> {
+  console.log(`Attempting to fetch brand data for slug: ${slug}`)
   const supabase = createClient()
   const { data, error } = await supabase
     .from("brands")
@@ -21,13 +22,22 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     `,
     )
     .eq("slug", slug)
-    .eq("active", true) // The brand MUST be active to be found
+    .eq("active", true) // IMPORTANT: The brand must be active to be found.
     .single()
 
   if (error) {
-    console.error(`Error fetching brand data for slug '${slug}':`, error.message)
+    // This log is critical for debugging database query issues.
+    console.error(`Database error fetching brand '${slug}':`, error.message)
     return null
   }
+
+  if (!data) {
+    // This log will appear in your Vercel deployment logs if the brand isn't found or is inactive.
+    console.warn(`No active brand found for slug: '${slug}'. This is why a 404 is being shown.`)
+    return null
+  }
+
+  console.log(`Successfully fetched brand: ${data.name}`)
 
   // Sort sections and items by position for consistent display
   if (data.sections) {
@@ -42,12 +52,12 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
   return data as BrandData
 }
 
-export default async function BrandPage({ params }: { params: { brand: string } }) {
-  // This function fetches the brand data based on the URL slug (e.g., 'FR')
-  const brandData = await getBrandData(params.brand)
+export default async function BrandPage({ params }: { params: { brandSlug: string } }) {
+  // This function fetches the brand data based on the URL slug (e.g., 'light-radiology')
+  const brandData = await getBrandData(params.brandSlug)
 
   // If no brand is found (or it's not active), we explicitly show a 404 page.
-  // Since your database has the correct record, this part should now succeed.
+  // The logs in getBrandData should tell you exactly why this is happening.
   if (!brandData) {
     notFound()
   }
