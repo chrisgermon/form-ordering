@@ -3,6 +3,8 @@ import { FormEditor } from "./form-editor"
 import { notFound } from "next/navigation"
 import type { Brand, UploadedFile } from "@/lib/types"
 
+export const revalidate = 0 // Force dynamic rendering and prevent caching
+
 interface PageProps {
   params: {
     brandSlug: string
@@ -17,14 +19,14 @@ export default async function EditorPage({ params }: PageProps) {
     .from("brands")
     .select(
       `
-        id, name, slug, logo, primary_color, email, active,
-        product_sections (
-          id, title, sort_order, brand_id,
-          product_items (
-            id, code, name, description, quantities, sample_link, sort_order, section_id, brand_id
-          )
+      id, name, slug, logo, primary_color, email, active,
+      product_sections (
+        id, title, sort_order, brand_id,
+        product_items (
+          id, code, name, description, quantities, sample_link, sort_order, section_id, brand_id
         )
-      `,
+      )
+    `,
     )
     .eq("slug", params.brandSlug)
     .order("sort_order", { foreignTable: "product_sections", ascending: true })
