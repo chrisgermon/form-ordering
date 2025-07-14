@@ -11,7 +11,6 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     .select(
       `
       *,
-      clinic_locations(*),
       sections:sections (
         *,
         items:items (
