@@ -3,8 +3,8 @@ import { generateObject } from "ai"
 import { z } from "zod"
 import * as cheerio from "cheerio"
 
-// This schema defines the structure of the AI's output.
-// It's an object containing an array of sections.
+// The Zod schema defines the structure and types the AI should produce.
+// The `field_type` enum here must match the SQL ENUM type.
 const FormSectionSchema = z.object({
   title: z.string().describe("The title of this section of the form."),
   position: z.number().int().describe("The order of the section within the form, starting from 0."),
@@ -14,7 +14,7 @@ const FormSectionSchema = z.object({
         name: z.string().describe("The human-readable label for the form field (e.g., 'Patient Name')"),
         description: z.string().optional().describe("Any additional helper text or description for the field."),
         field_type: z
-          .enum(["text", "textarea", "date", "checkbox", "select", "radio"])
+          .enum(["text", "textarea", "date", "checkbox", "select", "radio", "number"])
           .describe("The type of the form field."),
         is_required: z.boolean().describe("Whether the field is required."),
         placeholder: z.string().optional().describe("The placeholder text for the input field."),
@@ -52,7 +52,7 @@ export async function parseFormWithAI(htmlContent: string): Promise<FormStructur
     const { object: formStructure } = await generateObject({
       model: openai("gpt-4o-mini"),
       schema: FormStructureSchema,
-      prompt: `Parse the following HTML code from a form. Extract all form fields, including their labels, types (text, textarea, date, checkbox, select, radio), and any placeholder text. Group them into logical sections based on the HTML structure (like fieldsets or headings). Determine if a field is required. Provide the output as a structured JSON object containing a 'sections' array.
+      prompt: `Parse the following HTML code from a form. Extract all form fields, including their labels, types (text, textarea, date, checkbox, select, radio, number), and any placeholder text. Group them into logical sections based on the HTML structure (like fieldsets or headings). Determine if a field is required. Provide the output as a structured JSON object containing a 'sections' array.
 
 HTML Content:
 \`\`\`html
