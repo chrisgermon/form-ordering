@@ -39,6 +39,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export default function AdminDashboard() {
   const [brands, setBrands] = useState<Brand[]>([])
@@ -54,6 +56,7 @@ export default function AdminDashboard() {
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
   const [viewingSubmission, setViewingSubmission] = useState<Submission | null>(null)
+  const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([])
   const router = useRouter()
 
   // States for submission filtering
@@ -139,6 +142,7 @@ export default function AdminDashboard() {
     const result = await reloadSchemaCache()
     setMessage(result.message)
     setIsReloadingSchema(false)
+    setTimeout(() => setMessage(""), 3000)
   }
 
   const saveBrand = async (brandData: any) => {
@@ -269,386 +273,483 @@ export default function AdminDashboard() {
     })
   }, [submissions, submissionSearch, selectedBrandFilter, selectedStatusFilter])
 
+  const handleSelectAllSubmissions = (checked: boolean | "indeterminate") => {
+    if (checked === true) {
+      setSelectedSubmissions(filteredSubmissions.map((s) => s.id))
+    } else {
+      setSelectedSubmissions([])
+    }
+  }
+
+  const handleSelectSubmission = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedSubmissions((prev) => [...prev, id])
+    } else {
+      setSelectedSubmissions((prev) => prev.filter((subId) => subId !== id))
+    }
+  }
+
+  const handleDeleteSelectedSubmissions = async () => {
+    if (selectedSubmissions.length === 0) return
+    if (
+      !confirm(
+        `Are you sure you want to delete ${selectedSubmissions.length} submission(s)? This action cannot be undone.`,
+      )
+    )
+      return
+
+    setMessage(`Deleting ${selectedSubmissions.length} submission(s)...`)
+    try {
+      const response = await fetch("/api/admin/submissions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedSubmissions }),
+      })
+
+      const result = await response.json()
+      if (response.ok) {
+        setMessage(result.message)
+        setSelectedSubmissions([])
+        await loadSubmissions() // Refresh the list
+      } else {
+        throw new Error(result.error || "Failed to delete submissions.")
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "An unknown error occurred.")
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <div className="flex items-center gap-4">
-            <Button onClick={handleReloadSchema} variant="secondary" disabled={isReloadingSchema || loading}>
-              {isReloadingSchema ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
-              )}
-              Reload Schema
-            </Button>
-            <Button onClick={handleSeedDatabase} variant="secondary" disabled={isSeeding || loading}>
-              {isSeeding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
-              Seed Database
-            </Button>
-            <Button variant="outline" onClick={() => router.push("/")}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Home
-            </Button>
-          </div>
-        </div>
-
-        {message && (
-          <Alert className="mb-6">
-            <AlertDescription>{message}</AlertDescription>
-          </Alert>
-        )}
-
-        <Tabs defaultValue="brands" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="brands">Brands</TabsTrigger>
-            <TabsTrigger value="submissions">Submissions</TabsTrigger>
-            <TabsTrigger value="files">Files</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="brands">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Brand Management</CardTitle>
-                <Dialog open={showBrandDialog} onOpenChange={setShowBrandDialog}>
-                  <DialogTrigger asChild>
-                    <Button
-                      onClick={() => {
-                        setEditingBrand(null)
-                        setShowBrandDialog(true)
-                      }}
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add Brand
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>{editingBrand ? "Edit Brand" : "Add Brand"}</DialogTitle>
-                    </DialogHeader>
-                    <BrandForm
-                      brand={editingBrand}
-                      uploadedFiles={uploadedFiles}
-                      onSave={saveBrand}
-                      onCancel={() => {
-                        setShowBrandDialog(false)
-                        setEditingBrand(null)
-                      }}
-                    />
-                  </DialogContent>
-                </Dialog>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex justify-center items-center p-10">
-                    <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
-                  </div>
+    <TooltipProvider>
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+            <div className="flex items-center gap-4">
+              <Button onClick={handleReloadSchema} variant="secondary" disabled={isReloadingSchema || loading}>
+                {isReloadingSchema ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Logo</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Initials</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {Array.isArray(brands) &&
-                        brands.map((brand) => (
-                          <TableRow key={brand.id}>
-                            <TableCell>
-                              <img
-                                src={brand.logo || "/placeholder.svg?height=40&width=100&query=No+Logo"}
-                                alt={`${brand.name} Logo`}
-                                className="h-10 w-auto object-contain bg-gray-100 p-1 rounded"
-                              />
-                            </TableCell>
-                            <TableCell className="font-medium">{brand.name}</TableCell>
-                            <TableCell className="font-mono text-sm">{brand.initials || "N/A"}</TableCell>
-                            <TableCell>
-                              <Badge variant={brand.active ? "default" : "secondary"}>
-                                {brand.active ? "Active" : "Inactive"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex gap-2 justify-end">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setEditingBrand(brand)
-                                    setShowBrandDialog(true)
-                                  }}
-                                >
-                                  <Edit className="mr-2 h-4 w-4" /> Edit Brand
-                                </Button>
-                                <Button size="sm" asChild>
-                                  <Link href={`/admin/editor/${brand.slug}`}>
-                                    <Edit className="mr-2 h-4 w-4" /> Edit Form
-                                  </Link>
-                                </Button>
-                                <Button size="sm" variant="outline" asChild>
-                                  <Link href={`/forms/${brand.slug}`} target="_blank">
-                                    <Eye className="mr-2 h-4 w-4" /> View Form
-                                  </Link>
-                                </Button>
-                                <Button size="sm" variant="destructive" onClick={() => deleteBrand(brand.id)}>
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                    </TableBody>
-                  </Table>
+                  <RefreshCw className="mr-2 h-4 w-4" />
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                Reload Schema
+              </Button>
+              <Button onClick={handleSeedDatabase} variant="secondary" disabled={isSeeding || loading}>
+                {isSeeding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
+                Seed Database
+              </Button>
+              <Button variant="outline" onClick={() => router.push("/")}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Home
+              </Button>
+            </div>
+          </div>
 
-          <TabsContent value="submissions">
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <div className="flex-grow">
-                    <CardTitle>Order Submissions</CardTitle>
-                    <p className="text-sm text-muted-foreground">Search, filter, and manage submitted order forms.</p>
-                  </div>
-                  <Button onClick={handleRefreshSubmissions} variant="outline" size="sm">
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Refresh
-                  </Button>
-                </div>
-                <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="relative md:col-span-1">
-                    <label htmlFor="submission-search" className="sr-only">
-                      Search Submissions
-                    </label>
-                    <Input
-                      id="submission-search"
-                      placeholder="Search by name, email, or order #"
-                      className="pl-10"
-                      value={submissionSearch}
-                      onChange={(e) => setSubmissionSearch(e.target.value)}
-                    />
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  </div>
-                  <div className="md:col-span-1">
-                    <Select value={selectedBrandFilter} onValueChange={setSelectedBrandFilter}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Filter by brand" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Brands</SelectItem>
-                        {brands.map((brand) => (
-                          <SelectItem key={brand.id} value={brand.id}>
-                            {brand.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="md:col-span-1">
-                    <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Filter by status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="sent">Sent</SelectItem>
-                        <SelectItem value="failed">Failed</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex justify-center items-center p-10">
-                    <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Order #</TableHead>
-                        <TableHead>Brand</TableHead>
-                        <TableHead>Ordered By</TableHead>
-                        <TableHead>Deliver To</TableHead>
-                        <TableHead>Bill To</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredSubmissions.length > 0 ? (
-                        filteredSubmissions.map((submission) => (
-                          <TableRow key={submission.id}>
-                            <TableCell className="font-mono text-sm">{submission.order_number}</TableCell>
-                            <TableCell className="font-medium">{submission.brand_name}</TableCell>
-                            <TableCell>
-                              <div>{submission.ordered_by}</div>
-                              <div className="text-xs text-muted-foreground">{submission.email}</div>
-                            </TableCell>
-                            <TableCell>{submission.deliver_to}</TableCell>
-                            <TableCell>{submission.bill_to}</TableCell>
-                            <TableCell>
-                              {new Date(submission.created_at).toLocaleDateString("en-AU", {
-                                day: "2-digit",
-                                month: "short",
-                                year: "numeric",
-                              })}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  submission.status === "sent"
-                                    ? "default"
-                                    : submission.status === "failed"
-                                      ? "destructive"
-                                      : submission.status === "completed"
-                                        ? "success"
-                                        : "secondary"
-                                }
-                                className="capitalize"
-                              >
-                                {submission.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <Button size="sm" variant="outline" onClick={() => setViewingSubmission(submission)}>
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                                {submission.status !== "completed" && (
+          {message && (
+            <Alert className="mb-6">
+              <AlertDescription>{message}</AlertDescription>
+            </Alert>
+          )}
+
+          <Tabs defaultValue="submissions" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="brands">Brands</TabsTrigger>
+              <TabsTrigger value="submissions">Submissions</TabsTrigger>
+              <TabsTrigger value="files">Files</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="brands">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Brand Management</CardTitle>
+                  <Dialog open={showBrandDialog} onOpenChange={setShowBrandDialog}>
+                    <DialogTrigger asChild>
+                      <Button
+                        onClick={() => {
+                          setEditingBrand(null)
+                          setShowBrandDialog(true)
+                        }}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Brand
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>{editingBrand ? "Edit Brand" : "Add Brand"}</DialogTitle>
+                      </DialogHeader>
+                      <BrandForm
+                        brand={editingBrand}
+                        uploadedFiles={uploadedFiles}
+                        onSave={saveBrand}
+                        onCancel={() => {
+                          setShowBrandDialog(false)
+                          setEditingBrand(null)
+                        }}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="flex justify-center items-center p-10">
+                      <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Logo</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Initials</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {Array.isArray(brands) &&
+                          brands.map((brand) => (
+                            <TableRow key={brand.id}>
+                              <TableCell>
+                                <img
+                                  src={brand.logo || "/placeholder.svg?height=40&width=100&query=No+Logo"}
+                                  alt={`${brand.name} Logo`}
+                                  className="h-10 w-auto object-contain bg-gray-100 p-1 rounded"
+                                />
+                              </TableCell>
+                              <TableCell className="font-medium">{brand.name}</TableCell>
+                              <TableCell className="font-mono text-sm">{brand.initials || "N/A"}</TableCell>
+                              <TableCell>
+                                <Badge variant={brand.active ? "default" : "secondary"}>
+                                  {brand.active ? "Active" : "Inactive"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex gap-2 justify-end">
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     onClick={() => {
-                                      setSelectedSubmission(submission)
-                                      setIsCompleteDialogOpen(true)
+                                      setEditingBrand(brand)
+                                      setShowBrandDialog(true)
                                     }}
                                   >
-                                    <CheckCircle className="h-4 w-4" />
+                                    <Edit className="mr-2 h-4 w-4" /> Edit Brand
                                   </Button>
-                                )}
-                              </div>
+                                  <Button size="sm" asChild>
+                                    <Link href={`/admin/editor/${brand.slug}`}>
+                                      <Edit className="mr-2 h-4 w-4" /> Edit Form
+                                    </Link>
+                                  </Button>
+                                  <Button size="sm" variant="outline" asChild>
+                                    <Link href={`/forms/${brand.slug}`} target="_blank">
+                                      <Eye className="mr-2 h-4 w-4" /> View Form
+                                    </Link>
+                                  </Button>
+                                  <Button size="sm" variant="destructive" onClick={() => deleteBrand(brand.id)}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="submissions">
+              <Card>
+                <CardHeader>
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div className="flex-grow">
+                      <CardTitle>Order Submissions</CardTitle>
+                      <p className="text-sm text-muted-foreground">Search, filter, and manage submitted order forms.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedSubmissions.length > 0 && (
+                        <Button onClick={handleDeleteSelectedSubmissions} variant="destructive" size="sm">
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete ({selectedSubmissions.length})
+                        </Button>
+                      )}
+                      <Button onClick={handleRefreshSubmissions} variant="outline" size="sm">
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Refresh
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="relative md:col-span-1">
+                      <label htmlFor="submission-search" className="sr-only">
+                        Search Submissions
+                      </label>
+                      <Input
+                        id="submission-search"
+                        placeholder="Search by name, email, or order #"
+                        className="pl-10"
+                        value={submissionSearch}
+                        onChange={(e) => setSubmissionSearch(e.target.value)}
+                      />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    </div>
+                    <div className="md:col-span-1">
+                      <Select value={selectedBrandFilter} onValueChange={setSelectedBrandFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Filter by brand" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Brands</SelectItem>
+                          {brands.map((brand) => (
+                            <SelectItem key={brand.id} value={brand.id}>
+                              {brand.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-1">
+                      <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Filter by status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Statuses</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="sent">Sent</SelectItem>
+                          <SelectItem value="failed">Failed</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="flex justify-center items-center p-10">
+                      <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[40px]">
+                            <Checkbox
+                              checked={
+                                filteredSubmissions.length > 0 &&
+                                selectedSubmissions.length === filteredSubmissions.length
+                                  ? true
+                                  : selectedSubmissions.length > 0
+                                    ? "indeterminate"
+                                    : false
+                              }
+                              onCheckedChange={handleSelectAllSubmissions}
+                              aria-label="Select all"
+                            />
+                          </TableHead>
+                          <TableHead>Order #</TableHead>
+                          <TableHead>Brand</TableHead>
+                          <TableHead>Ordered By</TableHead>
+                          <TableHead>Deliver To</TableHead>
+                          <TableHead>Bill To</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredSubmissions.length > 0 ? (
+                          filteredSubmissions.map((submission) => (
+                            <TableRow
+                              key={submission.id}
+                              data-state={selectedSubmissions.includes(submission.id) && "selected"}
+                            >
+                              <TableCell>
+                                <Checkbox
+                                  checked={selectedSubmissions.includes(submission.id)}
+                                  onCheckedChange={(checked) => handleSelectSubmission(submission.id, !!checked)}
+                                  aria-label={`Select submission ${submission.order_number}`}
+                                />
+                              </TableCell>
+                              <TableCell className="font-mono text-sm">{submission.order_number}</TableCell>
+                              <TableCell className="font-medium">{submission.brand_name}</TableCell>
+                              <TableCell>
+                                <div>{submission.ordered_by}</div>
+                                <div className="text-xs text-muted-foreground">{submission.email}</div>
+                              </TableCell>
+                              <TableCell>{submission.deliver_to}</TableCell>
+                              <TableCell>{submission.bill_to}</TableCell>
+                              <TableCell>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <span className="cursor-default">
+                                      {new Date(submission.created_at).toLocaleDateString("en-AU", {
+                                        day: "2-digit",
+                                        month: "short",
+                                        year: "numeric",
+                                      })}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {format(new Date(submission.created_at), "dd MMM yyyy, h:mm:ss a")}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    submission.status === "sent"
+                                      ? "default"
+                                      : submission.status === "failed"
+                                        ? "destructive"
+                                        : submission.status === "completed"
+                                          ? "success"
+                                          : "secondary"
+                                  }
+                                  className="capitalize"
+                                >
+                                  {submission.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8 bg-transparent"
+                                    onClick={() => setViewingSubmission(submission)}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                    <span className="sr-only">View Details</span>
+                                  </Button>
+                                  {submission.status !== "completed" && (
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      className="h-8 w-8 bg-transparent"
+                                      onClick={() => {
+                                        setSelectedSubmission(submission)
+                                        setIsCompleteDialogOpen(true)
+                                      }}
+                                    >
+                                      <CheckCircle className="h-4 w-4" />
+                                      <span className="sr-only">Mark as Complete</span>
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={9} className="h-24 text-center">
+                              No submissions found.
                             </TableCell>
                           </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={8} className="h-24 text-center">
-                            No submissions found.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                        )}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="files">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>File Management</CardTitle>
-                <div className="flex items-center gap-2">
-                  <Button onClick={handleAutoAssign} variant="secondary" disabled={isAssigning || loading}>
-                    {isAssigning ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Link2 className="mr-2 h-4 w-4" />
-                    )}
-                    Auto-assign PDF Links
-                  </Button>
-                  <div className="relative">
-                    <Button asChild>
-                      <label htmlFor="file-upload" className="cursor-pointer">
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload File(s)
-                      </label>
+            <TabsContent value="files">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>File Management</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Button onClick={handleAutoAssign} variant="secondary" disabled={isAssigning || loading}>
+                      {isAssigning ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Link2 className="mr-2 h-4 w-4" />
+                      )}
+                      Auto-assign PDF Links
                     </Button>
-                    <Input
-                      id="file-upload"
-                      type="file"
-                      multiple
-                      accept=".pdf,.png,.jpg,.jpeg,.svg"
-                      onChange={handleFileUpload}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
+                    <div className="relative">
+                      <Button asChild>
+                        <label htmlFor="file-upload" className="cursor-pointer">
+                          <Upload className="mr-2 h-4 w-4" />
+                          Upload File(s)
+                        </label>
+                      </Button>
+                      <Input
+                        id="file-upload"
+                        type="file"
+                        multiple
+                        accept=".pdf,.png,.jpg,.jpeg,.svg"
+                        onChange={handleFileUpload}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                    </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {Array.isArray(uploadedFiles) &&
-                    uploadedFiles.map((file) => (
-                      <Card key={file.id} className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="font-semibold truncate">{file.original_name}</h3>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" asChild>
-                              <a href={file.url} target="_blank" rel="noopener noreferrer">
-                                <Eye className="mr-2 h-4 w-4" />
-                              </a>
-                            </Button>
-                            <Button size="sm" variant="outline" asChild>
-                              <a href={file.url} download={file.original_name}>
-                                <Download className="h-4 w-4" />
-                              </a>
-                            </Button>
-                            <Button size="sm" variant="destructive" onClick={() => deleteFile(file.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Array.isArray(uploadedFiles) &&
+                      uploadedFiles.map((file) => (
+                        <Card key={file.id} className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-semibold truncate">{file.original_name}</h3>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" asChild>
+                                <a href={file.url} target="_blank" rel="noopener noreferrer">
+                                  <Eye className="mr-2 h-4 w-4" />
+                                </a>
+                              </Button>
+                              <Button size="sm" variant="outline" asChild>
+                                <a href={file.url} download={file.original_name}>
+                                  <Download className="h-4 w-4" />
+                                </a>
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={() => deleteFile(file.id)}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                        <p className="text-sm text-gray-600">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                        <p className="text-xs text-gray-500">{new Date(file.uploaded_at).toLocaleDateString()}</p>
-                        <div className="mt-2">
-                          <Input
-                            value={file.url}
-                            readOnly
-                            className="text-xs"
-                            onClick={(e) => e.currentTarget.select()}
-                          />
-                        </div>
-                      </Card>
-                    ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                          <p className="text-sm text-gray-600">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                          <p className="text-xs text-gray-500">{new Date(file.uploaded_at).toLocaleDateString()}</p>
+                          <div className="mt-2">
+                            <Input
+                              value={file.url}
+                              readOnly
+                              className="text-xs"
+                              onClick={(e) => e.currentTarget.select()}
+                            />
+                          </div>
+                        </Card>
+                      ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+        <CompleteSubmissionDialog
+          open={isCompleteDialogOpen}
+          onOpenChange={setIsCompleteDialogOpen}
+          submission={selectedSubmission}
+          onCompleted={() => {
+            setIsCompleteDialogOpen(false)
+            setSelectedSubmission(null)
+            loadSubmissions()
+            setMessage("Submission marked as complete.")
+          }}
+        />
+        <SubmissionDetailsDialog
+          submission={viewingSubmission}
+          open={!!viewingSubmission}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              setViewingSubmission(null)
+            }
+          }}
+        />
       </div>
-      <CompleteSubmissionDialog
-        open={isCompleteDialogOpen}
-        onOpenChange={setIsCompleteDialogOpen}
-        submission={selectedSubmission}
-        onCompleted={() => {
-          setIsCompleteDialogOpen(false)
-          setSelectedSubmission(null)
-          loadSubmissions()
-          setMessage("Submission marked as complete.")
-        }}
-      />
-      <SubmissionDetailsDialog
-        submission={viewingSubmission}
-        open={!!viewingSubmission}
-        onOpenChange={(isOpen) => {
-          if (!isOpen) {
-            setViewingSubmission(null)
-          }
-        }}
-      />
-    </div>
+    </TooltipProvider>
   )
 }
 
