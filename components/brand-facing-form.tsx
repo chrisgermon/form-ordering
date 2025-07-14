@@ -14,7 +14,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Label } from "@/components/ui/label"
 import type { BrandData, Item } from "@/lib/types"
 
-// A more robust schema for an order form
 const createOrderSchema = (items: Item[]) => {
   const itemSchemas = items.reduce(
     (acc, item) => {
@@ -31,8 +30,8 @@ const createOrderSchema = (items: Item[]) => {
     .object({
       orderedBy: z.string().min(1, "Your name is required."),
       email: z.string().email("A valid email is required."),
-      billToName: z.string().min(1, "Please select a billing location."),
-      deliverToName: z.string().min(1, "Please select a delivery location."),
+      billToId: z.string().min(1, "Please select a billing location."),
+      deliverToId: z.string().min(1, "Please select a delivery location."),
       notes: z.string().optional(),
       items: z.object(itemSchemas),
     })
@@ -84,7 +83,6 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
   }
 
   const onSubmit = async (data: z.infer<typeof validationSchema>) => {
-    // Filter out items that were not ordered
     const orderedItems = Object.entries(data.items)
       .filter(([, itemData]) => itemData.quantity && itemData.quantity !== "0")
       .reduce(
@@ -103,12 +101,12 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
       )
 
     const payload = {
-      brandId: brandData.id,
+      brandSlug: brandData.slug,
       orderInfo: {
         orderedBy: data.orderedBy,
         email: data.email,
-        billToName: data.billToName,
-        deliverToName: data.deliverToName,
+        billToId: data.billToId,
+        deliverToId: data.deliverToId,
         notes: data.notes,
       },
       items: orderedItems,
@@ -125,7 +123,7 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
       success: async (res) => {
         if (!res.ok) {
           const errorData = await res.json()
-          throw new Error(errorData.details || "Submission failed.")
+          throw new Error(errorData.error || "Submission failed.")
         }
         reset()
         return "Order submitted successfully!"
@@ -173,18 +171,18 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
               {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="billToName">Bill To</Label>
+              <Label htmlFor="billToId">Bill To</Label>
               <Controller
-                name="billToName"
+                name="billToId"
                 control={control}
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <SelectTrigger id="billToName">
+                    <SelectTrigger id="billToId">
                       <SelectValue placeholder="Select a billing location" />
                     </SelectTrigger>
                     <SelectContent>
                       {brandData.clinic_locations.map((loc) => (
-                        <SelectItem key={loc.name} value={loc.name}>
+                        <SelectItem key={loc.id} value={loc.id}>
                           {loc.name}
                         </SelectItem>
                       ))}
@@ -192,21 +190,21 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
                   </Select>
                 )}
               />
-              {errors.billToName && <p className="text-sm text-destructive">{errors.billToName.message}</p>}
+              {errors.billToId && <p className="text-sm text-destructive">{errors.billToId.message}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="deliverToName">Deliver To</Label>
+              <Label htmlFor="deliverToId">Deliver To</Label>
               <Controller
-                name="deliverToName"
+                name="deliverToId"
                 control={control}
                 render={({ field }) => (
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <SelectTrigger id="deliverToName">
+                    <SelectTrigger id="deliverToId">
                       <SelectValue placeholder="Select a delivery location" />
                     </SelectTrigger>
                     <SelectContent>
                       {brandData.clinic_locations.map((loc) => (
-                        <SelectItem key={loc.name} value={loc.name}>
+                        <SelectItem key={loc.id} value={loc.id}>
                           {loc.name}
                         </SelectItem>
                       ))}
@@ -214,7 +212,7 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
                   </Select>
                 )}
               />
-              {errors.deliverToName && <p className="text-sm text-destructive">{errors.deliverToName.message}</p>}
+              {errors.deliverToId && <p className="text-sm text-destructive">{errors.deliverToId.message}</p>}
             </div>
           </CardContent>
         </Card>

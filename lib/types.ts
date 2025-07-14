@@ -1,4 +1,5 @@
 export type ClinicLocation = {
+  id: string
   name: string
   address: string
   phone: string
@@ -58,7 +59,6 @@ export interface UploadedFile {
   brand_id: string | null
 }
 
-// START ADDED TYPES
 export interface OrderInfo {
   orderNumber: string
   orderedBy: string
@@ -76,11 +76,9 @@ export interface OrderItem {
 }
 
 export interface OrderPayload {
-  brandId: string
+  brandSlug: string
   items: Record<string, OrderItem>
   orderInfo: OrderInfo
 }
 
-// Using Brand as the source for the form data
 export type BrandData = Brand
-// END ADDED TYPES

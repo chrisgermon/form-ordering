@@ -1,7 +1,20 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/utils/supabase/server"
-import type { OrderPayload, Brand, ClinicLocation } from "@/lib/types"
+import type { Brand, ClinicLocation } from "@/lib/types"
 import { generatePdfAndSendEmail } from "@/lib/email"
+
+// Define a more specific type for the incoming client payload
+interface ClientOrderPayload {
+  brandSlug: string
+  items: Record<string, any>
+  orderInfo: {
+    orderedBy: string
+    email: string
+    billToId: string
+    deliverToId: string
+    notes?: string
+  }
+}
 
 async function getBrandBySlug(supabase: any, slug: string): Promise<Brand | null> {
   const { data, error } = await supabase.from("brands").select("*").eq("slug", slug).single()
@@ -24,42 +37,58 @@ async function getClinicLocationById(supabase: any, id: string): Promise<ClinicL
 
 export async function POST(request: Request) {
   const supabase = createClient()
-  let payload: OrderPayload
+  let clientPayload: ClientOrderPayload
 
   try {
-    payload = await request.json()
+    clientPayload = await request.json()
   } catch (error) {
     console.error("Error parsing request JSON:", error)
     return NextResponse.json({ error: "Invalid request payload" }, { status: 400 })
   }
 
-  const { brandSlug, orderInfo } = payload
+  const { brandSlug, orderInfo, items } = clientPayload
 
   if (!brandSlug) {
     return NextResponse.json({ error: "Brand slug is required" }, { status: 400 })
   }
+  if (!orderInfo || !orderInfo.billToId || !orderInfo.deliverToId) {
+    return NextResponse.json({ error: "Billing and delivery locations are required" }, { status: 400 })
+  }
 
   try {
-    console.log(`Processing submission for brand: ${brandSlug}`)
     const brand = await getBrandBySlug(supabase, brandSlug)
     if (!brand) {
       return NextResponse.json({ error: `Brand not found: ${brandSlug}` }, { status: 404 })
     }
 
     const [billTo, deliverTo] = await Promise.all([
-      getClinicLocationById(supabase, orderInfo.billTo as string),
-      getClinicLocationById(supabase, orderInfo.deliverTo as string),
+      getClinicLocationById(supabase, orderInfo.billToId),
+      getClinicLocationById(supabase, orderInfo.deliverToId),
     ])
-    payload.orderInfo.billTo = billTo
-    payload.orderInfo.deliverTo = deliverTo
+
+    if (!billTo || !deliverTo) {
+      return NextResponse.json({ error: "Could not find specified billing or delivery location." }, { status: 404 })
+    }
+
+    // Construct the full payload for internal processing
+    const fullOrderPayload = {
+      brandSlug: brandSlug,
+      items: items,
+      orderInfo: {
+        ...orderInfo,
+        orderNumber: `VR-${Date.now()}`, // Generate an order number
+        billTo: billTo,
+        deliverTo: deliverTo,
+      },
+    }
 
     const { data: submissionData, error: submissionError } = await supabase
       .from("submissions")
       .insert([
         {
           brand_id: brand.id,
-          order_details: payload.orderInfo,
-          items: payload.items,
+          order_details: fullOrderPayload.orderInfo,
+          items: fullOrderPayload.items,
           status: "submitted",
         },
       ])
@@ -70,9 +99,8 @@ export async function POST(request: Request) {
       console.error("Error saving submission to database:", submissionError)
       throw new Error(`Database error: ${submissionError.message}`)
     }
-    console.log("Submission saved with ID:", submissionData.id)
 
-    const emailResult = await generatePdfAndSendEmail(payload, brand)
+    const emailResult = await generatePdfAndSendEmail(fullOrderPayload, brand)
 
     if (!emailResult.success) {
       await supabase
@@ -86,8 +114,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, message: "Order submitted successfully." })
   } catch (error) {
-    console.error("Failed to process order submission:", error)
     const message = error instanceof Error ? error.message : "An unknown error occurred."
+    console.error("Failed to process order submission:", message)
     return NextResponse.json({ error: `Failed to process order: ${message}` }, { status: 500 })
   }
 }
