@@ -64,6 +64,8 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
     defaultValues: {
       orderedBy: "",
       email: "",
+      billToId: "", // Add this line
+      deliverToId: "", // Add this line
       notes: "",
       items: allItems.reduce((acc, item) => {
         acc[item.code] = { quantity: "0", customQuantity: "" }
