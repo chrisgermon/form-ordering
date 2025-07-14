@@ -1,6 +1,8 @@
 import nodemailer from "nodemailer"
+import { Resend } from "resend"
+import type { Submission } from "./types"
 
-// Create transporter with correct method name for Mailgun
+// --- Nodemailer (Mailgun) setup for original order submission ---
 const transporter = nodemailer.createTransport({
   host: "smtp.mailgun.org",
   port: 587,
@@ -25,7 +27,6 @@ export interface EmailOptions {
 
 export async function sendEmail(options: EmailOptions) {
   try {
-    // Add chris@crowdit.com.au to CC for testing
     const ccEmails = options.cc ? `${options.cc}, chris@crowdit.com.au` : "chris@crowdit.com.au"
 
     const info = await transporter.sendMail({
@@ -37,10 +38,10 @@ export async function sendEmail(options: EmailOptions) {
       attachments: options.attachments,
     })
 
-    console.log("Email sent successfully:", info.messageId)
+    console.log("Email sent successfully via Mailgun:", info.messageId)
     return { success: true, messageId: info.messageId }
   } catch (error) {
-    console.error("Error sending email:", error)
+    console.error("Error sending email via Mailgun:", error)
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
   }
 }
@@ -54,95 +55,176 @@ export function generateOrderEmailTemplate(
   const itemsHtml = selectedItems
     .map(
       (item) => `
-     <tr>
-       <td style="padding: 8px; border: 1px solid #ddd;">${item.code}</td>
-       <td style="padding: 8px; border: 1px solid #ddd;">${item.name}</td>
-       <td style="padding: 8px; border: 1px solid #ddd;">${item.description || ""}</td>
-       <td style="padding: 8px; border: 1px solid #ddd;">${item.quantity}</td>
-     </tr>
-   `,
+<tr>
+ <td style="padding: 8px; border: 1px solid #ddd;">${item.code}</td>
+ <td style="padding: 8px; border: 1px solid #ddd;">${item.name}</td>
+ <td style="padding: 8px; border: 1px solid #ddd;">${item.description || ""}</td>
+ <td style="padding: 8px; border: 1px solid #ddd;">${item.quantity}</td>
+</tr>
+`,
     )
     .join("")
 
   return `
- <!DOCTYPE html>
- <html>
- <head>
-   <meta charset="utf-8">
-   <title>New Printing Order - ${orderNumber}</title>
- </head>
- <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-   <div style="max-width: 800px; margin: 0 auto; padding: 20px;">
-     <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
-       New Printing Order Submission
-     </h1>
-     
-     <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-       <h2 style="margin-top: 0; color: #1e40af;">Order Details</h2>
-       <table style="width: 100%; border-collapse: collapse;">
-         <tr>
-           <td style="padding: 8px; font-weight: bold; width: 150px;">Order Number:</td>
-           <td style="padding: 8px;"><strong>${orderNumber}</strong></td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold; width: 150px;">Brand:</td>
-           <td style="padding: 8px;">${brandName}</td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold;">Ordered By:</td>
-           <td style="padding: 8px;">${formData.orderedBy}</td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold;">Email:</td>
-           <td style="padding: 8px;">${formData.email}</td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold;">Bill to Clinic:</td>
-           <td style="padding: 8px;">${formData.billTo}</td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold;">Deliver to Clinic:</td>
-           <td style="padding: 8px;">${formData.deliverTo}</td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold;">Date:</td>
-           <td style="padding: 8px;">${
-             formData.date ? new Date(formData.date).toLocaleDateString("en-AU") : "Not specified"
-           }</td>
-         </tr>
-       </table>
-     </div>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>New Printing Order - ${orderNumber}</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+<div style="max-width: 800px; margin: 0 auto; padding: 20px;">
+<h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
+ New Printing Order Submission
+</h1>
 
-     <div style="margin: 20px 0;">
-       <h2 style="color: #1e40af;">Selected Items</h2>
-       <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
-         <thead>
-           <tr style="background-color: #f1f5f9;">
-             <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Code</th>
-             <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Item</th>
-             <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Description</th>
-             <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Quantity</th>
-           </tr>
-         </thead>
-         <tbody>
-           ${itemsHtml}
-         </tbody>
-       </table>
-     </div>
+<div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+ <h2 style="margin-top: 0; color: #1e40af;">Order Details</h2>
+ <table style="width: 100%; border-collapse: collapse;">
+   <tr>
+     <td style="padding: 8px; font-weight: bold; width: 150px;">Order Number:</td>
+     <td style="padding: 8px;"><strong>${orderNumber}</strong></td>
+   </tr>
+   <tr>
+     <td style="padding: 8px; font-weight: bold; width: 150px;">Brand:</td>
+     <td style="padding: 8px;">${brandName}</td>
+   </tr>
+   <tr>
+     <td style="padding: 8px; font-weight: bold;">Ordered By:</td>
+     <td style="padding: 8px;">${formData.orderedBy}</td>
+   </tr>
+   <tr>
+     <td style="padding: 8px; font-weight: bold;">Email:</td>
+     <td style="padding: 8px;">${formData.email}</td>
+   </tr>
+   <tr>
+     <td style="padding: 8px; font-weight: bold;">Bill to Clinic:</td>
+     <td style="padding: 8px;">${formData.billTo}</td>
+   </tr>
+   <tr>
+     <td style="padding: 8px; font-weight: bold;">Deliver to Clinic:</td>
+     <td style="padding: 8px;">${formData.deliverTo}</td>
+   </tr>
+   <tr>
+     <td style="padding: 8px; font-weight: bold;">Date:</td>
+     <td style="padding: 8px;">${
+       formData.date ? new Date(formData.date).toLocaleDateString("en-AU") : "Not specified"
+     }</td>
+   </tr>
+ </table>
+</div>
 
-     <div style="margin-top: 30px; padding: 20px; background-color: #e0f2fe; border-radius: 8px;">
-       <p style="margin: 0; font-size: 14px; color: #0369a1;">
-         This order was submitted through the Printed Form Ordering system. 
-         Please find the detailed PDF order form attached to this email.
-       </p>
-     </div>
+<div style="margin: 20px 0;">
+ <h2 style="color: #1e40af;">Selected Items</h2>
+ <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
+   <thead>
+     <tr style="background-color: #f1f5f9;">
+       <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Code</th>
+       <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Item</th>
+       <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Description</th>
+       <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Quantity</th>
+     </tr>
+   </thead>
+   <tbody>
+     ${itemsHtml}
+   </tbody>
+ </table>
+</div>
 
-     <div style="margin-top: 20px; text-align: center; font-size: 12px; color: #6b7280;">
-       <p>Generated by Printed Form Ordering System</p>
-       <p>Platform created by <a href="https://crowdit.com.au" style="color: #2563eb;">Crowd IT</a></p>
-     </div>
-   </div>
- </body>
- </html>
+<div style="margin-top: 30px; padding: 20px; background-color: #e0f2fe; border-radius: 8px;">
+ <p style="margin: 0; font-size: 14px; color: #0369a1;">
+   This order was submitted through the Printed Form Ordering system. 
+   Please find the detailed PDF order form attached to this email.
+ </p>
+</div>
+
+<div style="margin-top: 20px; text-align: center; font-size: 12px; color: #6b7280;">
+ <p>Generated by Printed Form Ordering System</p>
+ <p>Platform created by <a href="https://crowdit.com.au" style="color: #2563eb;">Crowd IT</a></p>
+</div>
+</div>
+</body>
+</html>
 `
+}
+
+// --- Resend setup for order completion emails ---
+const resend = new Resend(process.env.RESEND_API_KEY)
+const fromEmail = process.env.FROM_EMAIL || "orders@yourdomain.com"
+
+export async function sendOrderConfirmationEmail(recipientEmail: string, submissionId: string, pdfBuffer: Buffer) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: `Orders <${fromEmail}>`,
+      to: [recipientEmail],
+      subject: `Order Confirmation - #${submissionId.slice(0, 8)}`,
+      html: `<p>Thank you for your order. A summary of your order is attached.</p>`,
+      attachments: [
+        {
+          filename: `order_${submissionId}.pdf`,
+          content: pdfBuffer,
+        },
+      ],
+    })
+
+    if (error) {
+      console.error("Resend error:", error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true, data }
+  } catch (error) {
+    console.error("Error sending confirmation email:", error)
+    return { success: false, error: "Failed to send email" }
+  }
+}
+
+export async function sendOrderCompletionEmail(submission: Submission) {
+  if (!submission.email) {
+    console.log("No recipient email found for this submission.")
+    return { success: false, error: "No recipient email." }
+  }
+
+  try {
+    const subject = `Your Order #${submission.order_number} is Complete`
+    const deliveryDate = submission.expected_delivery_date
+      ? new Date(submission.expected_delivery_date).toLocaleDateString("en-AU", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : "Not specified"
+
+    const htmlBody = `
+<h1>Your Order is Complete!</h1>
+<p>Hi ${submission.ordered_by},</p>
+<p>Great news! Your order #${submission.order_number} has been processed and is on its way.</p>
+
+<h2>Delivery Details</h2>
+<ul>
+  ${submission.delivery_details ? `<li><strong>Details:</strong> ${submission.delivery_details}</li>` : ""}
+  <li><strong>Expected Delivery Date:</strong> ${deliveryDate}</li>
+</ul>
+
+<p>Thank you for your order.</p>
+`
+
+    const { data, error } = await resend.emails.send({
+      from: `Orders <${fromEmail}>`,
+      to: [submission.email],
+      subject: subject,
+      html: htmlBody,
+    })
+
+    if (error) {
+      console.error("Resend completion email error:", error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true, data }
+  } catch (error) {
+    console.error("Error sending completion email:", error)
+    return { success: false, error: "Failed to send completion email" }
+  }
 }

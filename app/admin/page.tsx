@@ -5,7 +5,8 @@ import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useForm, Controller } from "react-hook-form"
-import { format } from "date-fns"
+import { format, addDays } from "date-fns"
+import type { DateRange } from "react-day-picker"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,10 +39,11 @@ import {
   CalendarIcon,
   Search,
   ClipboardCopy,
+  CalendarIcon as CalendarIconFilter,
 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { runSeed, autoAssignPdfs, reloadSchemaCache } from "./actions"
+import { runSeed, autoAssignPdfs, reloadSchemaCache, scrapeClinicsFromWebsite } from "./actions"
 import type { Brand, UploadedFile, Submission, Clinic } from "@/lib/types"
 import { Textarea } from "@/components/ui/textarea"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -49,6 +51,53 @@ import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+
+function DatePickerWithRange({
+  className,
+  date,
+  setDate,
+}: {
+  className?: string
+  date: DateRange | undefined
+  setDate: (date: DateRange | undefined) => void
+}) {
+  return (
+    <div className={cn("grid gap-2", className)}>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            id="date"
+            variant={"outline"}
+            className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
+          >
+            <CalendarIconFilter className="mr-2 h-4 w-4" />
+            {date?.from ? (
+              date.to ? (
+                <>
+                  {format(date.from, "LLL dd, y")} - {format(date.to, "LLL dd, y")}
+                </>
+              ) : (
+                format(date.from, "LLL dd, y")
+              )
+            ) : (
+              <span>Pick a date range</span>
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            initialFocus
+            mode="range"
+            defaultMonth={date?.from}
+            selected={date}
+            onSelect={setDate}
+            numberOfMonths={2}
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+}
 
 export default function AdminDashboard() {
   const [brands, setBrands] = useState<Brand[]>([])
@@ -71,6 +120,7 @@ export default function AdminDashboard() {
   const [submissionSearch, setSubmissionSearch] = useState("")
   const [selectedBrandFilter, setSelectedBrandFilter] = useState("all")
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("all")
+  const [dateRange, setDateRange] = useState<DateRange | undefined>()
 
   useEffect(() => {
     loadAllData()
@@ -155,8 +205,11 @@ export default function AdminDashboard() {
 
   const saveBrand = async (brandData: any) => {
     try {
-      const response = await fetch("/api/admin/brands", {
-        method: editingBrand ? "PUT" : "POST",
+      const url = brandData.id ? `/api/admin/brands?id=${brandData.id}` : "/api/admin/brands"
+      const method = brandData.id ? "PUT" : "POST"
+
+      const response = await fetch(url, {
+        method: method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(brandData),
       })
@@ -277,9 +330,16 @@ export default function AdminDashboard() {
 
       const matchesStatus = selectedStatusFilter === "all" || submission.status === selectedStatusFilter
 
-      return matchesSearch && matchesBrand && matchesStatus
+      const submissionDate = new Date(submission.created_at)
+      const matchesDate =
+        !dateRange ||
+        ((!dateRange.from || submissionDate >= dateRange.from) &&
+          // Set time to end of day for 'to' date to include all submissions on that day
+          (!dateRange.to || submissionDate <= addDays(dateRange.to, 1)))
+
+      return matchesSearch && matchesBrand && matchesStatus && matchesDate
     })
-  }, [submissions, submissionSearch, selectedBrandFilter, selectedStatusFilter])
+  }, [submissions, submissionSearch, selectedBrandFilter, selectedStatusFilter, dateRange])
 
   const handleSelectAllSubmissions = (checked: boolean | "indeterminate") => {
     if (checked === true) {
@@ -489,7 +549,7 @@ export default function AdminDashboard() {
                       </Button>
                     </div>
                   </div>
-                  <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="relative md:col-span-1">
                       <label htmlFor="submission-search" className="sr-only">
                         Search Submissions
@@ -531,6 +591,9 @@ export default function AdminDashboard() {
                           <SelectItem value="completed">Completed</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+                    <div className="md:col-span-1">
+                      <DatePickerWithRange date={dateRange} setDate={setDateRange} />
                     </div>
                   </div>
                 </CardHeader>
@@ -781,6 +844,9 @@ function BrandForm({
     active: brand?.active ?? true,
   })
   const [clinics, setClinics] = useState<Clinic[]>(brand?.clinics || [])
+  const [websiteUrl, setWebsiteUrl] = useState("")
+  const [isScraping, setIsScraping] = useState(false)
+  const [scrapingError, setScrapingError] = useState<string | null>(null)
 
   useEffect(() => {
     if (brand) {
@@ -808,7 +874,7 @@ function BrandForm({
 
   const handleClinicChange = (index: number, field: "name" | "address", value: string) => {
     const newClinics = [...clinics]
-    newClinics[index][field] = value
+    newClinics[index] = { ...newClinics[index], [field]: value }
     setClinics(newClinics)
   }
 
@@ -821,9 +887,27 @@ function BrandForm({
     setClinics(newClinics)
   }
 
+  const handleScrape = async () => {
+    setIsScraping(true)
+    setScrapingError(null)
+    const result = await scrapeClinicsFromWebsite(websiteUrl)
+    if (result.error) {
+      setScrapingError(result.error)
+    } else if (result.clinics) {
+      const existingClinics = new Set(clinics.map((c) => `${c.name.trim()}|${c.address.trim()}`))
+      const newClinics = result.clinics.filter((scrapedClinic) => {
+        const key = `${scrapedClinic.name.trim()}|${scrapedClinic.address.trim()}`
+        return !existingClinics.has(key)
+      })
+      setClinics((prev) => [...prev, ...newClinics])
+    }
+    setIsScraping(false)
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSave({ ...formData, clinics })
+    const filteredClinics = clinics.filter((c) => c.name.trim() !== "" && c.address.trim() !== "")
+    onSave({ ...formData, clinics: filteredClinics })
   }
 
   return (
@@ -863,7 +947,7 @@ function BrandForm({
       <div>
         <Label htmlFor="logo">Logo URL</Label>
         <Select
-          value={formData.logo}
+          value={formData.logo || ""}
           onValueChange={(value) => setFormData({ ...formData, logo: value === "none" ? "" : value })}
         >
           <SelectTrigger>
@@ -882,9 +966,24 @@ function BrandForm({
         <Input
           className="mt-2"
           placeholder="Or enter custom URL"
-          value={formData.logo}
+          value={formData.logo || ""}
           onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
         />
+      </div>
+      <div>
+        <Label>Scrape Clinic Locations from Website</Label>
+        <div className="flex items-center gap-2 mt-1">
+          <Input
+            type="url"
+            placeholder="https://www.example.com/locations"
+            value={websiteUrl}
+            onChange={(e) => setWebsiteUrl(e.target.value)}
+          />
+          <Button type="button" onClick={handleScrape} disabled={isScraping || !websiteUrl}>
+            {isScraping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Scrape"}
+          </Button>
+        </div>
+        {scrapingError && <p className="text-sm text-red-500 mt-1">{scrapingError}</p>}
       </div>
       <div>
         <Label>Clinic Locations</Label>
@@ -922,8 +1021,13 @@ function BrandForm({
               </div>
             </div>
           ))}
+          {clinics.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No clinics added. Use the scraper above or add one manually.
+            </p>
+          )}
           <Button type="button" variant="secondary" onClick={addClinic} className="mt-2">
-            <Plus className="mr-2 h-4 w-4" /> Add Clinic
+            <Plus className="mr-2 h-4 w-4" /> Add Clinic Manually
           </Button>
         </div>
       </div>
@@ -1147,7 +1251,7 @@ function SubmissionDetailsDialog({
               <div className="flex justify-between">
                 <span className="font-semibold text-gray-600">PDF:</span>
                 <a
-                  href={submission.pdf_url}
+                  href={submission.pdf_url || "#"}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-600 hover:underline flex items-center gap-1"
@@ -1216,8 +1320,8 @@ function SubmissionDetailsDialog({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {orderedItems.map((item: any) => (
-                    <TableRow key={item.code}>
+                  {orderedItems.map((item: any, index: number) => (
+                    <TableRow key={item.code || index}>
                       <TableCell className="font-mono text-xs">{item.code}</TableCell>
                       <TableCell className="font-medium">{item.name}</TableCell>
                       <TableCell>{item.quantity === "other" ? item.customQuantity || "N/A" : item.quantity}</TableCell>

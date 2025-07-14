@@ -271,6 +271,17 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
     }
   }
 
+  if (!brandData) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600">Error</h1>
+          <p className="text-gray-600">Brand data could not be loaded. Please try again later.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <FormProvider {...methods}>
       <div className="min-h-screen bg-[#f9f9f9] p-4 sm:p-6 md:p-8 font-work-sans">
@@ -337,11 +348,13 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                           <SelectValue placeholder="Select a clinic" />
                         </SelectTrigger>
                         <SelectContent>
-                          {clinicLocations.map((clinic) => (
-                            <SelectItem key={clinic.name} value={clinic.name}>
-                              {clinic.name}
-                            </SelectItem>
-                          ))}
+                          {clinicLocations
+                            .filter((clinic) => clinic.name && clinic.name.trim() !== "")
+                            .map((clinic) => (
+                              <SelectItem key={clinic.name} value={clinic.name}>
+                                {clinic.name}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                       {errors.billTo && <p className="text-xs text-red-500">{errors.billTo.message}</p>}
@@ -355,11 +368,13 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                           <SelectValue placeholder="Select a clinic" />
                         </SelectTrigger>
                         <SelectContent>
-                          {clinicLocations.map((clinic) => (
-                            <SelectItem key={clinic.name} value={clinic.name}>
-                              {clinic.name}
-                            </SelectItem>
-                          ))}
+                          {clinicLocations
+                            .filter((clinic) => clinic.name && clinic.name.trim() !== "")
+                            .map((clinic) => (
+                              <SelectItem key={clinic.name} value={clinic.name}>
+                                {clinic.name}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                       {errors.deliverTo && <p className="text-xs text-red-500">{errors.deliverTo.message}</p>}

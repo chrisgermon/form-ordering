@@ -1,51 +1,64 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase"
+import { sendOrderCompletionEmail } from "@/lib/email"
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = createServerSupabaseClient()
   try {
-    const supabase = createServerSupabaseClient()
-    const body = await request.json()
-    const { id } = params
+    const { delivery_details, expected_delivery_date } = await request.json()
 
-    const { delivery_details, expected_delivery_date } = body
-
-    if (!id) {
+    if (!params.id) {
       return NextResponse.json({ error: "Submission ID is required" }, { status: 400 })
     }
 
-    const updateData: any = {
-      status: "completed",
-      delivery_details,
-      expected_delivery_date,
-      completed_at: new Date().toISOString(),
-      // completed_by: 'Admin' // Placeholder until user auth is added
-    }
-
-    const { data, error } = await supabase.from("submissions").update(updateData).eq("id", id).select().single()
+    const { data: updatedSubmission, error } = await supabase
+      .from("submissions")
+      .update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        delivery_details,
+        expected_delivery_date,
+      })
+      .eq("id", params.id)
+      .select(
+        `
+        *,
+        brand:brands (name)
+      `,
+      )
+      .single()
 
     if (error) {
       console.error("Error updating submission:", error)
+      // Check for a specific error if PostgREST schema cache is stale
+      if (error.message.includes("column") && error.message.includes("does not exist")) {
+        return NextResponse.json(
+          {
+            error: "Database schema might be out of date. Please try reloading the schema in the admin dashboard.",
+            details: error.message,
+          },
+          { status: 500 },
+        )
+      }
       throw error
     }
 
-    return NextResponse.json(data)
-  } catch (error) {
-    console.error("Full error in PUT /api/admin/submissions/[id]:", error)
-
-    let errorMessage = "An unknown error occurred while updating the submission."
-    let statusCode = 500
-
-    if (error && typeof error === "object" && "code" in error && "message" in error) {
-      const supabaseError = error as { code: string; message: string }
-      errorMessage = supabaseError.message
-
-      // Check for the specific schema cache error and provide a helpful message
-      if (supabaseError.code === "PGRST204" && supabaseError.message.includes("in the schema cache")) {
-        errorMessage = `Database schema mismatch: ${supabaseError.message}. The API cache is stale. Please restart your project in the Supabase dashboard (Settings > General > Restart project) to force a refresh.`
-        statusCode = 409 // Conflict
+    if (updatedSubmission) {
+      // Manually map brand name for consistency
+      const submissionForEmail = {
+        ...updatedSubmission,
+        brand_name: updatedSubmission.brand?.name || "Unknown Brand",
       }
+      // Fire and forget the email
+      sendOrderCompletionEmail(submissionForEmail).catch((e) =>
+        console.error(`Failed to send completion email for submission ${updatedSubmission.id}:`, e),
+      )
     }
 
-    return NextResponse.json({ error: errorMessage }, { status: statusCode })
+    return NextResponse.json(updatedSubmission)
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    console.error("PUT /api/admin/submissions/[id] Error:", errorMessage)
+    return NextResponse.json({ error: "Failed to update submission", details: errorMessage }, { status: 500 })
   }
 }

@@ -9,6 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ai-sdk/openai": "latest",
     "@dnd-kit/core": "latest",
     "@dnd-kit/sortable": "latest",
     "@dnd-kit/utilities": "latest",
@@ -23,6 +24,8 @@
     "@radix-ui/react-tooltip": "latest",
     "@supabase/supabase-js": "latest",
     "@vercel/blob": "latest",
+    "ai": "latest",
+    "cheerio": "latest",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "latest",
@@ -37,8 +40,10 @@
     "react-hook-form": "latest",
     "react-hot-toast": "^2.4.1",
     "react-resizable-panels": "^2.0.19",
+    "resend": "latest",
     "tailwind-merge": "^2.5.5",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "latest"
   },
   "devDependencies": {
     "@types/html-to-text": "^9.0.4",
