@@ -1,230 +1,140 @@
-import nodemailer from "nodemailer"
 import { Resend } from "resend"
-import type { Submission } from "./types"
+import type { Submission, Brand } from "./types"
+import { format } from "date-fns"
 
-// --- Nodemailer (Mailgun) setup for original order submission ---
-const transporter = nodemailer.createTransport({
-  host: "smtp.mailgun.org",
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.MAILGUN_SMTP_USERNAME!,
-    pass: process.env.MAILGUN_SMTP_PASSWORD!,
-  },
-})
+const fromEmail = process.env.FROM_EMAIL
 
-export interface EmailOptions {
-  to: string
-  cc?: string
+function getResendClient() {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    console.error("RESEND_API_KEY environment variable is not set.")
+    throw new Error("Server configuration error: RESEND_API_KEY is not set.")
+  }
+  return new Resend(apiKey)
+}
+
+export async function sendEmail({
+  to,
+  subject,
+  html,
+}: {
+  to: string[]
   subject: string
   html: string
-  attachments?: Array<{
-    filename: string
-    content: Buffer
-    contentType: string
-  }>
-}
-
-export async function sendEmail(options: EmailOptions) {
+}) {
+  if (!fromEmail) {
+    console.error("FROM_EMAIL environment variable is not set.")
+    throw new Error("Server configuration error: FROM_EMAIL is not set.")
+  }
   try {
-    const ccEmails = options.cc ? `${options.cc}, chris@crowdit.com.au` : "chris@crowdit.com.au"
-
-    const info = await transporter.sendMail({
-      from: process.env.FROM_EMAIL || "noreply@printedforms.com.au",
-      to: options.to,
-      cc: ccEmails,
-      subject: options.subject,
-      html: options.html,
-      attachments: options.attachments,
+    const resend = getResendClient()
+    const data = await resend.emails.send({
+      from: fromEmail,
+      to,
+      subject,
+      html,
     })
-
-    console.log("Email sent successfully via Mailgun:", info.messageId)
-    return { success: true, messageId: info.messageId }
+    console.log("Email sent successfully:", data.id)
+    return data
   } catch (error) {
-    console.error("Error sending email via Mailgun:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
+    console.error("Error sending email:", error)
+    throw error
   }
 }
 
-export function generateOrderEmailTemplate(
-  brandName: string,
-  formData: any,
-  selectedItems: Array<{ code: string; name: string; quantity: string; description?: string }>,
-  orderNumber: string,
-) {
-  const itemsHtml = selectedItems
-    .map(
-      (item) => `
-<tr>
- <td style="padding: 8px; border: 1px solid #ddd;">${item.code}</td>
- <td style="padding: 8px; border: 1px solid #ddd;">${item.name}</td>
- <td style="padding: 8px; border: 1px solid #ddd;">${item.description || ""}</td>
- <td style="padding: 8px; border: 1px solid #ddd;">${item.quantity}</td>
-</tr>
-`,
-    )
-    .join("")
+export function generateOrderEmailTemplate(submission: Submission, brand: Brand) {
+  const submissionDate = format(new Date(submission.created_at), "dd/MM/yyyy HH:mm")
+  const clinic = brand.clinics.find((c) => c.name === submission.delivery_location)
 
   return `
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>New Printing Order - ${orderNumber}</title>
-</head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-<div style="max-width: 800px; margin: 0 auto; padding: 20px;">
-<h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
- New Printing Order Submission
-</h1>
-
-<div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
- <h2 style="margin-top: 0; color: #1e40af;">Order Details</h2>
- <table style="width: 100%; border-collapse: collapse;">
-   <tr>
-     <td style="padding: 8px; font-weight: bold; width: 150px;">Order Number:</td>
-     <td style="padding: 8px;"><strong>${orderNumber}</strong></td>
-   </tr>
-   <tr>
-     <td style="padding: 8px; font-weight: bold; width: 150px;">Brand:</td>
-     <td style="padding: 8px;">${brandName}</td>
-   </tr>
-   <tr>
-     <td style="padding: 8px; font-weight: bold;">Ordered By:</td>
-     <td style="padding: 8px;">${formData.orderedBy}</td>
-   </tr>
-   <tr>
-     <td style="padding: 8px; font-weight: bold;">Email:</td>
-     <td style="padding: 8px;">${formData.email}</td>
-   </tr>
-   <tr>
-     <td style="padding: 8px; font-weight: bold;">Bill to Clinic:</td>
-     <td style="padding: 8px;">${formData.billTo}</td>
-   </tr>
-   <tr>
-     <td style="padding: 8px; font-weight: bold;">Deliver to Clinic:</td>
-     <td style="padding: 8px;">${formData.deliverTo}</td>
-   </tr>
-   <tr>
-     <td style="padding: 8px; font-weight: bold;">Date:</td>
-     <td style="padding: 8px;">${
-       formData.date ? new Date(formData.date).toLocaleDateString("en-AU") : "Not specified"
-     }</td>
-   </tr>
- </table>
-</div>
-
-<div style="margin: 20px 0;">
- <h2 style="color: #1e40af;">Selected Items</h2>
- <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
-   <thead>
-     <tr style="background-color: #f1f5f9;">
-       <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Code</th>
-       <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Item</th>
-       <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Description</th>
-       <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Quantity</th>
-     </tr>
-   </thead>
-   <tbody>
-     ${itemsHtml}
-   </tbody>
- </table>
-</div>
-
-<div style="margin-top: 30px; padding: 20px; background-color: #e0f2fe; border-radius: 8px;">
- <p style="margin: 0; font-size: 14px; color: #0369a1;">
-   This order was submitted through the Printed Form Ordering system. 
-   Please find the detailed PDF order form attached to this email.
- </p>
-</div>
-
-<div style="margin-top: 20px; text-align: center; font-size: 12px; color: #6b7280;">
- <p>Generated by Printed Form Ordering System</p>
- <p>Platform created by <a href="https://crowdit.com.au" style="color: #2563eb;">Crowd IT</a></p>
-</div>
-</div>
-</body>
-</html>
-`
-}
-
-// --- Resend setup for order completion emails ---
-const resend = new Resend(process.env.RESEND_API_KEY)
-const fromEmail = process.env.FROM_EMAIL || "orders@yourdomain.com"
-
-export async function sendOrderConfirmationEmail(recipientEmail: string, submissionId: string, pdfBuffer: Buffer) {
-  try {
-    const { data, error } = await resend.emails.send({
-      from: `Orders <${fromEmail}>`,
-      to: [recipientEmail],
-      subject: `Order Confirmation - #${submissionId.slice(0, 8)}`,
-      html: `<p>Thank you for your order. A summary of your order is attached.</p>`,
-      attachments: [
-        {
-          filename: `order_${submissionId}.pdf`,
-          content: pdfBuffer,
-        },
-      ],
-    })
-
-    if (error) {
-      console.error("Resend error:", error)
-      return { success: false, error: error.message }
-    }
-
-    return { success: true, data }
-  } catch (error) {
-    console.error("Error sending confirmation email:", error)
-    return { success: false, error: "Failed to send email" }
-  }
-}
-
-export async function sendOrderCompletionEmail(submission: Submission) {
-  if (!submission.email) {
-    console.log("No recipient email found for this submission.")
-    return { success: false, error: "No recipient email." }
-  }
-
-  try {
-    const subject = `Your Order #${submission.order_number} is Complete`
-    const deliveryDate = submission.expected_delivery_date
-      ? new Date(submission.expected_delivery_date).toLocaleDateString("en-AU", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        })
-      : "Not specified"
-
-    const htmlBody = `
-<h1>Your Order is Complete!</h1>
-<p>Hi ${submission.ordered_by},</p>
-<p>Great news! Your order #${submission.order_number} has been processed and is on its way.</p>
-
-<h2>Delivery Details</h2>
+<div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+<img src="${brand.logo_url}" alt="${brand.name} Logo" style="max-width: 200px; margin-bottom: 20px;">
+<h2>New Order Received: #${submission.order_number}</h2>
+<p>A new order has been placed for <strong>${brand.name}</strong>.</p>
+<h3>Order Details:</h3>
 <ul>
-  ${submission.delivery_details ? `<li><strong>Details:</strong> ${submission.delivery_details}</li>` : ""}
-  <li><strong>Expected Delivery Date:</strong> ${deliveryDate}</li>
+  <li><strong>Order Number:</strong> ${submission.order_number}</li>
+  <li><strong>Date:</strong> ${submissionDate}</li>
+  <li><strong>Practice Name:</strong> ${submission.practice_name}</li>
+  <li><strong>Contact Name:</strong> ${submission.contact_name}</li>
+  <li><strong>Contact Email:</strong> ${submission.email}</li>
+  <li><strong>Contact Phone:</strong> ${submission.phone}</li>
+  <li><strong>Delivery Location:</strong> ${submission.delivery_location}</li>
+  ${clinic?.address ? `<li><strong>Delivery Address:</strong> ${clinic.address}</li>` : ""}
 </ul>
-
-<p>Thank you for your order.</p>
+<h3>Items Ordered:</h3>
+<table style="width: 100%; border-collapse: collapse;">
+  <thead>
+    <tr>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Item</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Quantity</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${Object.entries(submission.ordered_items)
+      .map(
+        ([item, quantity]) => `
+      <tr>
+        <td style="border: 1px solid #ddd; padding: 8px;">${item}</td>
+        <td style="border: 1px solid #ddd; padding: 8px;">${quantity}</td>
+      </tr>
+    `,
+      )
+      .join("")}
+  </tbody>
+</table>
+${submission.notes ? `<h3>Notes:</h3><p style="white-space: pre-wrap;">${submission.notes}</p>` : ""}
+</div>
 `
+}
 
-    const { data, error } = await resend.emails.send({
-      from: `Orders <${fromEmail}>`,
-      to: [submission.email],
-      subject: subject,
-      html: htmlBody,
+export async function sendOrderCompletionEmail(submission: any) {
+  if (!fromEmail) {
+    console.error("FROM_EMAIL environment variable is not set.")
+    throw new Error("Server configuration error: FROM_EMAIL is not set.")
+  }
+
+  const to = [submission.email]
+  const subject = `Your order #${submission.order_number} has been dispatched!`
+  const html = generateOrderCompletionEmailTemplate(submission)
+
+  try {
+    const resend = getResendClient()
+    const data = await resend.emails.send({
+      from: fromEmail,
+      to,
+      subject,
+      html,
     })
-
-    if (error) {
-      console.error("Resend completion email error:", error)
-      return { success: false, error: error.message }
-    }
-
-    return { success: true, data }
+    console.log("Completion email sent successfully:", data.id)
+    return data
   } catch (error) {
     console.error("Error sending completion email:", error)
-    return { success: false, error: "Failed to send completion email" }
+    throw error
   }
+}
+
+export function generateOrderCompletionEmailTemplate(submission: any) {
+  const completionDate = format(new Date(submission.completed_at), "dd/MM/yyyy")
+  const expectedDeliveryDate = submission.expected_delivery_date
+    ? format(new Date(submission.expected_delivery_date), "dd/MM/yyyy")
+    : "Not specified"
+
+  return `
+<div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+<h2>Order #${submission.order_number} Dispatched!</h2>
+<p>Hello ${submission.contact_name},</p>
+<p>Great news! Your order for <strong>${submission.brand_name}</strong> has been completed and dispatched on ${completionDate}.</p>
+<h3>Dispatch Details:</h3>
+<ul>
+  <li><strong>Expected Delivery Date:</strong> ${expectedDeliveryDate}</li>
+</ul>
+${
+  submission.delivery_details
+    ? `<h3>Delivery Notes:</h3><p style="white-space: pre-wrap;">${submission.delivery_details}</p>`
+    : ""
+}
+<p>Thank you for your order!</p>
+</div>
+`
 }
