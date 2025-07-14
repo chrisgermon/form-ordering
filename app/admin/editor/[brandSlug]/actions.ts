@@ -62,8 +62,8 @@ function parseJotformItemHTML(html: string): {
   }
 
   // 1. Extract sample link first
-  const sampleLinkMatch = html.match(/<a\s+href="([^"]+)"/)
-  const sample_link = sampleLinkMatch ? sampleLinkMatch[1].replace(/&amp;/g, "&") : null
+  const sampleLinkMatch = html.match(/<a\s+(?:[^>]*?\s+)?href\s*=\s*(["'])(.*?)\1/i)
+  const sample_link = sampleLinkMatch ? sampleLinkMatch[2].replace(/&amp;/g, "&") : null
 
   // 2. Clean the HTML into a single string
   const textContent = html
