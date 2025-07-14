@@ -1,30 +1,18 @@
-import { createClient } from "@supabase/supabase-js"
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+import { NextResponse, type NextRequest } from "next/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const supabase = createServerSupabaseClient()
+
+    const { data: submissions, error } = await supabase
       .from("submissions")
       .select(
         `
-        id,
-        created_at,
-        brand_id,
-        ordered_by,
-        email,
-        deliver_to,
-        bill_to,
-        items,
-        status,
-        pdf_url,
-        order_number,
-        completed_at,
-        delivery_details,
-        expected_delivery_date,
-        brands (name)
+        *,
+        brands (
+          name
+        )
       `,
       )
       .order("created_at", { ascending: false })
@@ -34,23 +22,29 @@ export async function GET() {
       throw error
     }
 
-    const submissions = data.map((s: any) => ({
+    // The Supabase query returns brand as an object { name: '...' } or null.
+    // We'll flatten it for easier use on the client.
+    const formattedSubmissions = submissions.map((s: any) => ({
       ...s,
       brand_name: s.brands?.name || "Unknown Brand",
+      brands: undefined, // remove the nested object
     }))
 
-    return NextResponse.json(submissions)
+    return NextResponse.json(formattedSubmissions)
   } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch submissions" }, { status: 500 })
+    console.error("Error fetching submissions:", error)
+    const errorMessage = error instanceof Error ? error.message : "Failed to fetch submissions"
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
+    const supabase = createServerSupabaseClient()
     const { ids } = await request.json()
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return NextResponse.json({ error: "Invalid or empty submission IDs provided." }, { status: 400 })
+      return NextResponse.json({ error: "Submission IDs are required" }, { status: 400 })
     }
 
     const { error } = await supabase.from("submissions").delete().in("id", ids)
@@ -62,7 +56,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ message: `${ids.length} submission(s) deleted successfully.` })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return NextResponse.json({ error: `Failed to delete submissions: ${errorMessage}` }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : "Failed to delete submissions"
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
