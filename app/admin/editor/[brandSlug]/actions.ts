@@ -61,22 +61,20 @@ function parseJotformItemHTML(html: string): {
     return { code: null, name: null, description: null, sample_link: null }
   }
 
-  // 1. Extract sample link first, as it's the most unique element.
+  // 1. Extract sample link first
   const sampleLinkMatch = html.match(/<a\s+href="([^"]+)"/)
   const sample_link = sampleLinkMatch ? sampleLinkMatch[1].replace(/&amp;/g, "&") : null
 
-  // 2. Clean the HTML into a single string, replacing breaks with a unique separator
-  // to preserve multiline descriptions.
+  // 2. Clean the HTML into a single string
   const textContent = html
-    .replace(/<br\s*\/?>/gi, "|||")
-    .replace(/<p[^>]*>/gi, "|||")
-    .replace(/<\/[p|span]>/gi, " ||| ")
-    .replace(/<[^>]+>/g, " ") // Remove other tags
+    .replace(/<br\s*\/?>/gi, "|||") // Use a unique separator for line breaks
+    .replace(/<\/(p|div|span|strong|em)>/gi, "|||") // Add separator at end of block elements
+    .replace(/<[^>]+>/g, " ") // Remove all other tags
     .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim()
 
-  // 3. Define keywords to look for. Order matters for fallback logic.
+  // 3. Define keywords
   const keywords = ["CODE:", "ITEM:", "REFERRALS:", "PATIENT BROCHURES:", "DESCRIPTION:", "SAMPLE:"]
 
   // Function to extract value between two keywords
@@ -100,14 +98,13 @@ function parseJotformItemHTML(html: string): {
 
     return text
       .substring(valueStart, valueEnd)
-      .replace(/\|\|\|/g, "\n") // Restore newlines
+      .replace(/\|\|\|/g, "\n") // Restore newlines from our separator
+      .replace(/\s\s+/g, " ") // Clean up multiple spaces
       .trim()
   }
 
   const code = getValue("CODE:", textContent)
   const description = getValue("DESCRIPTION:", textContent)
-
-  // Name can be under "ITEM:", "REFERRALS:", or "PATIENT BROCHURES:"
   const name =
     getValue("ITEM:", textContent) || getValue("REFERRALS:", textContent) || getValue("PATIENT BROCHURES:", textContent)
 
@@ -136,6 +133,7 @@ export async function importFromJotform(brandId: string, brandSlug: string, jotf
     const questions = Object.values(data.content || {})
 
     // First Pass: Build a map of product details from 'control_text' elements
+    console.log("Starting JotForm import: First pass - building product details map...")
     const productDetailsMap = new Map<
       string,
       {
@@ -155,11 +153,14 @@ export async function importFromJotform(brandId: string, brandSlug: string, jotf
             description: parsed.description,
             sample_link: parsed.sample_link,
           })
+          console.log(`Mapped code "${parsed.code}" to name "${parsed.name}"`)
         }
       }
     }
+    console.log(`First pass complete. Found details for ${productDetailsMap.size} products.`)
 
     // Second Pass: Create sections and items by looking up details in the map
+    console.log("Second pass - creating sections and items...")
     const sortedQuestions = (questions as any[]).sort((a, b) => Number(a.order) - Number(b.order))
     const supabase = createServerSupabaseClient()
     let currentSectionId: string | null = null
@@ -199,14 +200,15 @@ export async function importFromJotform(brandId: string, brandSlug: string, jotf
         (q.type === "control_checkbox" || q.type === "control_radio" || q.type === "control_dropdown") &&
         currentSectionId
       ) {
-        // The 'text' of the checkbox question is the product code.
         const productCode = q.text.trim()
+        console.log(`Processing item with code: "${productCode}"`)
         const details = productDetailsMap.get(productCode)
 
         if (!details) {
           console.warn(`Could not find details for product code: "${productCode}". Skipping item.`)
           continue
         }
+        console.log(`Found details for "${productCode}":`, details)
 
         const quantities = q.options ? q.options.split("|").map((opt: string) => opt.trim()) : []
 
@@ -223,7 +225,9 @@ export async function importFromJotform(brandId: string, brandSlug: string, jotf
 
         const { error } = await supabase.from("product_items").insert(newItem)
         if (error) {
-          console.warn(`Could not import item "${newItem.name}": ${error.message}`)
+          console.error(`Database error importing item "${newItem.name}":`, error)
+        } else {
+          console.log(`Successfully inserted item "${newItem.name}"`)
         }
       }
     }
