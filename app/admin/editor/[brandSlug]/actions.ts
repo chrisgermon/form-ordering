@@ -4,6 +4,7 @@ import { createAdminClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 import type { Section } from "@/lib/types"
 import { parseFormWithAI } from "@/lib/scraping"
+import { randomUUID } from "crypto"
 
 export async function saveFormChanges(
   brandId: string,
@@ -13,74 +14,74 @@ export async function saveFormChanges(
 ) {
   const supabase = createAdminClient()
 
-  // Handle deleted items and sections first
-  if (deletedItemIds.length > 0) {
-    const { error: deleteItemError } = await supabase.from("items").delete().in("id", deletedItemIds)
-    if (deleteItemError) {
-      console.error("Item Deletion Error:", deleteItemError)
-      return { success: false, message: "Failed to delete one or more items." }
+  try {
+    // Handle deletions first
+    if (deletedItemIds.length > 0) {
+      const { error } = await supabase.from("items").delete().in("id", deletedItemIds)
+      if (error) throw new Error(`Item Deletion Error: ${error.message}`)
     }
-  }
+    if (deletedSectionIds.length > 0) {
+      const { error } = await supabase.from("sections").delete().in("id", deletedSectionIds)
+      if (error) throw new Error(`Section Deletion Error: ${error.message}`)
+    }
 
-  if (deletedSectionIds.length > 0) {
-    const { error: deleteSectionError } = await supabase.from("sections").delete().in("id", deletedSectionIds)
-    if (deleteSectionError) {
-      console.error("Section Deletion Error:", deleteSectionError)
-      return {
-        success: false,
-        message: "Failed to delete one or more sections.",
+    // Process sections and items
+    const sectionUpserts = []
+    const itemUpserts = []
+    const sectionIdMap = new Map<string, string>()
+
+    // Explicitly generate UUIDs for new sections
+    for (const s of sections) {
+      let sectionId = s.id
+      if (s.id.toString().startsWith("new-")) {
+        const newId = randomUUID()
+        sectionIdMap.set(s.id, newId)
+        sectionId = newId
+      }
+      sectionUpserts.push({
+        id: sectionId,
+        brand_id: brandId,
+        title: s.title,
+        position: s.position,
+      })
+
+      // Explicitly generate UUIDs for new items
+      for (const i of s.items) {
+        let itemId = i.id
+        if (i.id.toString().startsWith("new-")) {
+          itemId = randomUUID()
+        }
+        itemUpserts.push({
+          id: itemId,
+          brand_id: brandId,
+          section_id: sectionIdMap.get(s.id) || s.id,
+          name: i.name,
+          description: i.description,
+          field_type: i.field_type,
+          is_required: i.is_required,
+          placeholder: i.placeholder,
+          position: i.position,
+        })
       }
     }
-  }
 
-  // Prepare upserts for sections
-  const sectionUpserts = sections.map((s, index) => ({
-    id: s.id.toString().startsWith("new-") ? undefined : s.id,
-    brand_id: brandId,
-    title: s.title,
-    position: index,
-  }))
-
-  const { data: savedSections, error: sectionError } = await supabase.from("sections").upsert(sectionUpserts).select()
-
-  if (sectionError) {
-    console.error("Section Save Error:", sectionError)
-    return { success: false, message: "Failed to save sections." }
-  }
-
-  // Map old new-IDs to newly created UUIDs
-  const sectionIdMap = new Map<string, string>()
-  sections.forEach((s, index) => {
-    if (s.id.toString().startsWith("new-")) {
-      sectionIdMap.set(s.id.toString(), savedSections[index].id)
+    // Perform upserts
+    if (sectionUpserts.length > 0) {
+      const { error: sectionError } = await supabase.from("sections").upsert(sectionUpserts)
+      if (sectionError) throw new Error(`Section Save Error: ${sectionError.message}`)
     }
-  })
 
-  // Prepare upserts for items
-  const itemUpserts = sections.flatMap((s, sectionIndex) =>
-    s.items.map((i, itemIndex) => ({
-      id: i.id.toString().startsWith("new-") ? undefined : i.id,
-      brand_id: brandId,
-      section_id: sectionIdMap.get(s.id.toString()) || s.id,
-      name: i.name,
-      description: i.description,
-      field_type: i.field_type,
-      is_required: i.is_required,
-      placeholder: i.placeholder,
-      position: itemIndex,
-    })),
-  )
-
-  if (itemUpserts.length > 0) {
-    const { error: itemError } = await supabase.from("items").upsert(itemUpserts)
-    if (itemError) {
-      console.error("Item Save Error:", itemError)
-      return { success: false, message: "Failed to save items." }
+    if (itemUpserts.length > 0) {
+      const { error: itemError } = await supabase.from("items").upsert(itemUpserts)
+      if (itemError) throw new Error(`Item Save Error: ${itemError.message}`)
     }
-  }
 
-  revalidatePath(`/admin/editor/${brandId}`)
-  return { success: true, message: "Form saved successfully!" }
+    revalidatePath(`/admin/editor/${brandId}`)
+    return { success: true, message: "Form saved successfully!" }
+  } catch (error: any) {
+    console.error("Error saving form changes:", error)
+    return { success: false, message: error.message }
+  }
 }
 
 export async function importFormFromHtml(brandId: string, htmlContent: string) {
