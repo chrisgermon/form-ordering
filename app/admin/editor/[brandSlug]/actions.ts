@@ -47,6 +47,7 @@ export async function updateItemOrder(brandSlug: string, orderedItemIds: string[
 
 /**
  * Parses the HTML content from a JotForm question's text to extract item details.
+ * This version is more robust and less dependent on specific HTML tags or structure.
  * @param html The HTML string from JotForm.
  * @returns An object containing the parsed code, name, description, and sample_link.
  */
@@ -60,37 +61,55 @@ function parseJotformItemHTML(html: string): {
     return { code: null, name: null, description: null, sample_link: null }
   }
 
-  // Decode HTML entities like &amp; -> &
-  const cleanHtml = html.replace(/&amp;/g, "&")
+  // 1. Extract sample link first, as it's the most unique element.
+  const sampleLinkMatch = html.match(/<a\s+href="([^"]+)"/)
+  const sample_link = sampleLinkMatch ? sampleLinkMatch[1].replace(/&amp;/g, "&") : null
 
-  const codeMatch = cleanHtml.match(/<strong>CODE:\s*([^<]+)<\/strong>/)
-  const nameMatch = cleanHtml.match(/<strong>ITEM:\s*([^<]+)<\/strong>/)
+  // 2. Prepare text for parsing. Convert <br> and <p> to newlines and strip all other HTML tags.
+  const textWithNewlines = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<p[^>]*>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
 
-  // This regex captures the content within the DESCRIPTION strong tag
-  const descBlockMatch = cleanHtml.match(/<strong>DESCRIPTION:\s*([\s\S]+?)<\/strong>/)
+  const lines = textWithNewlines
+    .split("\n")
+    .map((line) => {
+      // Strip remaining tags and clean up whitespace
+      return line
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    })
+    .filter(Boolean) // Remove any empty lines
 
-  let description: string | null = null
-  let sample_link: string | null = null
+  let code: string | null = null
+  let name: string | null = null
+  const descriptionParts: string[] = []
 
-  if (descBlockMatch && descBlockMatch[1]) {
-    const descContent = descBlockMatch[1]
-    const sampleLinkMatch = descContent.match(/<a href="([^"]+)"/)
-
-    if (sampleLinkMatch && sampleLinkMatch[1]) {
-      sample_link = sampleLinkMatch[1]
-      // Get the part before the sample link line by splitting
-      description = descContent.split(/<br\s*\/?>\s*SAMPLE:/)[0].trim()
+  // 3. Iterate through the cleaned lines to find keyword-value pairs.
+  for (const line of lines) {
+    const upperLine = line.toUpperCase()
+    if (upperLine.includes("CODE:")) {
+      code = line.replace(/.*CODE:\s*/i, "").trim()
+    } else if (upperLine.includes("ITEM:")) {
+      name = line.replace(/.*ITEM:\s*/i, "").trim()
+    } else if (upperLine.includes("DESCRIPTION:")) {
+      const descPart = line.replace(/.*DESCRIPTION:\s*/i, "").trim()
+      if (descPart) descriptionParts.push(descPart)
+    } else if (upperLine.includes("SAMPLE:")) {
+      // This line contains the sample link text, which we can ignore.
+      continue
     } else {
-      description = descContent.trim()
+      // If a line doesn't contain a keyword, it's part of the description.
+      descriptionParts.push(line)
     }
   }
 
-  return {
-    code: codeMatch ? codeMatch[1].trim() : null,
-    name: nameMatch ? nameMatch[1].trim() : null,
-    description,
-    sample_link,
-  }
+  // 4. Join the description parts.
+  const description = descriptionParts.length > 0 ? descriptionParts.join("\n") : null
+
+  return { code, name, description, sample_link }
 }
 
 export async function importFromJotform(brandId: string, brandSlug: string, jotformId: string) {
@@ -152,9 +171,10 @@ export async function importFromJotform(brandId: string, brandSlug: string, jotf
 
         // Use the new parsing function to extract details from HTML
         const parsedData = parseJotformItemHTML(q.text)
+        const plainTextName = q.text.replace(/<[^>]+>/g, "").trim()
 
         const newItem = {
-          name: parsedData.name || q.text, // Fallback to full text if parsing fails
+          name: parsedData.name || plainTextName, // Fallback to stripped text
           code: parsedData.code || q.name, // Fallback to JotForm's internal name
           description: parsedData.description || q.subLabel || null, // Fallback to subLabel
           sample_link: parsedData.sample_link,
