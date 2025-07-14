@@ -47,7 +47,7 @@ export default async function BrandPage({ params }: { params: { brand: string } 
   const brandData = await getBrandData(params.brand)
 
   // If no brand is found (or it's not active), we explicitly show a 404 page.
-  // This is the source of the "Not Found" error.
+  // Since your database has the correct record, this part should now succeed.
   if (!brandData) {
     notFound()
   }
