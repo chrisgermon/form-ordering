@@ -47,7 +47,7 @@ export async function updateItemOrder(brandSlug: string, orderedItemIds: string[
 
 /**
  * Parses the HTML content from a JotForm question's text to extract item details.
- * This version is more robust and less dependent on specific HTML tags or structure.
+ * This version uses precise regex and is not dependent on HTML structure.
  * @param html The HTML string from JotForm.
  * @returns An object containing the parsed code, name, description, and sample_link.
  */
@@ -65,51 +65,32 @@ function parseJotformItemHTML(html: string): {
   const sampleLinkMatch = html.match(/<a\s+href="([^"]+)"/)
   const sample_link = sampleLinkMatch ? sampleLinkMatch[1].replace(/&amp;/g, "&") : null
 
-  // 2. Prepare text for parsing. Convert <br> and <p> to newlines and strip all other HTML tags.
-  const textWithNewlines = html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<p[^>]*>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
+  // 2. Clean the HTML into a single, space-separated string for reliable regex matching.
+  const textContent = html
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<p[^>]*>/gi, " ")
+    .replace(/<[^>]+>/g, " ") // Remove other tags
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
 
-  const lines = textWithNewlines
-    .split("\n")
-    .map((line) => {
-      // Strip remaining tags and clean up whitespace
-      return line
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-    })
-    .filter(Boolean) // Remove any empty lines
+  // 3. Use precise regex with lookaheads to extract each value.
+  // This prevents a value from "bleeding" into the next one.
+  const codeMatch = textContent.match(/CODE:\s*([^\s]+)/i)
+  const code = codeMatch ? codeMatch[1].trim() : null
 
-  let code: string | null = null
-  let name: string | null = null
-  const descriptionParts: string[] = []
+  const nameMatch = textContent.match(/ITEM:\s*(.*?)(?=\s*(?:CODE:|DESCRIPTION:|SAMPLE:|$))/i)
+  const name = nameMatch ? nameMatch[1].trim() : null
 
-  // 3. Iterate through the cleaned lines to find keyword-value pairs.
-  for (const line of lines) {
-    const upperLine = line.toUpperCase()
-    if (upperLine.includes("CODE:")) {
-      code = line.replace(/.*CODE:\s*/i, "").trim()
-    } else if (upperLine.includes("ITEM:")) {
-      name = line.replace(/.*ITEM:\s*/i, "").trim()
-    } else if (upperLine.includes("DESCRIPTION:")) {
-      const descPart = line.replace(/.*DESCRIPTION:\s*/i, "").trim()
-      if (descPart) descriptionParts.push(descPart)
-    } else if (upperLine.includes("SAMPLE:")) {
-      // This line contains the sample link text, which we can ignore.
-      continue
-    } else {
-      // If a line doesn't contain a keyword, it's part of the description.
-      descriptionParts.push(line)
-    }
+  const descriptionMatch = textContent.match(/DESCRIPTION:\s*(.*?)(?=\s*(?:CODE:|ITEM:|SAMPLE:|$))/i)
+  const description = descriptionMatch ? descriptionMatch[1].trim() : null
+
+  return {
+    code,
+    name,
+    description,
+    sample_link,
   }
-
-  // 4. Join the description parts.
-  const description = descriptionParts.length > 0 ? descriptionParts.join("\n") : null
-
-  return { code, name, description, sample_link }
 }
 
 export async function importFromJotform(brandId: string, brandSlug: string, jotformId: string) {
