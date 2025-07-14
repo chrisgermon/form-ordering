@@ -25,18 +25,27 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     if (error) {
       console.error("Error updating submission:", error)
-      // The error object from Supabase contains the specific message
       throw error
     }
 
     return NextResponse.json(data)
   } catch (error) {
-    // Log the full error for better debugging
     console.error("Full error in PUT /api/admin/submissions/[id]:", error)
-    const errorMessage =
-      error && typeof error === "object" && "message" in error
-        ? (error as { message: string }).message
-        : "An unknown error occurred"
-    return NextResponse.json({ error: errorMessage }, { status: 500 })
+
+    let errorMessage = "An unknown error occurred while updating the submission."
+    let statusCode = 500
+
+    if (error && typeof error === "object" && "code" in error && "message" in error) {
+      const supabaseError = error as { code: string; message: string }
+      errorMessage = supabaseError.message
+
+      // Check for the specific schema cache error and provide a helpful message
+      if (supabaseError.code === "PGRST204" && supabaseError.message.includes("in the schema cache")) {
+        errorMessage = `Database schema mismatch: ${supabaseError.message}. The API cache is stale. Please restart your project in the Supabase dashboard (Settings > General > Restart project) to force a refresh.`
+        statusCode = 409 // Conflict
+      }
+    }
+
+    return NextResponse.json({ error: errorMessage }, { status: statusCode })
   }
 }
