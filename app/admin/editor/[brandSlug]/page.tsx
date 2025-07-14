@@ -1,73 +1,57 @@
-import { createClient } from "@/utils/supabase/server"
-import { notFound } from "next/navigation"
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { ArrowLeft, Eye } from "lucide-react"
+import { createServerSupabaseClient } from "@/lib/supabase"
 import { FormEditor } from "./form-editor"
-import type { BrandData } from "@/lib/types"
+import { notFound } from "next/navigation"
+import type { Brand, UploadedFile } from "@/lib/types"
 
-export const revalidate = 0
+interface PageProps {
+  params: {
+    brandSlug: string
+  }
+}
 
-export default async function BrandEditorPage({ params }: { params: { brandSlug: string } }) {
-  const supabase = createClient()
+export default async function EditorPage({ params }: PageProps) {
+  const supabase = createServerSupabaseClient()
 
-  const { data: brand, error } = await supabase
+  // Fetch the brand data with nested sections and items
+  const { data, error: brandError } = await supabase
     .from("brands")
     .select(
       `
-      *,
-      clinic_locations (*),
-      sections (
-        *,
-        items (
-          *,
-          options (*)
+        id, name, slug, logo, primary_color, email, active,
+        product_sections (
+          id, title, sort_order, brand_id,
+          product_items (
+            id, code, name, description, quantities, sample_link, sort_order, section_id, brand_id
+          )
         )
-      )
-    `,
+      `,
     )
     .eq("slug", params.brandSlug)
-    .single<BrandData>()
+    .order("sort_order", { foreignTable: "product_sections", ascending: true })
+    .order("sort_order", { foreignTable: "product_sections.product_items", ascending: true })
+    .limit(1) // Use limit(1) instead of single()
 
-  if (error || !brand) {
-    console.error("Error fetching brand for editor:", error?.message)
+  if (brandError) {
+    console.error("Error fetching brand data:", brandError)
     notFound()
   }
 
-  // Ensure sections and items are sorted for the editor
-  brand.sections.sort((a, b) => a.position - b.position)
-  brand.sections.forEach((section) => {
-    section.items.sort((a, b) => a.position - b.position)
-  })
+  if (!data || data.length === 0) {
+    notFound()
+  }
 
-  return (
-    <div className="flex flex-col h-full bg-muted/40">
-      <header className="bg-background border-b p-4 flex items-center justify-between sticky top-0 z-10">
-        <div>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/admin">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Brands
-            </Link>
-          </Button>
-        </div>
-        <h1 className="text-xl font-semibold text-center">
-          Editing: <span className="font-bold">{brand.name}</span>
-        </h1>
-        <div>
-          <Button variant="outline" size="sm" asChild>
-            <a href={`/forms/${brand.slug}`} target="_blank" rel="noopener noreferrer">
-              <Eye className="h-4 w-4 mr-2" />
-              Preview Form
-            </a>
-          </Button>
-        </div>
-      </header>
-      <main className="flex-1 overflow-auto p-4 md:p-6">
-        <div className="max-w-5xl mx-auto">
-          <FormEditor brand={brand} />
-        </div>
-      </main>
-    </div>
-  )
+  const brandData = data[0]
+
+  // Fetch uploaded files
+  const { data: uploadedFiles, error: filesError } = await supabase
+    .from("uploaded_files")
+    .select("*")
+    .order("uploaded_at", { ascending: false })
+
+  if (filesError) {
+    console.error("Error fetching uploaded files:", filesError)
+    // We can still render the page, but file selection will be empty.
+  }
+
+  return <FormEditor initialBrandData={brandData as Brand} uploadedFiles={(uploadedFiles as UploadedFile[]) || []} />
 }

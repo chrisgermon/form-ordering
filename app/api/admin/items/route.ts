@@ -5,20 +5,14 @@ export async function GET() {
   try {
     const supabase = createServerSupabaseClient()
 
-    const { data: sections, error } = await supabase
-      .from("product_sections")
-      .select(`
-        *,
-        product_items (*)
-      `)
-      .order("sort_order")
+    const { data: items, error } = await supabase.from("product_items").select("*").order("sort_order")
 
     if (error) throw error
 
-    return NextResponse.json(sections)
+    return NextResponse.json(items)
   } catch (error) {
-    console.error("Error fetching sections:", error)
-    return NextResponse.json({ error: "Failed to fetch sections" }, { status: 500 })
+    console.error("Error fetching items:", error)
+    return NextResponse.json({ error: "Failed to fetch items" }, { status: 500 })
   }
 }
 
@@ -28,9 +22,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     const { data: maxSortOrderData, error: maxSortError } = await supabase
-      .from("product_sections")
+      .from("product_items")
       .select("sort_order")
-      .eq("brand_id", body.brandId)
+      .eq("section_id", body.sectionId)
       .order("sort_order", { ascending: false })
       .limit(1)
       .single()
@@ -42,22 +36,27 @@ export async function POST(request: NextRequest) {
 
     const newSortOrder = (maxSortOrderData?.sort_order ?? -1) + 1
 
-    const { data: section, error } = await supabase
-      .from("product_sections")
+    const { data: item, error } = await supabase
+      .from("product_items")
       .insert({
-        title: body.title,
+        code: body.code,
+        name: body.name,
+        description: body.description,
+        quantities: body.quantities,
+        sample_link: body.sampleLink,
+        section_id: body.sectionId,
         brand_id: body.brandId,
-        sort_order: newSortOrder,
+        sort_order: newSortOrder, // Add this
       })
       .select()
       .single()
 
     if (error) throw error
 
-    return NextResponse.json(section)
+    return NextResponse.json(item)
   } catch (error) {
-    console.error("Error creating section:", error)
-    return NextResponse.json({ error: "Failed to create section" }, { status: 500 })
+    console.error("Error creating item:", error)
+    return NextResponse.json({ error: "Failed to create item" }, { status: 500 })
   }
 }
 
@@ -66,10 +65,15 @@ export async function PUT(request: NextRequest) {
     const supabase = createServerSupabaseClient()
     const body = await request.json()
 
-    const { data: section, error } = await supabase
-      .from("product_sections")
+    const { data: item, error } = await supabase
+      .from("product_items")
       .update({
-        title: body.title,
+        code: body.code,
+        name: body.name,
+        description: body.description,
+        quantities: body.quantities,
+        sample_link: body.sampleLink,
+        section_id: body.sectionId,
         brand_id: body.brandId,
       })
       .eq("id", body.id)
@@ -78,10 +82,10 @@ export async function PUT(request: NextRequest) {
 
     if (error) throw error
 
-    return NextResponse.json(section)
+    return NextResponse.json(item)
   } catch (error) {
-    console.error("Error updating section:", error)
-    return NextResponse.json({ error: "Failed to update section" }, { status: 500 })
+    console.error("Error updating item:", error)
+    return NextResponse.json({ error: "Failed to update item" }, { status: 500 })
   }
 }
 
@@ -92,16 +96,16 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get("id")
 
     if (!id) {
-      return NextResponse.json({ error: "Section ID is required" }, { status: 400 })
+      return NextResponse.json({ error: "Item ID is required" }, { status: 400 })
     }
 
-    const { error } = await supabase.from("product_sections").delete().eq("id", id)
+    const { error } = await supabase.from("product_items").delete().eq("id", id)
 
     if (error) throw error
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Error deleting section:", error)
-    return NextResponse.json({ error: "Failed to delete section" }, { status: 500 })
+    console.error("Error deleting item:", error)
+    return NextResponse.json({ error: "Failed to delete item" }, { status: 500 })
   }
 }
