@@ -2,11 +2,11 @@
 
 import { createClient } from "@/utils/supabase/server"
 import { z } from "zod"
-import { sendOrderEmail } from "@/lib/email"
-import { generatePdf } from "@/lib/pdf"
-import type { BrandData, ClinicLocation, Item, OrderItem } from "@/lib/types"
+import { generateOrderPdf } from "@/lib/pdf"
+import { sendOrderConfirmationEmail } from "@/lib/email"
+import type { ClinicLocation, Item } from "@/lib/types"
 
-const orderPayloadSchema = z.object({
+const formSchema = z.object({
   brandSlug: z.string(),
   orderInfo: z.object({
     orderedBy: z.string(),
@@ -18,98 +18,99 @@ const orderPayloadSchema = z.object({
   items: z.record(z.any()),
 })
 
-export async function submitOrder(payload: z.infer<typeof orderPayloadSchema>) {
-  const validation = orderPayloadSchema.safeParse(payload)
+export async function submitOrder(payload: z.infer<typeof formSchema>) {
+  const validation = formSchema.safeParse(payload)
   if (!validation.success) {
-    console.error("Invalid submission payload:", validation.error.flatten())
-    return { success: false, message: "Invalid data provided. Please check the form and try again." }
+    return { success: false, message: "Invalid form data." }
   }
 
-  const { brandSlug, orderInfo, items } = validation.data
+  const { brandSlug, orderInfo, items: submittedItems } = validation.data
   const supabase = createClient()
 
   try {
-    const { data: brandData, error: brandError } = await supabase
+    // 1. Fetch brand, locations, and all possible items for this brand
+    const { data: brand, error: brandError } = await supabase
       .from("brands")
-      .select("*, clinic_locations(*), sections(*, items(*, options(*)))")
+      .select("*, clinic_locations(*), sections(items(*))")
       .eq("slug", brandSlug)
-      .single<BrandData>()
+      .single()
 
-    if (brandError || !brandData) {
-      console.error("Error fetching brand details:", brandError)
-      return { success: false, message: "Could not find brand information." }
+    if (brandError || !brand) {
+      console.error("Submission Error: Brand not found", brandError)
+      return { success: false, message: "Brand not found." }
     }
 
-    const billTo = brandData.clinic_locations.find((loc: ClinicLocation) => loc.id === orderInfo.billToId)
-    const deliverTo = brandData.clinic_locations.find((loc: ClinicLocation) => loc.id === orderInfo.deliverToId)
+    const billTo = brand.clinic_locations.find((loc: ClinicLocation) => loc.id === orderInfo.billToId)
+    const deliverTo = brand.clinic_locations.find((loc: ClinicLocation) => loc.id === orderInfo.deliverToId)
 
     if (!billTo || !deliverTo) {
-      return { success: false, message: "Invalid billing or delivery location selected." }
+      return { success: false, message: "Invalid billing or delivery location." }
     }
 
-    const allItems: Item[] = brandData.sections.flatMap((s) => s.items)
-    const submittedItems: OrderItem[] = Object.entries(items)
+    // 2. Filter and format submitted items
+    const allItems: Item[] = brand.sections.flatMap((s: any) => s.items)
+    const orderItems = Object.entries(submittedItems)
       .map(([itemId, value]) => {
-        if (!value || (typeof value === "boolean" && !value)) return null
+        if (!value || (typeof value === "string" && value.trim() === "")) return null
         const itemDetails = allItems.find((i) => i.id === itemId)
         if (!itemDetails) return null
         return {
           code: itemDetails.code,
           name: itemDetails.name,
-          quantity: value === true ? "Yes" : String(value),
+          quantity: value,
         }
       })
-      .filter((item): item is OrderItem => item !== null)
+      .filter(Boolean) as { code: string; name: string; quantity: string | number }[]
 
-    if (submittedItems.length === 0) {
-      return { success: false, message: "You must select at least one item to order." }
+    if (orderItems.length === 0) {
+      return { success: false, message: "Your order is empty. Please specify a quantity for at least one item." }
     }
 
+    // 3. Create submission record
     const { data: submission, error: submissionError } = await supabase
       .from("submissions")
       .insert({
-        brand_id: brandData.id,
+        brand_id: brand.id,
         ordered_by: orderInfo.orderedBy,
         email: orderInfo.email,
         bill_to: billTo.id,
         deliver_to: deliverTo.id,
         notes: orderInfo.notes,
-        items: submittedItems,
+        items: orderItems,
       })
       .select("id")
       .single()
 
-    if (submissionError) {
-      console.error("Error saving submission:", submissionError)
-      return { success: false, message: "A database error occurred while saving your order." }
+    if (submissionError || !submission) {
+      console.error("Submission Error: Failed to save submission", submissionError)
+      return { success: false, message: "Failed to save your order. Please try again." }
     }
 
-    const fullOrderInfo = { ...orderInfo, billTo, deliverTo, orderNumber: submission.id.toString() }
-
-    const pdfBuffer = await generatePdf({
-      brand: brandData,
-      orderInfo: fullOrderInfo,
-      items: submittedItems,
+    // 4. Generate PDF
+    const pdfBuffer = await generateOrderPdf({
+      orderInfo: {
+        orderNumber: submission.id,
+        orderedBy: orderInfo.orderedBy,
+        email: orderInfo.email,
+        billTo,
+        deliverTo,
+        notes: orderInfo.notes,
+      },
+      items: orderItems,
+      brand,
     })
 
-    await sendOrderEmail({
-      to: [orderInfo.email, ...brandData.emails],
-      subject: `New Order Confirmation for ${brandData.name} - #${submission.id}`,
-      brand: brandData,
-      orderInfo: fullOrderInfo,
-      items: submittedItems,
-      attachments: [
-        {
-          filename: `order-${brandData.slug}-${submission.id}.pdf`,
-          content: pdfBuffer,
-          contentType: "application/pdf",
-        },
-      ],
+    // 5. Send email
+    await sendOrderConfirmationEmail({
+      to: [orderInfo.email, ...brand.emails],
+      brand: brand, // Pass the full brand object
+      orderId: submission.id,
+      pdfBuffer,
     })
 
     return { success: true, submissionId: submission.id }
   } catch (error) {
-    console.error("An unexpected error occurred during order submission:", error)
-    return { success: false, message: "An unexpected server error occurred. Please try again later." }
+    console.error("Unexpected Submission Error:", error)
+    return { success: false, message: "An unexpected error occurred. Please contact support." }
   }
 }
