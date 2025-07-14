@@ -176,7 +176,7 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
                 name="billToId"
                 control={control}
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <SelectTrigger id="billToId">
                       <SelectValue placeholder="Select a billing location" />
                     </SelectTrigger>
@@ -198,7 +198,7 @@ export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
                 name="deliverToId"
                 control={control}
                 render={({ field }) => (
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <SelectTrigger id="deliverToId">
                       <SelectValue placeholder="Select a delivery location" />
                     </SelectTrigger>
