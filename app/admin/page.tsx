@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useForm, Controller } from "react-hook-form"
@@ -28,6 +28,7 @@ import {
   RefreshCw,
   CheckCircle,
   CalendarIcon,
+  Search,
 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -51,6 +52,11 @@ export default function AdminDashboard() {
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
   const router = useRouter()
+
+  // States for submission filtering
+  const [submissionSearch, setSubmissionSearch] = useState("")
+  const [selectedBrandFilter, setSelectedBrandFilter] = useState("all")
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState("all")
 
   useEffect(() => {
     loadAllData()
@@ -235,6 +241,22 @@ export default function AdminDashboard() {
     }
   }
 
+  const filteredSubmissions = useMemo(() => {
+    return submissions.filter((submission) => {
+      const searchLower = submissionSearch.toLowerCase()
+      const matchesSearch =
+        submissionSearch === "" ||
+        submission.ordered_by.toLowerCase().includes(searchLower) ||
+        submission.email.toLowerCase().includes(searchLower)
+
+      const matchesBrand = selectedBrandFilter === "all" || submission.brand_id === selectedBrandFilter
+
+      const matchesStatus = selectedStatusFilter === "all" || submission.status === selectedStatusFilter
+
+      return matchesSearch && matchesBrand && matchesStatus
+    })
+  }, [submissions, submissionSearch, selectedBrandFilter, selectedStatusFilter])
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -367,15 +389,61 @@ export default function AdminDashboard() {
 
           <TabsContent value="submissions">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div className="flex flex-col">
-                  <CardTitle>Order Submissions</CardTitle>
-                  <p className="text-sm text-muted-foreground">Here are the latest order forms submitted by users.</p>
+              <CardHeader>
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div className="flex-grow">
+                    <CardTitle>Order Submissions</CardTitle>
+                    <p className="text-sm text-muted-foreground">Search, filter, and manage submitted order forms.</p>
+                  </div>
+                  <Button onClick={handleRefreshSubmissions} variant="outline" size="sm">
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Refresh
+                  </Button>
                 </div>
-                <Button onClick={handleRefreshSubmissions} variant="outline" size="sm">
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Refresh
-                </Button>
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="relative md:col-span-1">
+                    <label htmlFor="submission-search" className="sr-only">
+                      Search Submissions
+                    </label>
+                    <Input
+                      id="submission-search"
+                      placeholder="Search by name or email..."
+                      className="pl-10"
+                      value={submissionSearch}
+                      onChange={(e) => setSubmissionSearch(e.target.value)}
+                    />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  </div>
+                  <div className="md:col-span-1">
+                    <Select value={selectedBrandFilter} onValueChange={setSelectedBrandFilter}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Filter by brand" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Brands</SelectItem>
+                        {brands.map((brand) => (
+                          <SelectItem key={brand.id} value={brand.id}>
+                            {brand.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="md:col-span-1">
+                    <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Filter by status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="sent">Sent</SelectItem>
+                        <SelectItem value="failed">Failed</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -396,8 +464,8 @@ export default function AdminDashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {Array.isArray(submissions) &&
-                        submissions.map((submission) => (
+                      {filteredSubmissions.length > 0 ? (
+                        filteredSubmissions.map((submission) => (
                           <TableRow key={submission.id}>
                             <TableCell className="font-medium">{submission.brand_name}</TableCell>
                             <TableCell>
@@ -480,7 +548,14 @@ export default function AdminDashboard() {
                               )}
                             </TableCell>
                           </TableRow>
-                        ))}
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={7} className="h-24 text-center">
+                            No submissions found.
+                          </TableCell>
+                        </TableRow>
+                      )}
                     </TableBody>
                   </Table>
                 )}

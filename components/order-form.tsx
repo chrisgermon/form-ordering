@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ArrowLeft } from "lucide-react"
+import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ArrowLeft, Search } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import type { Brand, ProductItem } from "@/lib/types"
@@ -142,6 +142,7 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submissionStatus, setSubmissionStatus] = useState<"success" | "error" | null>(null)
   const [submissionMessage, setSubmissionMessage] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
 
   const allItemsMap = useMemo(() => {
     const map = new Map<string, ProductItem>()
@@ -175,6 +176,28 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
   } = methods
 
   const clinicLocations = useMemo(() => brandData.clinics || [], [brandData.clinics])
+
+  const filteredSections = useMemo(() => {
+    if (!searchQuery) {
+      return brandData.product_sections
+    }
+
+    const lowercasedQuery = searchQuery.toLowerCase()
+
+    return brandData.product_sections
+      .map((section) => {
+        const filteredItems = section.product_items.filter(
+          (item) =>
+            item.name.toLowerCase().includes(lowercasedQuery) || item.code.toLowerCase().includes(lowercasedQuery),
+        )
+
+        if (filteredItems.length > 0) {
+          return { ...section, product_items: filteredItems }
+        }
+        return null
+      })
+      .filter(Boolean) as Brand["product_sections"]
+  }, [searchQuery, brandData.product_sections])
 
   const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true)
@@ -362,17 +385,41 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                     </div>
                   </div>
 
+                  <div className="my-8 border-t pt-8">
+                    <div className="relative">
+                      <label htmlFor="search-items" className="sr-only">
+                        Search Items
+                      </label>
+                      <Input
+                        id="search-items"
+                        type="text"
+                        placeholder="Search for an item by name or code..."
+                        className="pl-10 h-12 text-base bg-gray-100 border-gray-300"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
+                    </div>
+                  </div>
+
                   <div className="space-y-8">
-                    {brandData.product_sections.map((section) => (
-                      <div key={section.id} className="border border-dashed border-[#293563] rounded-lg p-4">
-                        <h2 className="text-lg font-semibold text-[#1aa7df] mb-4">{section.title}</h2>
-                        <div className="space-y-4">
-                          {section.product_items.map((item) => (
-                            <ItemRow key={item.id} item={item} />
-                          ))}
+                    {filteredSections.length > 0 ? (
+                      filteredSections.map((section) => (
+                        <div key={section.id} className="border border-dashed border-[#293563] rounded-lg p-4">
+                          <h2 className="text-lg font-semibold text-[#1aa7df] mb-4">{section.title}</h2>
+                          <div className="space-y-4">
+                            {section.product_items.map((item) => (
+                              <ItemRow key={item.id} item={item} />
+                            ))}
+                          </div>
                         </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-12 text-gray-500">
+                        <p className="font-semibold">No items found</p>
+                        <p className="text-sm">Your search for "{searchQuery}" did not match any items.</p>
                       </div>
-                    ))}
+                    )}
                   </div>
 
                   {submissionStatus && (
