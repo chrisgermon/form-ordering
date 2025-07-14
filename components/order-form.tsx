@@ -1,5 +1,5 @@
 "use client"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useForm, FormProvider, useFormContext, useWatch } from "react-hook-form"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
@@ -14,12 +14,14 @@ import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import type { Brand, ProductItem } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 
 interface FormValues {
   orderedBy: string
   email: string
   billTo: string
   deliverTo: string
+  deliveryAddress: string
   date?: Date
   items: Record<string, { quantity?: string; customQuantity?: string }>
 }
@@ -160,6 +162,7 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
       email: "",
       billTo: "",
       deliverTo: "",
+      deliveryAddress: "",
       date: new Date(),
       items: {},
     },
@@ -176,6 +179,12 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
   } = methods
 
   const clinicLocations = useMemo(() => brandData.clinics || [], [brandData.clinics])
+  const deliverToValue = watch("deliverTo")
+
+  useEffect(() => {
+    const selectedClinic = clinicLocations.find((c) => c.name === deliverToValue)
+    setValue("deliveryAddress", selectedClinic?.address || "")
+  }, [deliverToValue, clinicLocations, setValue])
 
   const filteredSections = useMemo(() => {
     if (!searchQuery) {
@@ -233,7 +242,7 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
       orderedBy: data.orderedBy,
       email: data.email,
       billTo: data.billTo,
-      deliverTo: data.deliverTo,
+      deliverTo: `${data.deliverTo}\n${data.deliveryAddress}`,
       date: data.date ? format(data.date, "yyyy-MM-dd") : null,
       items: itemsForPayload,
     }
@@ -328,9 +337,9 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                           <SelectValue placeholder="Select a clinic" />
                         </SelectTrigger>
                         <SelectContent>
-                          {clinicLocations.map((location) => (
-                            <SelectItem key={location} value={location}>
-                              {location}
+                          {clinicLocations.map((clinic) => (
+                            <SelectItem key={clinic.name} value={clinic.name}>
+                              {clinic.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -346,14 +355,25 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                           <SelectValue placeholder="Select a clinic" />
                         </SelectTrigger>
                         <SelectContent>
-                          {clinicLocations.map((location) => (
-                            <SelectItem key={location} value={location}>
-                              {location}
+                          {clinicLocations.map((clinic) => (
+                            <SelectItem key={clinic.name} value={clinic.name}>
+                              {clinic.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                       {errors.deliverTo && <p className="text-xs text-red-500">{errors.deliverTo.message}</p>}
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <label htmlFor="deliveryAddress" className="text-sm font-medium text-gray-800">
+                        Delivery Address:
+                      </label>
+                      <Textarea
+                        id="deliveryAddress"
+                        className="bg-gray-100 border-gray-300"
+                        rows={3}
+                        {...register("deliveryAddress")}
+                      />
                     </div>
                     <div className="space-y-1 sm:col-span-2">
                       <label htmlFor="date" className="text-sm font-medium text-gray-800">

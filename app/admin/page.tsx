@@ -22,11 +22,27 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Trash2, Edit, Plus, Upload, Eye, Download, Database, Loader2, Link2, ArrowLeft, RefreshCw, CheckCircle, CalendarIcon, Search, ClipboardCopy } from 'lucide-react'
+import {
+  Trash2,
+  Edit,
+  Plus,
+  Upload,
+  Eye,
+  Download,
+  Database,
+  Loader2,
+  Link2,
+  ArrowLeft,
+  RefreshCw,
+  CheckCircle,
+  CalendarIcon,
+  Search,
+  ClipboardCopy,
+} from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { runSeed, autoAssignPdfs, reloadSchemaCache } from "./actions"
-import type { Brand, UploadedFile, Submission } from "@/lib/types"
+import type { Brand, UploadedFile, Submission, Clinic } from "@/lib/types"
 import { Textarea } from "@/components/ui/textarea"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
@@ -366,7 +382,7 @@ export default function AdminDashboard() {
                         Add Brand
                       </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="max-w-2xl">
                       <DialogHeader>
                         <DialogTitle>{editingBrand ? "Edit Brand" : "Add Brand"}</DialogTitle>
                       </DialogHeader>
@@ -761,11 +777,10 @@ function BrandForm({
     name: brand?.name || "",
     initials: brand?.initials || "",
     logo: brand?.logo || "",
-    primaryColor: brand?.primary_color || "",
     email: brand?.email || "",
     active: brand?.active ?? true,
   })
-  const [clinicsText, setClinicsText] = useState(brand?.clinics?.join("\n") || "")
+  const [clinics, setClinics] = useState<Clinic[]>(brand?.clinics || [])
 
   useEffect(() => {
     if (brand) {
@@ -774,32 +789,41 @@ function BrandForm({
         name: brand.name,
         initials: brand.initials || "",
         logo: brand.logo || "",
-        primaryColor: brand.primary_color || "",
         email: brand.email,
         active: brand.active,
       })
-      setClinicsText(brand.clinics?.join("\n") || "")
+      setClinics(brand.clinics || [])
     } else {
       setFormData({
         id: undefined,
         name: "",
         initials: "",
         logo: "",
-        primaryColor: "",
         email: "",
         active: true,
       })
-      setClinicsText("")
+      setClinics([])
     }
   }, [brand])
 
+  const handleClinicChange = (index: number, field: "name" | "address", value: string) => {
+    const newClinics = [...clinics]
+    newClinics[index][field] = value
+    setClinics(newClinics)
+  }
+
+  const addClinic = () => {
+    setClinics([...clinics, { name: "", address: "" }])
+  }
+
+  const removeClinic = (index: number) => {
+    const newClinics = clinics.filter((_, i) => i !== index)
+    setClinics(newClinics)
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const clinicsArray = clinicsText
-      .split("\n")
-      .map((c) => c.trim())
-      .filter(Boolean)
-    onSave({ ...formData, clinics: clinicsArray })
+    onSave({ ...formData, clinics })
   }
 
   return (
@@ -824,15 +848,6 @@ function BrandForm({
             required
           />
         </div>
-      </div>
-      <div>
-        <Label htmlFor="primaryColor">Primary Color</Label>
-        <Input
-          id="primaryColor"
-          placeholder="e.g., #007bff or a Tailwind color"
-          value={formData.primaryColor}
-          onChange={(e) => setFormData({ ...formData, primaryColor: e.target.value })}
-        />
       </div>
       <div>
         <Label htmlFor="email">Recipient Email</Label>
@@ -872,14 +887,45 @@ function BrandForm({
         />
       </div>
       <div>
-        <Label htmlFor="clinics">Clinic Locations (one per line)</Label>
-        <Textarea
-          id="clinics"
-          value={clinicsText}
-          onChange={(e) => setClinicsText(e.target.value)}
-          rows={6}
-          placeholder={"Botanic Ridge\nBulleen\nCarnegie"}
-        />
+        <Label>Clinic Locations</Label>
+        <div className="space-y-3 rounded-md border p-4 max-h-60 overflow-y-auto">
+          {clinics.map((clinic, index) => (
+            <div key={index} className="grid grid-cols-1 gap-2 sm:grid-cols-10 sm:gap-4">
+              <div className="sm:col-span-4">
+                <Label htmlFor={`clinic-name-${index}`} className="text-xs text-muted-foreground">
+                  Name
+                </Label>
+                <Input
+                  id={`clinic-name-${index}`}
+                  placeholder="e.g., Botanic Ridge"
+                  value={clinic.name}
+                  onChange={(e) => handleClinicChange(index, "name", e.target.value)}
+                />
+              </div>
+              <div className="sm:col-span-5">
+                <Label htmlFor={`clinic-address-${index}`} className="text-xs text-muted-foreground">
+                  Address
+                </Label>
+                <Textarea
+                  id={`clinic-address-${index}`}
+                  placeholder="123 Main St, Suburb VIC 3000"
+                  value={clinic.address}
+                  onChange={(e) => handleClinicChange(index, "address", e.target.value)}
+                  rows={1}
+                  className="min-h-[40px]"
+                />
+              </div>
+              <div className="flex items-end sm:col-span-1">
+                <Button type="button" variant="ghost" size="icon" onClick={() => removeClinic(index)}>
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+            </div>
+          ))}
+          <Button type="button" variant="secondary" onClick={addClinic} className="mt-2">
+            <Plus className="mr-2 h-4 w-4" /> Add Clinic
+          </Button>
+        </div>
       </div>
       <div className="flex items-center space-x-2 pt-2">
         <input
@@ -970,9 +1016,7 @@ function CompleteSubmissionDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Mark Order as Complete</DialogTitle>
-          <DialogDescription>
-            Add delivery details for order {submission?.order_number}.
-          </DialogDescription>
+          <DialogDescription>Add delivery details for order {submission?.order_number}.</DialogDescription>
         </DialogHeader>
         {submission && (
           <div className="text-sm text-muted-foreground border-y py-4 my-4">
@@ -1150,7 +1194,7 @@ function SubmissionDetailsDialog({
             <CardContent className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="font-semibold text-gray-600">Deliver To:</span>
-                <span>{submission.deliver_to}</span>
+                <span className="text-right whitespace-pre-wrap">{submission.deliver_to}</span>
               </div>
               <div className="flex justify-between">
                 <span className="font-semibold text-gray-600">Bill To:</span>
