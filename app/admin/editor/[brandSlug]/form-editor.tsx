@@ -75,6 +75,22 @@ export function FormEditor({
     }),
   )
 
+  const onDataChange = async () => {
+    // Fetch with 'no-store' to bypass cache and get the latest data
+    const res = await fetch(`/api/admin/brands/${brandData.slug}`, { cache: "no-store" })
+    if (res.ok) {
+      const data = await res.json()
+      // Ensure nested items are sorted correctly after refetch
+      data.product_sections.sort((a: any, b: any) => a.sort_order - b.sort_order)
+      data.product_sections.forEach((section: any) => {
+        if (section.product_items) {
+          section.product_items.sort((a: any, b: any) => a.sort_order - b.sort_order)
+        }
+      })
+      setBrandData(data)
+    }
+  }
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
     if (!over || active.id === over.id) return
@@ -83,54 +99,56 @@ export function FormEditor({
     const overType = over.data.current?.type
 
     if (activeType === "section" && overType === "section") {
-      setBrandData((brand) => {
-        const oldIndex = brand.product_sections.findIndex((s) => s.id === active.id)
-        const newIndex = brand.product_sections.findIndex((s) => s.id === over.id)
-        if (oldIndex === -1 || newIndex === -1) return brand
-        const reorderedSections = arrayMove(brand.product_sections, oldIndex, newIndex)
-        updateSectionOrder(
-          brand.slug,
+      const oldIndex = brandData.product_sections.findIndex((s) => s.id === active.id)
+      const newIndex = brandData.product_sections.findIndex((s) => s.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      const reorderedSections = arrayMove(brandData.product_sections, oldIndex, newIndex)
+      setBrandData((brand) => ({ ...brand, product_sections: reorderedSections }))
+
+      try {
+        const result = await updateSectionOrder(
+          brandData.slug,
           reorderedSections.map((s) => s.id),
         )
-        return { ...brand, product_sections: reorderedSections }
-      })
+        if (!result.success) throw new Error(result.error)
+        setMessage("Section order saved.")
+        setTimeout(() => setMessage(""), 3000)
+      } catch (e: any) {
+        setMessage(`Error saving section order: ${e.message}`)
+        onDataChange() // Revert optimistic update on failure
+      }
     }
 
     if (activeType === "item" && overType === "item") {
       const sectionId = active.data.current?.sectionId
+      const sectionIndex = brandData.product_sections.findIndex((s) => s.id === sectionId)
+      if (sectionIndex === -1) return
+
+      const section = brandData.product_sections[sectionIndex]
+      const oldIndex = section.product_items.findIndex((i) => i.id === active.id)
+      const newIndex = section.product_items.findIndex((i) => i.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      const reorderedItems = arrayMove(section.product_items, oldIndex, newIndex)
       setBrandData((brand) => {
-        const sectionIndex = brand.product_sections.findIndex((s) => s.id === sectionId)
-        if (sectionIndex === -1) return brand
-
-        const section = brand.product_sections[sectionIndex]
-        const oldIndex = section.product_items.findIndex((i) => i.id === active.id)
-        const newIndex = section.product_items.findIndex((i) => i.id === over.id)
-        if (oldIndex === -1 || newIndex === -1) return brand
-        const reorderedItems = arrayMove(section.product_items, oldIndex, newIndex)
-
-        updateItemOrder(
-          brand.slug,
-          reorderedItems.map((i) => i.id),
-        )
-
         const newSections = [...brand.product_sections]
         newSections[sectionIndex] = { ...section, product_items: reorderedItems }
         return { ...brand, product_sections: newSections }
       })
-    }
-  }
 
-  const onDataChange = async () => {
-    const res = await fetch(`/api/admin/brands/${brandData.slug}`)
-    if (res.ok) {
-      const data = await res.json()
-      data.product_sections.sort((a: any, b: any) => a.sort_order - b.sort_order)
-      data.product_sections.forEach((section: any) => {
-        if (section.product_items) {
-          section.product_items.sort((a: any, b: any) => a.sort_order - b.sort_order)
-        }
-      })
-      setBrandData(data)
+      try {
+        const result = await updateItemOrder(
+          brandData.slug,
+          reorderedItems.map((i) => i.id),
+        )
+        if (!result.success) throw new Error(result.error)
+        setMessage("Item order saved.")
+        setTimeout(() => setMessage(""), 3000)
+      } catch (e: any) {
+        setMessage(`Error saving item order: ${e.message}`)
+        onDataChange() // Revert optimistic update on failure
+      }
     }
   }
 

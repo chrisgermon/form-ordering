@@ -533,5 +533,173 @@ export default async function seedDatabase() {
     console.log("✅ Seeded Quantum Medical Imaging form data.")
   }
 
+  // --- SEED FOCUS RADIOLOGY ---
+  if (brandMap["focus-radiology"]) {
+    const brand_id = brandMap["focus-radiology"]
+    console.log(`Seeding form for Focus Radiology (brand_id: ${brand_id})...`)
+    await supabase.from("product_items").delete().eq("brand_id", brand_id)
+    await supabase.from("product_sections").delete().eq("brand_id", brand_id)
+
+    const focusFormData = [
+      {
+        section: { title: "Referral Pads", sort_order: 0 },
+        items: [
+          { code: "FR-A4BLANK", name: "A4 Blank", quantities: ["1 box", "2 boxes", "4 boxes", "other"], sort_order: 0 },
+          { code: "FR-A4CC1", name: "A4 Cardiac", quantities: ["1 box", "2 boxes", "4 boxes", "other"], sort_order: 1 },
+          { code: "FR-A4GP1", name: "A4 GP", quantities: ["1 box", "2 boxes", "4 boxes", "other"], sort_order: 2 },
+          {
+            code: "FR-A4LET1",
+            name: "A4 Letterhead",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 3,
+          },
+          {
+            code: "FR-A4SEG",
+            name: "A4 Segmental",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 4,
+          },
+          {
+            code: "FR-A5GEN1",
+            name: "A5 General",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 5,
+          },
+          {
+            code: "FR-A5DENTAL1",
+            name: "A5 Dental",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 6,
+          },
+          {
+            code: "FR-A5CHIRO1",
+            name: "A5 Chiro",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 7,
+          },
+          { code: "FR-STRETCH", name: "Stretch", quantities: ["1 box", "2 boxes", "4 boxes", "other"], sort_order: 8 },
+          { code: "FR-POD1", name: "Podiatry 1", quantities: ["1 box", "2 boxes", "4 boxes", "other"], sort_order: 9 },
+          { code: "FR-POD2", name: "Podiatry 2", quantities: ["1 box", "2 boxes", "4 boxes", "other"], sort_order: 10 },
+          { code: "FR-MRI1", name: "MRI", quantities: ["1 box", "2 boxes", "4 boxes", "other"], sort_order: 11 },
+          { code: "FR-MARK1", name: "Marketing", quantities: ["1 box", "2 boxes", "4 boxes", "other"], sort_order: 12 },
+          { code: "FR-ILLSER", name: "Illawong Services", quantities: ["100", "200", "300", "other"], sort_order: 13 },
+          {
+            code: "FR-ELX3F-A",
+            name: "Elastography Trifold",
+            quantities: ["100", "200", "300", "other"],
+            sort_order: 14,
+          },
+          { code: "FR-DLPRP", name: "DL PRP", quantities: ["100", "200", "300", "other"], sort_order: 15 },
+          { code: "FR-DLINJ2", name: "DL Injection", quantities: ["100", "200", "300", "other"], sort_order: 16 },
+          {
+            code: "FR-DLINJSYD",
+            name: "DL Injection Sydney",
+            quantities: ["100", "200", "300", "other"],
+            sort_order: 17,
+          },
+          {
+            code: "FR-DRCAP",
+            name: "Dr. Capitolino",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 18,
+          },
+          { code: "FR-CTCA3F", name: "CTCA Trifold", quantities: ["100", "200", "300", "other"], sort_order: 19 },
+          {
+            code: "FR-CAL3F",
+            name: "Calcium Score Trifold",
+            quantities: ["100", "200", "300", "other"],
+            sort_order: 20,
+          },
+          {
+            code: "FR-BMDILL",
+            name: "BMD Illawong",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 21,
+          },
+          {
+            code: "FR-BMDENG",
+            name: "BMD Engadine",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 22,
+          },
+          {
+            code: "FR-BMDHAY",
+            name: "BMD Haymarket",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 23,
+          },
+          { code: "FR-BBCTCA1", name: "BB CTCA", quantities: ["100", "200", "300", "other"], sort_order: 24 },
+          {
+            code: "FR-VASCLIV-DL",
+            name: "Vascular Liverpool DL",
+            quantities: ["100", "200", "300", "other"],
+            sort_order: 25,
+          },
+        ],
+      },
+      {
+        section: { title: "Operational & Patient Info", sort_order: 1 },
+        items: [
+          { code: "FR-APPNT", name: "Appointment Cards", quantities: ["250", "500", "1000", "other"], sort_order: 0 },
+          {
+            code: "FR-EUFAPPNT",
+            name: "EUF Appointment Cards",
+            quantities: ["250", "500", "1000", "other"],
+            sort_order: 1,
+          },
+          {
+            code: "FR-FILML",
+            name: "Film Bags Large",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 2,
+          },
+          {
+            code: "FR-FILMS",
+            name: "Film Bags Small",
+            quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+            sort_order: 3,
+          },
+          {
+            code: "FR-50MMBS",
+            name: "50mm Sticker Black",
+            quantities: ["500", "1000", "2000", "other"],
+            sort_order: 4,
+          },
+          {
+            code: "FR-50MMWS",
+            name: "50mm Sticker White",
+            quantities: ["500", "1000", "2000", "other"],
+            sort_order: 5,
+          },
+        ],
+      },
+    ]
+
+    for (const { section, items } of focusFormData) {
+      const { data: newSection, error: sectionError } = await supabase
+        .from("product_sections")
+        .insert({ ...section, brand_id })
+        .select("id")
+        .single()
+      if (sectionError || !newSection) {
+        console.error(`Error seeding section "${section.title}" for Focus Radiology:`, sectionError)
+        continue
+      }
+      const itemsToInsert = items.map((item) => ({
+        ...item,
+        sample_link: `/samples/focus-radiology/${item.code}.pdf`,
+        section_id: newSection.id,
+        brand_id,
+      }))
+      if (itemsToInsert.length > 0) {
+        const { error: itemsError } = await supabase.from("product_items").insert(itemsToInsert)
+        if (itemsError) {
+          console.error(`Error seeding items for section "${section.title}" for Focus Radiology:`, itemsError)
+        }
+      }
+    }
+    console.log("✅ Seeded Focus Radiology form data.")
+  }
+
   console.log("🎉 Database seeding completed!")
 }
