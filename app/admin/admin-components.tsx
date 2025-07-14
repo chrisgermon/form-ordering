@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -14,13 +15,14 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
-import { markOrderAsComplete, refreshSubmissions } from "./actions"
+import { markOrderAsComplete } from "./actions"
 import type { Submission } from "@/lib/types"
-import { RefreshCcw, CalendarIcon } from "lucide-react"
+import { CalendarIcon } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Loader2, RefreshCw } from "lucide-react"
 
 export function MarkAsCompleteButton({ submission }: { submission: Submission }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -124,23 +126,20 @@ export function MarkAsCompleteButton({ submission }: { submission: Submission })
 }
 
 export function RefreshButton() {
-  const [isPending, startTransition] = useTransition()
-  const { toast } = useToast()
+  const router = useRouter()
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const handleRefresh = () => {
-    startTransition(async () => {
-      await refreshSubmissions()
-      toast({
-        title: "Refreshed",
-        description: "The submissions list has been updated.",
-      })
-    })
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    router.refresh()
+    // A small delay to give feedback to the user and wait for data to reload
+    setTimeout(() => setIsRefreshing(false), 500)
   }
 
   return (
-    <Button variant="outline" size="icon" onClick={handleRefresh} disabled={isPending}>
-      <RefreshCcw className={`h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
-      <span className="sr-only">Refresh submissions</span>
+    <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+      {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+      Refresh
     </Button>
   )
 }

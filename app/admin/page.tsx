@@ -1,34 +1,55 @@
 import { createClient } from "@/lib/supabase/server"
 import AdminDashboard from "./admin-dashboard"
 import { unstable_noStore as noStore } from "next/cache"
-import type { Submission, Brand } from "@/lib/types"
+import type { Submission, Brand, UploadedFile } from "@/lib/types"
 
-async function getAdminData(): Promise<{ submissions: Submission[]; brands: Brand[] }> {
-  noStore()
+async function getAdminData() {
+  noStore() // Ensures the data is fetched on every request
   const supabase = createClient()
-  const { data: submissions, error: submissionsError } = await supabase
+
+  const submissionsPromise = supabase
     .from("submissions")
-    .select("*, brand:brands(*)")
+    .select("*, brand:brands(name)") // Join with brands table to get the name
     .order("created_at", { ascending: false })
 
-  const { data: brands, error: brandsError } = await supabase.from("brands").select("*")
+  const brandsPromise = supabase.from("brands").select("*").order("name")
 
-  if (submissionsError) {
-    console.error("Error fetching submissions:", submissionsError)
+  const filesPromise = supabase.from("uploaded_files").select("*").order("uploaded_at", { ascending: false })
+
+  const [submissionsResult, brandsResult, filesResult] = await Promise.all([
+    submissionsPromise,
+    brandsPromise,
+    filesPromise,
+  ])
+
+  if (submissionsResult.error) {
+    console.error("Error fetching submissions:", submissionsResult.error)
     throw new Error("Could not fetch submissions.")
   }
-  if (brandsError) {
-    console.error("Error fetching brands:", brandsError)
+  if (brandsResult.error) {
+    console.error("Error fetching brands:", brandsResult.error)
     throw new Error("Could not fetch brands.")
   }
+  if (filesResult.error) {
+    console.error("Error fetching files:", filesResult.error)
+    throw new Error("Could not fetch files.")
+  }
 
-  // Ensure submissions are properly typed. Supabase can return a single object or an array.
-  const typedSubmissions = Array.isArray(submissions) ? submissions : submissions ? [submissions] : []
+  // Map the fetched data to match the `Submission` type structure
+  const submissions: Submission[] = (submissionsResult.data || []).map((s: any) => ({
+    ...s,
+    brand_name: s.brand?.name || "Unknown Brand",
+    brand: undefined, // Remove the nested brand object to match the type
+  }))
 
-  return { submissions: typedSubmissions as Submission[], brands: brands || [] }
+  return {
+    submissions,
+    brands: (brandsResult.data as Brand[]) || [],
+    uploadedFiles: (filesResult.data as UploadedFile[]) || [],
+  }
 }
 
 export default async function AdminPage() {
-  const { submissions, brands } = await getAdminData()
-  return <AdminDashboard initialSubmissions={submissions} initialBrands={brands} />
+  const { submissions, brands, uploadedFiles } = await getAdminData()
+  return <AdminDashboard initialSubmissions={submissions} initialBrands={brands} initialUploadedFiles={uploadedFiles} />
 }
