@@ -71,19 +71,3 @@ export async function autoAssignPdfs() {
     return { success: false, message: `Failed to assign PDFs: ${errorMessage}` }
   }
 }
-
-export async function reloadSchemaCache() {
-  try {
-    const supabase = createServerSupabaseClient()
-    // This calls the PostgreSQL function we created in the new SQL script.
-    const { error } = await supabase.rpc("reload_schema_cache")
-
-    if (error) throw error
-
-    return { success: true, message: "Schema cache reloaded successfully!" }
-  } catch (error) {
-    console.error("Error reloading schema cache:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return { success: false, message: `Failed to reload schema: ${errorMessage}` }
-  }
-}

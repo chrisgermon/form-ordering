@@ -21,13 +21,9 @@ CREATE TABLE brands (
     email TEXT NOT NULL,
     active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    initials TEXT, -- e.g., FR for Focus Radiology
-    last_order_sequence INTEGER NOT NULL DEFAULT 0
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 COMMENT ON TABLE brands IS 'Stores information about each brand, like their name, logo, and contact email.';
-COMMENT ON COLUMN brands.initials IS 'Short code for the brand, used in order numbers.';
-COMMENT ON COLUMN brands.last_order_sequence IS 'The last used sequence number for orders of this brand.';
 
 -- Create product_sections table
 -- Sections are used to group items on the order form (e.g., "Referrals", "Brochures").
@@ -89,12 +85,10 @@ CREATE TABLE submissions (
     ip_address TEXT,
     status TEXT DEFAULT 'pending',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    order_number TEXT UNIQUE -- e.g., FR-00001
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 COMMENT ON TABLE submissions IS 'This table logs every order submitted through the forms.';
 COMMENT ON COLUMN submissions.brand_id IS 'Foreign key linking to the brands table. Set to NULL if the brand is deleted.';
-COMMENT ON COLUMN submissions.order_number IS 'Unique, sequential order number for each submission.';
 
 
 -- Create indexes for better query performance
