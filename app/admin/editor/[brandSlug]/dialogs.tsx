@@ -1,75 +1,114 @@
 "use client"
-import { useState, useTransition } from "react"
-import { Button } from "@/components/ui/button"
+
+import * as React from "react"
+import { useRouter } from "next/navigation"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { toast } from "sonner"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription,
-  DialogClose,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import type { Item, Section } from "@/lib/types"
-import { importFormFromHtml } from "./actions"
-import { toast } from "sonner"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { createSection, updateSection, createItem, updateItem, deleteOption, updateOrCreateOption } from "./actions"
+import type { Section, Item, Option } from "@/lib/types"
+import { PlusCircle, Trash2 } from "lucide-react"
 
-// ConfirmDeleteDialog
-export function ConfirmDeleteDialog({
-  isOpen,
-  onClose,
-  onConfirm,
-  itemName,
-}: {
+// Schemas
+const sectionSchema = z.object({ title: z.string().min(1, "Title is required") })
+const itemSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  code: z.string().min(1, "Code is required"),
+  description: z.string().optional(),
+  field_type: z.enum(["text", "textarea", "number", "date", "checkbox", "select", "radio"]),
+  placeholder: z.string().optional(),
+  is_required: z.boolean(),
+})
+
+// Dialog Props
+interface DialogProps {
   isOpen: boolean
   onClose: () => void
+}
+interface ConfirmDialogProps extends DialogProps {
   onConfirm: () => void
   itemName: string
-}) {
+}
+interface SectionDialogProps extends DialogProps {
+  section: Section
+}
+interface AddSectionDialogProps extends DialogProps {
+  brandId: string
+  currentMaxPosition: number
+}
+interface ItemDialogProps extends DialogProps {
+  item: Item
+}
+interface AddItemDialogProps extends DialogProps {
+  sectionId: string
+  brandId: string
+  currentMaxPosition: number
+}
+interface ManageOptionsDialogProps extends DialogProps {
+  item: Item
+}
+
+// Reusable Form Component
+function FormField({ name, label, children, error }: any) {
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Are you sure?</DialogTitle>
-          <DialogDescription>
-            This action cannot be undone. This will permanently delete the <strong>{itemName}</strong>.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="destructive" onClick={onConfirm}>
-            Delete
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <div className="grid grid-cols-4 items-center gap-4">
+      <Label htmlFor={name} className="text-right">
+        {label}
+      </Label>
+      <div className="col-span-3">
+        {children}
+        {error && <p className="text-sm text-red-500 mt-1">{error.message}</p>}
+      </div>
+    </div>
   )
 }
 
-// AddSectionDialog
-export function AddSectionDialog({
-  isOpen,
-  onClose,
-  onAdd,
-}: {
-  isOpen: boolean
-  onClose: () => void
-  onAdd: (title: string) => void
-}) {
-  const [title, setTitle] = useState("")
+// Dialog Components
+export function AddSectionDialog({ isOpen, onClose, brandId, currentMaxPosition }: AddSectionDialogProps) {
+  const router = useRouter()
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    reset,
+  } = useForm({ resolver: zodResolver(sectionSchema) })
 
-  const handleSubmit = () => {
-    if (title.trim()) {
-      onAdd(title.trim())
-      setTitle("")
+  const onSubmit = async (data: z.infer<typeof sectionSchema>) => {
+    const toastId = toast.loading("Creating section...")
+    const result = await createSection({ ...data, brand_id: brandId, position: currentMaxPosition })
+    toast.dismiss(toastId)
+    if (result.success) {
+      toast.success("Section created.")
+      reset()
       onClose()
+      router.refresh()
+    } else {
+      toast.error(result.message || "Failed to create section.")
     }
   }
 
@@ -79,44 +118,45 @@ export function AddSectionDialog({
         <DialogHeader>
           <DialogTitle>Add New Section</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <Label htmlFor="section-title">Title</Label>
-          <Input
-            id="section-title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g., Patient Information"
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit}>Add Section</Button>
-        </DialogFooter>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
+          <FormField name="title" label="Title" error={errors.title}>
+            <Input id="title" {...register("title")} />
+          </FormField>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Adding..." : "Add Section"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
 }
 
-// EditSectionDialog
-export function EditSectionDialog({
-  isOpen,
-  onClose,
-  section,
-  onUpdate,
-}: {
-  isOpen: boolean
-  onClose: () => void
-  section: Section
-  onUpdate: (updatedSection: Section) => void
-}) {
-  const [title, setTitle] = useState(section.title)
+export function EditSectionDialog({ isOpen, onClose, section }: SectionDialogProps) {
+  const router = useRouter()
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm({
+    resolver: zodResolver(sectionSchema),
+    defaultValues: { title: section.title },
+  })
 
-  const handleSubmit = () => {
-    if (title.trim()) {
-      onUpdate({ ...section, title: title.trim() })
+  const onSubmit = async (data: z.infer<typeof sectionSchema>) => {
+    const toastId = toast.loading("Updating section...")
+    const result = await updateSection(section.id, data)
+    toast.dismiss(toastId)
+    if (result.success) {
+      toast.success("Section updated.")
       onClose()
+      router.refresh()
+    } else {
+      toast.error(result.message || "Failed to update section.")
     }
   }
 
@@ -126,234 +166,304 @@ export function EditSectionDialog({
         <DialogHeader>
           <DialogTitle>Edit Section</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <Label htmlFor="section-title">Title</Label>
-          <Input id="section-title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit}>Save Changes</Button>
-        </DialogFooter>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
+          <FormField name="title" label="Title" error={errors.title}>
+            <Input id="title" {...register("title")} />
+          </FormField>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
 }
 
-// AddItemDialog
-export function AddItemDialog({
-  isOpen,
-  onClose,
-  onAdd,
-}: {
-  isOpen: boolean
-  onClose: () => void
-  onAdd: (item: Omit<Item, "id" | "position" | "brand_id" | "section_id">) => void
-}) {
-  const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
-  const [fieldType, setFieldType] = useState<Item["field_type"]>("text")
-  const [isRequired, setIsRequired] = useState(false)
-  const [placeholder, setPlaceholder] = useState("")
+export function AddItemDialog({ isOpen, onClose, sectionId, brandId, currentMaxPosition }: AddItemDialogProps) {
+  const router = useRouter()
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors, isSubmitting },
+    reset,
+  } = useForm({
+    resolver: zodResolver(itemSchema),
+    defaultValues: { is_required: false, field_type: "text" },
+  })
 
-  const handleSubmit = () => {
-    if (name.trim() && fieldType) {
-      onAdd({ name, description, field_type: fieldType, is_required: isRequired, placeholder })
-      // Reset form
-      setName("")
-      setDescription("")
-      setFieldType("text")
-      setIsRequired(false)
-      setPlaceholder("")
+  const onSubmit = async (data: z.infer<typeof itemSchema>) => {
+    const toastId = toast.loading("Creating item...")
+    const result = await createItem({ ...data, section_id: sectionId, brand_id: brandId, position: currentMaxPosition })
+    toast.dismiss(toastId)
+    if (result.success) {
+      toast.success("Item created.")
+      reset()
       onClose()
+      router.refresh()
+    } else {
+      toast.error(result.message || "Failed to create item.")
     }
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Add New Item</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="item-name">Name / Label</Label>
-            <Input id="item-name" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="item-description">Description</Label>
-            <Input id="item-description" value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="item-placeholder">Placeholder</Label>
-            <Input id="item-placeholder" value={placeholder} onChange={(e) => setPlaceholder(e.target.value)} />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="item-field-type">Field Type</Label>
-            <Select value={fieldType} onValueChange={(v) => setFieldType(v as Item["field_type"])}>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
+          <FormField name="name" label="Name" error={errors.name}>
+            <Input id="name" {...register("name")} />
+          </FormField>
+          <FormField name="code" label="Code" error={errors.code}>
+            <Input id="code" {...register("code")} />
+          </FormField>
+          <FormField name="description" label="Description" error={errors.description}>
+            <Textarea id="description" {...register("description")} />
+          </FormField>
+          <FormField name="field_type" label="Field Type" error={errors.field_type}>
+            <Select onValueChange={(value) => control.setValue("field_type", value as any)} defaultValue="text">
               <SelectTrigger>
-                <SelectValue placeholder="Select a field type" />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="text">Text</SelectItem>
                 <SelectItem value="textarea">Text Area</SelectItem>
+                <SelectItem value="number">Number</SelectItem>
                 <SelectItem value="date">Date</SelectItem>
                 <SelectItem value="checkbox">Checkbox</SelectItem>
                 <SelectItem value="select">Select (Dropdown)</SelectItem>
+                <SelectItem value="radio">Radio Group</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Checkbox id="is-required" checked={isRequired} onCheckedChange={(c) => setIsRequired(!!c)} />
-            <Label htmlFor="is-required">Required</Label>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit}>Add Item</Button>
-        </DialogFooter>
+          </FormField>
+          <FormField name="placeholder" label="Placeholder" error={errors.placeholder}>
+            <Input id="placeholder" {...register("placeholder")} />
+          </FormField>
+          <FormField name="is_required" label="Required" error={errors.is_required}>
+            <Checkbox id="is_required" onCheckedChange={(checked) => control.setValue("is_required", !!checked)} />
+          </FormField>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Adding..." : "Add Item"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
 }
 
-// EditItemDialog
-export function EditItemDialog({
-  isOpen,
-  onClose,
-  item,
-  onUpdate,
-}: {
-  isOpen: boolean
-  onClose: () => void
-  item: Item
-  onUpdate: (updatedItem: Item) => void
-}) {
-  const [name, setName] = useState(item.name)
-  const [description, setDescription] = useState(item.description || "")
-  const [fieldType, setFieldType] = useState<Item["field_type"]>(item.field_type)
-  const [isRequired, setIsRequired] = useState(item.is_required)
-  const [placeholder, setPlaceholder] = useState(item.placeholder || "")
+export function EditItemDialog({ isOpen, onClose, item }: ItemDialogProps) {
+  const router = useRouter()
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors, isSubmitting },
+  } = useForm({
+    resolver: zodResolver(itemSchema),
+    defaultValues: { ...item },
+  })
 
-  const handleSubmit = () => {
-    if (name.trim() && fieldType) {
-      onUpdate({ ...item, name, description, field_type: fieldType, is_required: isRequired, placeholder })
+  const onSubmit = async (data: z.infer<typeof itemSchema>) => {
+    const toastId = toast.loading("Updating item...")
+    const result = await updateItem(item.id, data)
+    toast.dismiss(toastId)
+    if (result.success) {
+      toast.success("Item updated.")
       onClose()
+      router.refresh()
+    } else {
+      toast.error(result.message || "Failed to update item.")
     }
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Edit Item</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="item-name">Name / Label</Label>
-            <Input id="item-name" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="item-description">Description</Label>
-            <Input id="item-description" value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="item-placeholder">Placeholder</Label>
-            <Input id="item-placeholder" value={placeholder} onChange={(e) => setPlaceholder(e.target.value)} />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="item-field-type">Field Type</Label>
-            <Select value={fieldType} onValueChange={(v) => setFieldType(v as Item["field_type"])}>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-4">
+          <FormField name="name" label="Name" error={errors.name}>
+            <Input id="name" {...register("name")} />
+          </FormField>
+          <FormField name="code" label="Code" error={errors.code}>
+            <Input id="code" {...register("code")} />
+          </FormField>
+          <FormField name="description" label="Description" error={errors.description}>
+            <Textarea id="description" {...register("description")} />
+          </FormField>
+          <FormField name="field_type" label="Field Type" error={errors.field_type}>
+            <Select
+              onValueChange={(value) => control.setValue("field_type", value as any)}
+              defaultValue={item.field_type}
+            >
               <SelectTrigger>
-                <SelectValue placeholder="Select a field type" />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="text">Text</SelectItem>
                 <SelectItem value="textarea">Text Area</SelectItem>
+                <SelectItem value="number">Number</SelectItem>
                 <SelectItem value="date">Date</SelectItem>
                 <SelectItem value="checkbox">Checkbox</SelectItem>
                 <SelectItem value="select">Select (Dropdown)</SelectItem>
+                <SelectItem value="radio">Radio Group</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Checkbox id="is-required" checked={isRequired} onCheckedChange={(c) => setIsRequired(!!c)} />
-            <Label htmlFor="is-required">Required</Label>
-          </div>
+          </FormField>
+          <FormField name="placeholder" label="Placeholder" error={errors.placeholder}>
+            <Input id="placeholder" {...register("placeholder")} />
+          </FormField>
+          <FormField name="is_required" label="Required" error={errors.is_required}>
+            <Checkbox
+              id="is_required"
+              defaultChecked={item.is_required}
+              onCheckedChange={(checked) => control.setValue("is_required", !!checked)}
+            />
+          </FormField>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export function ManageOptionsDialog({ isOpen, onClose, item }: ManageOptionsDialogProps) {
+  const router = useRouter()
+  const [options, setOptions] = React.useState<Partial<Option>[]>(item.options || [])
+  const [isSaving, setIsSaving] = React.useState(false)
+
+  const handleAddOption = () => {
+    setOptions([...options, { label: "", value: "" }])
+  }
+
+  const handleRemoveOption = async (index: number, optionId?: string) => {
+    if (optionId) {
+      const toastId = toast.loading("Deleting option...")
+      await deleteOption(optionId)
+      toast.dismiss(toastId)
+      toast.success("Option deleted.")
+    }
+    setOptions(options.filter((_, i) => i !== index))
+  }
+
+  const handleSave = async () => {
+    setIsSaving(true)
+    const toastId = toast.loading("Saving options...")
+
+    const promises = options.map((opt, index) => {
+      const payload = {
+        ...opt,
+        item_id: item.id,
+        brand_id: item.brand_id,
+        sort_order: index,
+      }
+      return updateOrCreateOption(payload as any)
+    })
+
+    const results = await Promise.all(promises)
+    const hasError = results.some((r) => !r.success)
+
+    toast.dismiss(toastId)
+    setIsSaving(false)
+    if (hasError) {
+      toast.error("Some options failed to save. Please review and try again.")
+    } else {
+      toast.success("Options saved successfully.")
+      onClose()
+      router.refresh()
+    }
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle>Manage Options for "{item.name}"</DialogTitle>
+          <DialogDescription>Add, edit, or remove options for this select or radio field.</DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto">
+          {options.map((option, index) => (
+            <div key={option.id || index} className="flex items-center gap-2">
+              <Input
+                placeholder="Label (e.g., Small)"
+                defaultValue={option.label || ""}
+                onChange={(e) => {
+                  const newOptions = [...options]
+                  newOptions[index].label = e.target.value
+                  setOptions(newOptions)
+                }}
+              />
+              <Input
+                placeholder="Value (e.g., sm)"
+                defaultValue={option.value || ""}
+                onChange={(e) => {
+                  const newOptions = [...options]
+                  newOptions[index].value = e.target.value
+                  setOptions(newOptions)
+                }}
+              />
+              <Button variant="ghost" size="icon" onClick={() => handleRemoveOption(index, option.id)}>
+                <Trash2 className="h-4 w-4 text-red-500" />
+              </Button>
+            </div>
+          ))}
+          <Button variant="outline" size="sm" onClick={handleAddOption}>
+            <PlusCircle className="h-4 w-4 mr-2" /> Add Option
+          </Button>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit}>Save Changes</Button>
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save Options"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
-// ImportFormDialog
-export function ImportFormDialog({
-  isOpen,
-  onClose,
-  brandId,
-}: {
-  isOpen: boolean
-  onClose: () => void
-  brandId: string
-}) {
-  const [htmlContent, setHtmlContent] = useState("")
-  const [isParsing, startParsing] = useTransition()
-
-  const handleImport = () => {
-    if (!htmlContent.trim()) {
-      toast.error("Please paste some HTML content.")
-      return
-    }
-    startParsing(async () => {
-      toast.loading("Parsing and importing form...")
-      const result = await importFormFromHtml(brandId, htmlContent)
-      toast.dismiss()
-      if (result.success) {
-        toast.success(result.message)
-        setHtmlContent("")
-        onClose()
-      } else {
-        toast.error(result.message)
-      }
-    })
-  }
-
+export function ConfirmDeleteDialog({ isOpen, onClose, onConfirm, itemName }: ConfirmDialogProps) {
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Import from HTML</DialogTitle>
-          <DialogDescription>
-            Paste your form's HTML code below. The AI will parse it and create the form structure for you. This will
-            replace the current form.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="py-4">
-          <Textarea
-            placeholder="Paste your JotForm or other form HTML here..."
-            className="h-64"
-            value={htmlContent}
-            onChange={(e) => setHtmlContent(e.target.value)}
-          />
-        </div>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
-          </DialogClose>
-          <Button onClick={handleImport} disabled={isParsing}>
-            {isParsing ? "Importing..." : "Parse & Import"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <AlertDialog open={isOpen} onOpenChange={onClose}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This action cannot be undone. This will permanently delete the {itemName}.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Continue
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

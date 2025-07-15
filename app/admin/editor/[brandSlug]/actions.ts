@@ -1,128 +1,142 @@
 "use server"
 
-import { createAdminClient } from "@/utils/supabase/server"
+import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
-import type { Section } from "@/lib/types"
-import { parseFormWithAI } from "@/lib/scraping"
-import { randomUUID } from "crypto"
-import { slugify } from "@/lib/utils"
+import { z } from "zod"
 
-export async function saveFormChanges(
-  brandId: string,
-  sections: Section[],
-  deletedItemIds: string[],
-  deletedSectionIds: string[],
-) {
-  const supabase = createAdminClient()
-
-  try {
-    // Handle deletions first
-    if (deletedItemIds.length > 0) {
-      const { error } = await supabase.from("items").delete().in("id", deletedItemIds)
-      if (error) throw new Error(`Item Deletion Error: ${error.message}`)
-    }
-    if (deletedSectionIds.length > 0) {
-      const { error } = await supabase.from("sections").delete().in("id", deletedSectionIds)
-      if (error) throw new Error(`Section Deletion Error: ${error.message}`)
-    }
-
-    // Process sections and items
-    const sectionUpserts = []
-    const itemUpserts = []
-    const sectionIdMap = new Map<string, string>()
-
-    // Explicitly generate UUIDs for new sections
-    for (const s of sections) {
-      let sectionId = s.id
-      if (s.id.toString().startsWith("new-")) {
-        const newId = randomUUID()
-        sectionIdMap.set(s.id, newId)
-        sectionId = newId
-      }
-      sectionUpserts.push({
-        id: sectionId,
-        brand_id: brandId,
-        title: s.title,
-        position: s.position,
-      })
-
-      // Explicitly generate UUIDs for new items
-      for (const i of s.items) {
-        const isNewItem = i.id.toString().startsWith("new-")
-        const itemId = isNewItem ? randomUUID() : i.id
-
-        // Generate a 'code' from the item name if it's a new item.
-        // For existing items, use the code that's already there.
-        const itemCode = isNewItem ? slugify(i.name) : i.code
-
-        itemUpserts.push({
-          id: itemId,
-          brand_id: brandId,
-          section_id: sectionIdMap.get(s.id) || s.id,
-          name: i.name,
-          code: itemCode, // Ensure 'code' is always provided
-          description: i.description,
-          field_type: i.field_type,
-          is_required: i.is_required,
-          placeholder: i.placeholder,
-          position: i.position,
-        })
-      }
-    }
-
-    // Perform upserts
-    if (sectionUpserts.length > 0) {
-      const { error: sectionError } = await supabase.from("sections").upsert(sectionUpserts)
-      if (sectionError) {
-        console.error("Section Save Error Details:", sectionError)
-        throw new Error(`Section Save Error: ${sectionError.message}`)
-      }
-    }
-
-    if (itemUpserts.length > 0) {
-      const { error: itemError } = await supabase.from("items").upsert(itemUpserts)
-      if (itemError) {
-        console.error("Item Save Error Details:", itemError)
-        throw new Error(`Item Save Error: ${itemError.message}`)
-      }
-    }
-
-    revalidatePath(`/admin/editor/${brandId}`)
-    return { success: true, message: "Form saved successfully!" }
-  } catch (error: any) {
-    console.error("Error saving form changes:", error)
-    return { success: false, message: error.message }
-  }
+const revalidate = (slug: string) => {
+  revalidatePath(`/admin/editor/${slug}`, "layout")
+  revalidatePath(`/forms/${slug}`)
 }
 
-export async function importFormFromHtml(brandId: string, htmlContent: string) {
-  try {
-    // The parseFormWithAI function returns an object: { sections: [...] }
-    const parsedForm = await parseFormWithAI(htmlContent)
+// Section Actions
+const sectionSchema = z.object({
+  title: z.string().min(1),
+  brand_id: z.string(),
+  position: z.number(),
+})
+export async function createSection(data: z.infer<typeof sectionSchema>) {
+  const supabase = createClient()
+  const { data: brand } = await supabase.from("brands").select("slug").eq("id", data.brand_id).single()
+  if (!brand) return { success: false, message: "Brand not found." }
 
-    if (!parsedForm || !parsedForm.sections || parsedForm.sections.length === 0) {
-      return { success: false, message: "Could not parse any sections from the HTML." }
-    }
+  const { error } = await supabase.from("sections").insert(data)
+  if (error) return { success: false, message: error.message }
+  revalidate(brand.slug)
+  return { success: true }
+}
 
-    const supabase = createAdminClient()
+export async function updateSection(id: string, data: { title: string }) {
+  const supabase = createClient()
+  const { data: section } = await supabase.from("sections").select("brands(slug)").eq("id", id).single()
+  if (!section) return { success: false, message: "Section not found." }
 
-    // Corrected: Pass the `sections` array directly to the RPC function,
-    // not the parent object that contains it.
-    const { error } = await supabase.rpc("import_form_from_ai", {
-      p_brand_id: brandId,
-      p_sections: parsedForm.sections,
-    })
+  const { error } = await supabase.from("sections").update(data).eq("id", id)
+  if (error) return { success: false, message: error.message }
+  revalidate(section.brands!.slug)
+  return { success: true }
+}
 
-    if (error) {
-      console.error("Database import function error:", error)
-      return { success: false, message: `Database error: ${error.message}` }
-    }
+export async function deleteSection(id: string) {
+  const supabase = createClient()
+  const { data: section } = await supabase.from("sections").select("brands(slug)").eq("id", id).single()
+  if (!section) return { success: false, message: "Section not found." }
 
-    revalidatePath(`/admin/editor/${brandId}`)
-    return { success: true, message: "Form imported successfully!" }
-  } catch (error) {
-    console.error("Import Error:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return { success: false, message: `Failed to import form: ${errorMessage}` }
+  const { error } = await supabase.from("sections").delete().eq("id", id)
+  if (error) return { success: false, message: error.message }
+  revalidate(section.brands!.slug)
+  return { success: true }
+}
+
+export async function updateSectionOrder(order: { id: string; position: number }[]) {
+  const supabase = createClient()
+  const { data: brandData, error: brandError } = await supabase
+    .from("sections")
+    .select("brands(slug)")
+    .eq("id", order[0].id)
+    .single()
+  if (brandError || !brandData) return { success: false, message: "Could not find brand to revalidate." }
+
+  const { error } = await supabase.from("sections").upsert(order)
+  if (error) return { success: false, message: error.message }
+
+  revalidate(brandData.brands!.slug)
+  return { success: true }
+}
+
+// Item Actions
+const itemSchema = z.object({
+  name: z.string().min(1),
+  code: z.string().min(1),
+  description: z.string().optional(),
+  field_type: z.string(),
+  placeholder: z.string().optional(),
+  is_required: z.boolean(),
+  section_id: z.string(),
+  brand_id: z.string(),
+  position: z.number(),
+})
+export async function createItem(data: z.infer<typeof itemSchema>) {
+  const supabase = createClient()
+  const { data: brand } = await supabase.from("brands").select("slug").eq("id", data.brand_id).single()
+  if (!brand) return { success: false, message: "Brand not found." }
+
+  const { error } = await supabase.from("items").insert(data)
+  if (error) return { success: false, message: error.message }
+  revalidate(brand.slug)
+  return { success: true }
+}
+
+export async function updateItem(
+  id: string,
+  data: Omit<z.infer<typeof itemSchema>, "section_id" | "brand_id" | "position">,
+) {
+  const supabase = createClient()
+  const { data: item } = await supabase.from("items").select("brands(slug)").eq("id", id).single()
+  if (!item) return { success: false, message: "Item not found." }
+
+  const { error } = await supabase.from("items").update(data).eq("id", id)
+  if (error) return { success: false, message: error.message }
+  revalidate(item.brands!.slug)
+  return { success: true }
+}
+
+export async function deleteItem(id: string) {
+  const supabase = createClient()
+  const { data: item } = await supabase.from("items").select("brands(slug)").eq("id", id).single()
+  if (!item) return { success: false, message: "Item not found." }
+
+  const { error } = await supabase.from("items").delete().eq("id", id)
+  if (error) return { success: false, message: error.message }
+  revalidate(item.brands!.slug)
+  return { success: true }
+}
+
+// Option Actions
+const optionSchema = z.object({
+  id: z.string().optional(),
+  label: z.string(),
+  value: z.string(),
+  item_id: z.string(),
+  brand_id: z.string(),
+  sort_order: z.number(),
+})
+export async function updateOrCreateOption(data: z.infer<typeof optionSchema>) {
+  const supabase = createClient()
+  const { id, ...upsertData } = data
+  const { error } = await supabase
+    .from("options")
+    .upsert({ id, ...upsertData }, { onConflict: "id", defaultToNull: false })
+  if (error) {
+    console.error("Option upsert error:", error)
+    return { success: false, message: error.message }
   }
+  return { success: true }
+}
+
+export async function deleteOption(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase.from("options").delete().eq("id", id)
+  if (error) return { success: false, message: error.message }
+  return { success: true }
 }

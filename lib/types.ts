@@ -1,4 +1,5 @@
-export type ClinicLocation = {
+// Base types from DB tables
+export interface ClinicLocation {
   id: string
   name: string
   address: string
@@ -42,11 +43,41 @@ export interface Brand {
   id: string
   name: string
   slug: string
-  logo: string | null
+  logo_url: string | null
   emails: string[]
-  clinic_locations: ClinicLocation[]
   active: boolean
-  sections: Section[]
+}
+
+// Composite type for the form editor and public form page
+export type BrandData = Brand & {
+  clinic_locations: ClinicLocation[]
+  sections: (Section & {
+    items: (Item & {
+      options: Option[]
+    })[]
+  })[]
+}
+
+// Types for order submission and processing
+export interface OrderInfo {
+  orderNumber: string
+  orderedBy: string
+  email: string
+  billTo: ClinicLocation
+  deliverTo: ClinicLocation
+  notes?: string
+}
+
+export interface OrderItem {
+  code: string
+  name: string
+  quantity: string | number
+}
+
+export interface OrderPayload {
+  brandSlug: string
+  items: Record<string, OrderItem>
+  orderInfo: OrderInfo
 }
 
 export interface UploadedFile {
@@ -58,27 +89,3 @@ export interface UploadedFile {
   uploaded_at: string
   brand_id: string | null
 }
-
-export interface OrderInfo {
-  orderNumber: string
-  orderedBy: string
-  email: string
-  billTo: ClinicLocation | null
-  deliverTo: ClinicLocation | null
-  notes?: string
-}
-
-export interface OrderItem {
-  code: string
-  name: string
-  quantity: string | number
-  customQuantity?: string
-}
-
-export interface OrderPayload {
-  brandSlug: string
-  items: Record<string, OrderItem>
-  orderInfo: OrderInfo
-}
-
-export type BrandData = Brand

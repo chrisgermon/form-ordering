@@ -1,6 +1,6 @@
 import chromium from "@sparticuz/chromium"
 import puppeteer from "puppeteer-core"
-import type { OrderPayload, Brand, ClinicLocation } from "@/lib/types"
+import type { Brand, ClinicLocation, OrderInfo, OrderItem } from "@/lib/types"
 import { getPublicUrl } from "@/lib/utils"
 
 // Helper function to format clinic details for the PDF
@@ -19,21 +19,20 @@ function formatClinicHtml(title: string, clinic: ClinicLocation | null) {
 }
 
 // Main function to generate the HTML for the PDF
-function getPdfHtml(order: OrderPayload, brand: Brand, logoUrl: string | null): string {
-  const { orderInfo, items } = order
+function getPdfHtml(orderInfo: OrderInfo, items: OrderItem[], brand: Brand, logoUrl: string | null): string {
   const themeColor = "#2a3760"
 
   const logoHtml = logoUrl
     ? `<img src="${logoUrl}" alt="${brand.name} Logo" class="logo" />`
     : `<h1 class="brand-name">${brand.name}</h1>`
 
-  const itemsHtml = Object.values(items || {})
+  const itemsHtml = items
     .map(
-      (item: any) => `
+      (item) => `
     <tr>
       <td>${item.code || ""}</td>
       <td>${item.name}</td>
-      <td class="quantity">${item.quantity === "other" ? item.customQuantity : item.quantity}</td>
+      <td class="quantity">${item.quantity}</td>
     </tr>
   `,
     )
@@ -43,7 +42,7 @@ function getPdfHtml(order: OrderPayload, brand: Brand, logoUrl: string | null): 
     <!DOCTYPE html>
     <html>
     <head>
-      <meta charset="utf-g" />
+      <meta charset="utf-8" />
       <title>Order #${orderInfo.orderNumber}</title>
       <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #333; margin: 0; padding: 0; }
@@ -111,7 +110,12 @@ function getPdfHtml(order: OrderPayload, brand: Brand, logoUrl: string | null): 
 }
 
 // Function to generate the PDF buffer
-export async function generatePdf(order: OrderPayload, brand: Brand): Promise<Buffer> {
+export async function generateOrderPdf(payload: {
+  orderInfo: OrderInfo
+  items: OrderItem[]
+  brand: Brand
+}): Promise<Buffer> {
+  const { orderInfo, items, brand } = payload
   const browser = await puppeteer.launch({
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
@@ -122,7 +126,7 @@ export async function generatePdf(order: OrderPayload, brand: Brand): Promise<Bu
 
   const page = await browser.newPage()
   const logoUrl = brand.logo ? getPublicUrl(brand.logo) : null
-  const htmlContent = getPdfHtml(order, brand, logoUrl)
+  const htmlContent = getPdfHtml(orderInfo, items, brand, logoUrl)
 
   await page.setContent(htmlContent, { waitUntil: "networkidle0" })
 
