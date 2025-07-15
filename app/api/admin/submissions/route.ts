@@ -1,57 +1,37 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createAdminClient } from "@/utils/supabase/server"
+import { NextResponse } from "next/server"
+
+export const revalidate = 0
 
 export async function GET() {
-  const supabase = createServerSupabaseClient()
+  const supabase = createAdminClient()
   try {
     const { data, error } = await supabase
       .from("submissions")
       .select(
         `
-        *,
-        brand:brands (
+        id,
+        created_at,
+        ordered_by,
+        email,
+        status,
+        pdf_url,
+        ip_address,
+        brands (
           name
         )
-      `
+      `,
       )
       .order("created_at", { ascending: false })
 
     if (error) {
       console.error("Error fetching submissions:", error)
-      throw error
+      throw new Error(error.message)
     }
 
-    // Manually map brand name to top-level for easier client-side access
-    const submissionsWithBrandName = data.map((submission: any) => ({
-      ...submission,
-      brand_name: submission.brand?.name || "Unknown Brand",
-      brand: undefined, // remove the nested brand object
-    }))
-
-    return NextResponse.json(submissionsWithBrandName)
+    return NextResponse.json(data)
   } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch submissions" }, { status: 500 })
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  const supabase = createServerSupabaseClient()
-  try {
-    const { ids } = await request.json()
-
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return NextResponse.json({ error: "Submission IDs are required" }, { status: 400 })
-    }
-
-    const { error } = await supabase.from("submissions").delete().in("id", ids)
-
-    if (error) {
-      console.error("Error deleting submissions:", error)
-      throw error
-    }
-
-    return NextResponse.json({ message: `${ids.length} submission(s) deleted successfully.` })
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to delete submissions" }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return NextResponse.json({ error: "Failed to fetch submissions", details: errorMessage }, { status: 500 })
   }
 }

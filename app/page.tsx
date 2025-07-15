@@ -1,19 +1,10 @@
+import { createAdminClient } from "@/utils/supabase/server"
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/server"
-import { BrandGrid } from "@/components/brand-grid"
+import Image from "next/image"
+import { resolveAssetUrl } from "@/lib/utils"
 
-interface Brand {
-  id: string
-  name: string
-  slug: string
-  logo: string | null
-}
-
-export const revalidate = 0
-
-async function getBrands(): Promise<Brand[]> {
-  const supabase = createClient()
-
+export default async function HomePage() {
+  const supabase = createAdminClient()
   const { data: brands, error } = await supabase
     .from("brands")
     .select("id, name, slug, logo")
@@ -21,59 +12,51 @@ async function getBrands(): Promise<Brand[]> {
     .order("name")
 
   if (error) {
-    console.error("Error fetching brands:", error)
-    return []
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-red-500">Error loading brands: {error.message}</p>
+      </div>
+    )
   }
 
-  return brands || []
-}
-
-export default async function HomePage() {
-  const brands = await getBrands()
-
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
-      <main className="flex-grow">
-        <div className="container mx-auto px-4 py-12">
-          <div className="text-center mb-12">
-            <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
-              Crowd IT Print Ordering System
-            </h1>
-            <p className="mt-4 text-lg leading-8 text-gray-600">
-              Select your brand to access the customised printing order form for your radiology practice.
-            </p>
-          </div>
-          <BrandGrid brands={brands} />
-        </div>
-      </main>
-
-      <footer className="bg-white border-t border-gray-200 mt-auto">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600 text-sm">Platform Created by</span>
-              <a
-                href="https://crowdit.com.au"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-              >
-                <img
-                  src="https://rkzg1azdhvqaqoqa.public.blob.vercel-storage.com/admin-uploads/1751267287132-CrowdIT-Logo%401x.png"
-                  alt="Crowd IT Logo"
-                  className="h-8 w-auto object-contain"
-                  crossOrigin="anonymous"
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 sm:p-8">
+      <div className="text-center mb-12">
+        <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">Select Your Brand</h1>
+        <p className="text-md sm:text-lg text-gray-600 mt-2">Choose your clinic to access the order form.</p>
+      </div>
+      {brands && brands.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-6xl w-full">
+          {brands.map((brand) => (
+            <Link
+              href={`/forms/${brand.slug}`}
+              key={brand.id}
+              className="group block bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden"
+            >
+              <div className="w-full h-48 bg-gray-100 flex items-center justify-center p-4">
+                <Image
+                  src={resolveAssetUrl(brand.logo) || `/placeholder.svg?width=150&height=150&query=${brand.name}+logo`}
+                  alt={`${brand.name} Logo`}
+                  width={150}
+                  height={150}
+                  className="object-contain h-full w-full"
+                  unoptimized={brand.logo?.endsWith(".svg")}
                 />
-              </a>
-            </div>
-            <div className="text-center">
-              <Link href="/admin" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-                Admin Portal
-              </Link>
-            </div>
-          </div>
+              </div>
+              <div className="p-4 border-t border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-700 group-hover:text-blue-600 transition-colors duration-300 truncate">
+                  {brand.name}
+                </h2>
+              </div>
+            </Link>
+          ))}
         </div>
-      </footer>
+      ) : (
+        <div className="text-center">
+          <p className="text-gray-500">No active brands found.</p>
+          <p className="text-sm text-gray-400 mt-2">Please check the admin dashboard to add or activate brands.</p>
+        </div>
+      )}
     </div>
   )
 }
