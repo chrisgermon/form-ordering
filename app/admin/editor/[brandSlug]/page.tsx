@@ -11,33 +11,46 @@ export const revalidate = 0
 export default async function BrandEditorPage({ params }: { params: { brandSlug: string } }) {
   const supabase = createClient()
 
-  const { data: brand, error } = await supabase
+  // Step 1: Fetch the brand and its direct relations
+  const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select(
-      `
-      *,
-      clinic_locations (*),
-      sections (
-        *,
-        items (
-          *,
-          options (*)
-        )
-      )
-    `,
-    )
+    .select(`*, clinic_locations (*)`)
     .eq("slug", params.brandSlug)
-    .single<BrandData>()
+    .single()
 
-  if (error || !brand) {
-    console.error("Error fetching brand for editor:", error?.message)
+  if (brandError || !brand) {
+    console.error("Error fetching brand:", brandError?.message)
     notFound()
   }
 
-  // Ensure sections and items are sorted for the editor
-  brand.sections.sort((a, b) => a.position - b.position)
+  // Step 2: Fetch the sections and their nested items/options for that brand
+  const { data: sections, error: sectionsError } = await supabase
+    .from("sections")
+    .select(
+      `
+      *,
+      items (
+        *,
+        options (*)
+      )
+    `,
+    )
+    .eq("brand_id", brand.id)
+    .order("position", { ascending: true })
+
+  if (sectionsError) {
+    console.error("Error fetching sections for editor:", sectionsError.message)
+    // Assign empty array to prevent crash, page will show "no sections"
+    brand.sections = []
+  } else {
+    brand.sections = sections || []
+  }
+
+  // Ensure items within each section are sorted by position
   brand.sections.forEach((section) => {
-    section.items.sort((a, b) => a.position - b.position)
+    if (section.items) {
+      section.items.sort((a, b) => a.position - b.position)
+    }
   })
 
   return (
@@ -65,7 +78,7 @@ export default async function BrandEditorPage({ params }: { params: { brandSlug:
       </header>
       <main className="flex-1 overflow-auto p-4 md:p-6">
         <div className="max-w-5xl mx-auto">
-          <FormEditor brand={brand} />
+          <FormEditor brand={brand as BrandData} />
         </div>
       </main>
     </div>
