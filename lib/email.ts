@@ -1,148 +1,167 @@
 import nodemailer from "nodemailer"
+import type { Submission, Brand } from "./types"
+import { format } from "date-fns"
 
-// Create transporter with correct method name for Mailgun
+const fromEmail = process.env.FROM_EMAIL
+
 const transporter = nodemailer.createTransport({
   host: "smtp.mailgun.org",
   port: 587,
-  secure: false,
+  secure: false, // use TLS
   auth: {
-    user: process.env.MAILGUN_SMTP_USERNAME!,
-    pass: process.env.MAILGUN_SMTP_PASSWORD!,
+    user: process.env.MAILGUN_SMTP_USERNAME,
+    pass: process.env.MAILGUN_SMTP_PASSWORD,
   },
 })
 
-export interface EmailOptions {
-  to: string
-  cc?: string
-  subject: string
-  html: string
-  attachments?: Array<{
-    filename: string
-    content: Buffer
-    contentType: string
-  }>
-}
+export async function sendNewOrderEmail({
+  submission,
+  brand,
+  pdfBuffer,
+}: {
+  submission: Submission
+  brand: Brand
+  pdfBuffer: Buffer
+}) {
+  console.log("Preparing to send new order email...")
+  if (!fromEmail) {
+    const errorMsg = "Server configuration error: FROM_EMAIL is not set."
+    console.error(`sendNewOrderEmail: ${errorMsg}`)
+    return { success: false, error: errorMsg }
+  }
+  if (!process.env.MAILGUN_SMTP_USERNAME || !process.env.MAILGUN_SMTP_PASSWORD) {
+    const errorMsg = "Server configuration error: Mailgun SMTP credentials are not set."
+    console.error(`sendNewOrderEmail: ${errorMsg}`)
+    return { success: false, error: errorMsg }
+  }
 
-export async function sendEmail(options: EmailOptions) {
+  const mailOptions = {
+    from: `Crowd IT Print Ordering <${fromEmail}>`,
+    to: brand.email,
+    cc: submission.email ? submission.email : undefined,
+    subject: `New Printing Order: ${submission.order_number} - ${brand.name}`,
+    html: generateOrderEmailTemplate(submission, brand),
+    attachments: [
+      {
+        filename: `${submission.order_number}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  }
+
   try {
-    // Add chris@crowdit.com.au to CC for testing
-    const ccEmails = options.cc ? `${options.cc}, chris@crowdit.com.au` : "chris@crowdit.com.au"
-
-    const info = await transporter.sendMail({
-      from: process.env.FROM_EMAIL || "noreply@printedforms.com.au",
-      to: options.to,
-      cc: ccEmails,
-      subject: options.subject,
-      html: options.html,
-      attachments: options.attachments,
-    })
-
-    console.log("Email sent successfully:", info.messageId)
-    return { success: true, messageId: info.messageId }
+    console.log(
+      `Sending new order email to ${brand.email} (CC: ${submission.email}) for order ${submission.order_number}`,
+    )
+    const info = await transporter.sendMail(mailOptions)
+    console.log("Order email sent successfully:", info.messageId, "Response:", info.response)
+    return { success: true, data: info }
   } catch (error) {
-    console.error("Error sending email:", error)
+    console.error(`Error sending order email for ${submission.order_number}:`, error)
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
   }
 }
 
-export function generateOrderEmailTemplate(
-  brandName: string,
-  formData: any,
-  selectedItems: Array<{ code: string; name: string; quantity: string; description?: string }>,
-  orderNumber: string,
-) {
-  const itemsHtml = selectedItems
-    .map(
-      (item) => `
-     <tr>
-       <td style="padding: 8px; border: 1px solid #ddd;">${item.code}</td>
-       <td style="padding: 8px; border: 1px solid #ddd;">${item.name}</td>
-       <td style="padding: 8px; border: 1px solid #ddd;">${item.description || ""}</td>
-       <td style="padding: 8px; border: 1px solid #ddd;">${item.quantity}</td>
-     </tr>
-   `,
-    )
-    .join("")
+export function generateOrderEmailTemplate(submission: Submission, brand: Brand) {
+  const submissionDate = format(new Date(submission.created_at), "dd/MM/yyyy HH:mm")
+  const orderedItems = Object.values(submission.items || {}) as any[]
 
   return `
- <!DOCTYPE html>
- <html>
- <head>
-   <meta charset="utf-8">
-   <title>New Printing Order - ${orderNumber}</title>
- </head>
- <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-   <div style="max-width: 800px; margin: 0 auto; padding: 20px;">
-     <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
-       New Printing Order Submission
-     </h1>
-     
-     <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-       <h2 style="margin-top: 0; color: #1e40af;">Order Details</h2>
-       <table style="width: 100%; border-collapse: collapse;">
-         <tr>
-           <td style="padding: 8px; font-weight: bold; width: 150px;">Order Number:</td>
-           <td style="padding: 8px;"><strong>${orderNumber}</strong></td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold; width: 150px;">Brand:</td>
-           <td style="padding: 8px;">${brandName}</td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold;">Ordered By:</td>
-           <td style="padding: 8px;">${formData.orderedBy}</td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold;">Email:</td>
-           <td style="padding: 8px;">${formData.email}</td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold;">Bill to Clinic:</td>
-           <td style="padding: 8px;">${formData.billTo}</td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold;">Deliver to Clinic:</td>
-           <td style="padding: 8px;">${formData.deliverTo}</td>
-         </tr>
-         <tr>
-           <td style="padding: 8px; font-weight: bold;">Date:</td>
-           <td style="padding: 8px;">${
-             formData.date ? new Date(formData.date).toLocaleDateString("en-AU") : "Not specified"
-           }</td>
-         </tr>
-       </table>
-     </div>
+<div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+<img src="${brand.logo}" alt="${brand.name} Logo" style="max-width: 200px; margin-bottom: 20px; display: block;">
+<h2>New Order Received: #${submission.order_number}</h2>
+<p>A new order has been placed for <strong>${brand.name}</strong>.</p>
+<h3>Order Details:</h3>
+<ul style="list-style: none; padding: 0;">
+<li><strong>Order Number:</strong> ${submission.order_number}</li>
+<li><strong>Date Submitted:</strong> ${submissionDate}</li>
+<li><strong>Ordered By:</strong> ${submission.ordered_by}</li>
+<li><strong>Email:</strong> ${submission.email}</li>
+<li><strong>Bill to Clinic:</strong> ${submission.bill_to}</li>
+<li><strong>Deliver to Clinic:</strong><br><pre style="font-family: sans-serif; margin: 0;">${submission.deliver_to}</pre></li>
+</ul>
+<h3>Items Ordered:</h3>
+<table style="width: 100%; border-collapse: collapse;">
+<thead>
+  <tr>
+    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Code</th>
+    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Item</th>
+    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Quantity</th>
+  </tr>
+</thead>
+<tbody>
+  ${orderedItems
+    .map(
+      (item: any) => `
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">${item.code}</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">${item.name}</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">${item.quantity === "other" ? item.customQuantity || "N/A" : item.quantity}</td>
+    </tr>
+  `,
+    )
+    .join("")}
+</tbody>
+</table>
+</div>
+`
+}
 
-     <div style="margin: 20px 0;">
-       <h2 style="color: #1e40af;">Selected Items</h2>
-       <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
-         <thead>
-           <tr style="background-color: #f1f5f9;">
-             <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Code</th>
-             <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Item</th>
-             <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Description</th>
-             <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Quantity</th>
-           </tr>
-         </thead>
-         <tbody>
-           ${itemsHtml}
-         </tbody>
-       </table>
-     </div>
+export async function sendOrderCompletionEmail(submission: Submission & { brand?: Brand }) {
+  console.log("sendOrderCompletionEmail called with submission data:", JSON.stringify(submission, null, 2))
 
-     <div style="margin-top: 30px; padding: 20px; background-color: #e0f2fe; border-radius: 8px;">
-       <p style="margin: 0; font-size: 14px; color: #0369a1;">
-         This order was submitted through the Printed Form Ordering system. 
-         Please find the detailed PDF order form attached to this email.
-       </p>
-     </div>
+  if (!fromEmail) {
+    const errorMsg = "Server configuration error: FROM_EMAIL is not set."
+    console.error(`sendOrderCompletionEmail: ${errorMsg}`)
+    throw new Error(errorMsg)
+  }
+  if (!process.env.MAILGUN_SMTP_USERNAME || !process.env.MAILGUN_SMTP_PASSWORD) {
+    const errorMsg = "Server configuration error: Mailgun SMTP credentials are not set."
+    console.error(`sendOrderCompletionEmail: ${errorMsg}`)
+    throw new Error(errorMsg)
+  }
+  if (!submission.email) {
+    console.warn(
+      `sendOrderCompletionEmail: No email address found for submission ${submission.id}. Cannot send completion email.`,
+    )
+    return
+  }
 
-     <div style="margin-top: 20px; text-align: center; font-size: 12px; color: #6b7280;">
-       <p>Generated by Printed Form Ordering System</p>
-       <p>Platform created by <a href="https://crowdit.com.au" style="color: #2563eb;">Crowd IT</a></p>
-     </div>
-   </div>
- </body>
- </html>
+  const mailOptions = {
+    from: `Crowd IT Print Ordering <${fromEmail}>`,
+    to: submission.email,
+    subject: `Your order #${submission.order_number} has been dispatched!`,
+    html: generateOrderCompletionEmailTemplate(submission),
+  }
+
+  try {
+    console.log(`Attempting to send completion email to: ${submission.email} for order ${submission.order_number}`)
+    const info = await transporter.sendMail(mailOptions)
+    console.log("Completion email sent successfully:", info.messageId, "Response:", info.response)
+    return info
+  } catch (error) {
+    console.error(`Error sending completion email for order ${submission.order_number}:`, error)
+    throw error
+  }
+}
+
+export function generateOrderCompletionEmailTemplate(submission: Submission & { brand?: Brand }) {
+  const completionDate = submission.completed_at ? format(new Date(submission.completed_at), "dd/MM/yyyy") : "N/A"
+  const brandName = submission.brand?.name || submission.brand_name || "Your Brand"
+
+  return `
+<div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+<h2>Order #${submission.order_number} Dispatched!</h2>
+<p>Hello ${submission.ordered_by},</p>
+<p>Great news! Your order for <strong>${brandName}</strong> has been completed and dispatched on ${completionDate}.</p>
+<h3>Dispatch Details:</h3>
+<ul>
+<li><strong>Courier:</strong> ${submission.completion_courier || "N/A"}</li>
+<li><strong>Tracking Number:</strong> ${submission.completion_tracking || "N/A"}</li>
+<li><strong>Notes:</strong> ${submission.completion_notes || "None"}</li>
+</ul>
+<p>Thank you for your order!</p>
+</div>
 `
 }
