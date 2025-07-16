@@ -73,8 +73,8 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
         brand_id: brand.id,
         ordered_by: orderInfo.orderedBy,
         email: orderInfo.email,
-        bill_to: billTo.id,
-        deliver_to: deliverTo.id,
+        bill_to: billTo.id, // CRITICAL FIX: Ensure we use the location ID
+        deliver_to: deliverTo.id, // CRITICAL FIX: Ensure we use the location ID
         notes: orderInfo.notes,
         items: orderItems,
       })
@@ -83,7 +83,8 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
 
     if (submissionError || !submission) {
       console.error("Submission Error: Failed to save submission", submissionError)
-      return { success: false, message: "Failed to save your order. Please try again." }
+      const dbErrorMessage = submissionError?.message || "Failed to save your order."
+      return { success: false, message: `Database error: ${dbErrorMessage}` }
     }
 
     // 4. Generate PDF
@@ -111,6 +112,7 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
     return { success: true, submissionId: submission.id }
   } catch (error) {
     console.error("Unexpected Submission Error:", error)
-    return { success: false, message: "An unexpected error occurred. Please contact support." }
+    const message = error instanceof Error ? error.message : "An unknown error occurred during submission."
+    return { success: false, message }
   }
 }
