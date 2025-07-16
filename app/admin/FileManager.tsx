@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect, useTransition } from "react"
 import { Upload, Trash2, Copy, Download, FileIcon, ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -122,16 +121,15 @@ export function FileManager({ brands, files }: { brands: Brand[]; files: FileRec
         <div className="flex items-center gap-4">
           <Select onValueChange={handleBrandChange} defaultValue={selectedBrandId || "all"}>
             <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Select a brand" />
+              <SelectValue placeholder="Filter by brand" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Brands</SelectItem>
-              {Array.isArray(brands) &&
-                brands.map((brand) => (
-                  <SelectItem key={brand.id} value={String(brand.id)}>
-                    {brand.name}
-                  </SelectItem>
-                ))}
+              {brands.map((brand) => (
+                <SelectItem key={brand.id} value={brand.id}>
+                  {brand.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Button asChild variant="outline" disabled={!selectedBrandId || isLoading}>
@@ -188,7 +186,7 @@ export function FileManager({ brands, files }: { brands: Brand[]; files: FileRec
                       </Button>
                     </a>
                     <Button variant="ghost" size="icon" onClick={() => handleDeleteFile(file.url)} title="Delete">
-                      <Trash2 className="h-4 w-4 text-red-500" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>

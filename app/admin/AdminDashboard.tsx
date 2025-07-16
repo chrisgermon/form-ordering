@@ -1,34 +1,25 @@
 "use client"
 
 import { useState } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PlusCircle } from "lucide-react"
-import type { Brand, FileRecord, Submission } from "@/lib/types"
 import { BrandGrid } from "./BrandGrid"
 import { BrandForm } from "./BrandForm"
-import { FileManager } from "./FileManager"
 import { SubmissionsTable } from "./SubmissionsTable"
+import { FileManager } from "./FileManager"
+import type { Brand, Submission, FileRecord } from "@/lib/types"
 
 interface AdminDashboardProps {
   brands: Brand[]
-  files: FileRecord[]
   submissions: Submission[]
+  files: FileRecord[]
 }
 
-export default function AdminDashboard({ brands: initialBrands, files, submissions }: AdminDashboardProps) {
+export function AdminDashboard({ brands, submissions, files }: AdminDashboardProps) {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
-  const [brands, setBrands] = useState<Brand[]>(initialBrands || [])
-
-  const refreshData = async () => {
-    const res = await fetch("/api/admin/brands")
-    if (res.ok) {
-      const updatedBrands = await res.json()
-      setBrands(updatedBrands)
-    }
-  }
 
   const handleAddNewBrand = () => {
     setSelectedBrand(null)
@@ -43,7 +34,6 @@ export default function AdminDashboard({ brands: initialBrands, files, submissio
   const handleCloseForm = () => {
     setIsFormOpen(false)
     setSelectedBrand(null)
-    refreshData()
   }
 
   return (
@@ -61,10 +51,10 @@ export default function AdminDashboard({ brands: initialBrands, files, submissio
           </Button>
         </div>
         <TabsContent value="brands">
-          <BrandGrid brands={brands} onEditBrand={handleEditBrand} onBrandChange={refreshData} />
+          <BrandGrid brands={brands} onEditBrand={handleEditBrand} />
         </TabsContent>
         <TabsContent value="submissions">
-          <SubmissionsTable submissions={submissions} brands={brands} />
+          <SubmissionsTable submissions={submissions} />
         </TabsContent>
         <TabsContent value="files">
           <FileManager files={files} brands={brands} />
@@ -76,7 +66,7 @@ export default function AdminDashboard({ brands: initialBrands, files, submissio
           <DialogHeader>
             <DialogTitle>{selectedBrand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
           </DialogHeader>
-          <BrandForm brand={selectedBrand} onFormSuccess={handleCloseForm} />
+          <BrandForm brand={selectedBrand} onClose={handleCloseForm} />
         </DialogContent>
       </Dialog>
     </div>
