@@ -1,11 +1,11 @@
 "use client"
 
 import React from "react"
+import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { toast } from "sonner"
-import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form"
@@ -16,10 +16,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+
 import { submitOrder } from "./actions"
 import type { ClientFormParams } from "@/lib/types"
 
-export function ClientForm({ brandSlug, brandName, brandLogo, locationOptions, sections }: ClientFormParams) {
+export function ClientForm({ brandName, brandSlug, brandLogo, locationOptions, sections }: ClientFormParams) {
   const router = useRouter()
 
   const formSchema = React.useMemo(() => {
@@ -155,8 +156,8 @@ export function ClientForm({ brandSlug, brandName, brandLogo, locationOptions, s
                       </FormControl>
                       <SelectContent>
                         {locationOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={String(opt.value)}>
-                            {String(opt.label)}
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -179,8 +180,8 @@ export function ClientForm({ brandSlug, brandName, brandLogo, locationOptions, s
                       </FormControl>
                       <SelectContent>
                         {locationOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={String(opt.value)}>
-                            {String(opt.label)}
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -266,8 +267,8 @@ export function ClientForm({ brandSlug, brandName, brandLogo, locationOptions, s
                                   </FormControl>
                                   <SelectContent>
                                     {item.options.map((opt) => (
-                                      <SelectItem key={opt.id} value={String(opt.value)}>
-                                        {String(opt.label)}
+                                      <SelectItem key={opt.id} value={opt.value}>
+                                        {opt.label || opt.value}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
@@ -282,9 +283,9 @@ export function ClientForm({ brandSlug, brandName, brandLogo, locationOptions, s
                                   {item.options.map((opt) => (
                                     <FormItem key={opt.id} className="flex items-center space-x-3 space-y-0">
                                       <FormControl>
-                                        <RadioGroupItem value={String(opt.value)} />
+                                        <RadioGroupItem value={opt.value} />
                                       </FormControl>
-                                      <FormLabel className="font-normal">{String(opt.label)}</FormLabel>
+                                      <FormLabel className="font-normal">{opt.label || opt.value}</FormLabel>
                                     </FormItem>
                                   ))}
                                 </RadioGroup>
