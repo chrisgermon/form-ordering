@@ -17,19 +17,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { submitOrder } from "./actions"
-import type { BrandData, LocationOption } from "@/lib/types"
+import type { Section, LocationOption } from "@/lib/types"
 
-interface BrandFormProps {
-  brand: BrandData
+interface OrderFormProps {
+  brandSlug: string
   locationOptions: LocationOption[]
+  sections: Section[]
 }
 
-export function BrandForm({ brand, locationOptions }: BrandFormProps) {
+export function OrderForm({ brandSlug, locationOptions, sections }: OrderFormProps) {
   const router = useRouter()
 
   const formSchema = React.useMemo(() => {
     const itemSchema = z.object(
-      brand.sections
+      sections
         .flatMap((section) => section.items)
         .reduce(
           (acc, item) => {
@@ -73,7 +74,7 @@ export function BrandForm({ brand, locationOptions }: BrandFormProps) {
       notes: z.string().optional(),
       items: itemSchema,
     })
-  }, [brand])
+  }, [sections])
 
   type FormValues = z.infer<typeof formSchema>
 
@@ -85,7 +86,7 @@ export function BrandForm({ brand, locationOptions }: BrandFormProps) {
       billTo: "",
       deliverTo: "",
       notes: "",
-      items: brand.sections
+      items: sections
         .flatMap((s) => s.items)
         .reduce((acc, item) => {
           acc[item.id] = item.field_type === "checkbox" ? false : ""
@@ -98,7 +99,7 @@ export function BrandForm({ brand, locationOptions }: BrandFormProps) {
     const toastId = toast.loading("Submitting your order, please wait...")
 
     const result = await submitOrder({
-      brandSlug: brand.slug,
+      brandSlug: brandSlug,
       orderInfo: {
         orderedBy: data.orderedBy,
         email: data.email,
@@ -112,7 +113,7 @@ export function BrandForm({ brand, locationOptions }: BrandFormProps) {
     toast.dismiss(toastId)
     if (result.success) {
       toast.success("Order submitted successfully!")
-      router.push(`/forms/${brand.slug}/success?orderId=${result.submissionId}`)
+      router.push(`/forms/${brandSlug}/success?orderId=${result.submissionId}`)
     } else {
       let errorMessage = "An unknown error occurred."
       if (typeof result.message === "string") {
@@ -224,7 +225,7 @@ export function BrandForm({ brand, locationOptions }: BrandFormProps) {
           </CardContent>
         </Card>
 
-        {brand.sections.map((section) => (
+        {sections.map((section) => (
           <Card key={section.id}>
             <CardHeader>
               <CardTitle>{section.title}</CardTitle>

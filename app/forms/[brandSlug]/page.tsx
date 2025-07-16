@@ -1,8 +1,8 @@
 import { createClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
 import Image from "next/image"
-import { BrandForm } from "./form"
-import type { BrandData, Item, Section, Brand, ClinicLocation, LocationOption } from "@/lib/types"
+import { OrderForm } from "./order-form"
+import type { BrandData, Section, Brand, ClinicLocation, LocationOption } from "@/lib/types"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Terminal } from "lucide-react"
 
@@ -16,7 +16,6 @@ type BrandFetchResult =
 async function getBrandData(slug: string): Promise<BrandFetchResult> {
   const supabase = createClient()
 
-  // Step 1: Fetch brand by slug, regardless of active status
   const { data: brand, error: brandError } = await supabase
     .from("brands")
     .select("id, name, slug, logo, emails, active")
@@ -24,21 +23,17 @@ async function getBrandData(slug: string): Promise<BrandFetchResult> {
     .single<Brand>()
 
   if (brandError || !brand) {
-    if (brandError) {
-      console.error(`Error fetching brand with slug ${slug}:`, brandError.message)
-    }
+    if (brandError) console.error(`Error fetching brand with slug ${slug}:`, brandError.message)
     return { status: "not_found" }
   }
 
-  // Step 2: Check if the brand is inactive
   if (!brand.active) {
     return { status: "inactive", data: { name: brand.name } }
   }
 
-  // Step 3: If active, fetch all related data in parallel.
   const [locationsResult, sectionsResult] = await Promise.all([
     supabase.from("clinic_locations").select("*").eq("brand_id", brand.id),
-    supabase.from("sections").select("*").eq("brand_id", brand.id).order("position"),
+    supabase.from("sections").select("*, items(*, options(*))").eq("brand_id", brand.id).order("position"),
   ])
 
   const { data: clinicLocations, error: locationsError } = locationsResult
@@ -49,39 +44,13 @@ async function getBrandData(slug: string): Promise<BrandFetchResult> {
     return { status: "not_found" }
   }
 
-  // Step 4: For each section, fetch its items and their options.
-  const sectionsWithItems = await Promise.all(
-    (sections || []).map(async (section: Section) => {
-      const { data: items, error: itemsError } = await supabase
-        .from("items")
-        .select("*")
-        .eq("section_id", section.id)
-        .order("position")
-
-      if (itemsError) console.error(`Error fetching items for section ${section.id}:`, itemsError)
-
-      const itemsWithOptions = await Promise.all(
-        (items || []).map(async (item: Item) => {
-          const { data: options, error: optionsError } = await supabase
-            .from("options")
-            .select("*")
-            .eq("item_id", item.id)
-            .order("sort_order")
-
-          if (optionsError) console.error(`Error fetching options for item ${item.id}:`, optionsError)
-
-          return { ...item, options: options || [] }
-        }),
-      )
-      return { ...section, items: itemsWithOptions }
-    }),
-  )
-
-  // Step 5: Assemble and return the final object.
   const fullBrandData: BrandData = {
     ...brand,
-    clinic_locations: (clinicLocations as ClinicLocation[]) || [],
-    sections: sectionsWithItems,
+    clinic_locations: (clinicLocations || []) as ClinicLocation[],
+    sections: (sections || []).map((s) => ({
+      ...s,
+      items: s.items.map((i) => ({ ...i, options: i.options || [] })),
+    })) as Section[],
   }
 
   return { status: "found", data: fullBrandData }
@@ -142,7 +111,7 @@ export default async function BrandFormPage({ params }: { params: { brandSlug: s
         </div>
       </header>
       <main className="container mx-auto p-4 md:p-8">
-        <BrandForm brand={brand} locationOptions={locationOptions} />
+        <OrderForm brandSlug={brand.slug} locationOptions={locationOptions} sections={brand.sections} />
       </main>
       <footer className="py-4 text-center text-sm text-gray-500">
         <p>
