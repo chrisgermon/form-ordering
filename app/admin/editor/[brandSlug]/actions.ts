@@ -1,142 +1,90 @@
 "use server"
 
-import { createClient } from "@/utils/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import type { BrandData, Item, Option, Section } from "@/lib/types"
 import { revalidatePath } from "next/cache"
-import { z } from "zod"
 
-const revalidate = (slug: string) => {
-  revalidatePath(`/admin/editor/${slug}`, "layout")
-  revalidatePath(`/forms/${slug}`)
-}
+export async function getBrand(slug: string): Promise<BrandData | null> {
+  const supabase = createAdminClient()
 
-// Section Actions
-const sectionSchema = z.object({
-  title: z.string().min(1),
-  brand_id: z.string(),
-  position: z.number(),
-})
-export async function createSection(data: z.infer<typeof sectionSchema>) {
-  const supabase = createClient()
-  const { data: brand } = await supabase.from("brands").select("slug").eq("id", data.brand_id).single()
-  if (!brand) return { success: false, message: "Brand not found." }
-
-  const { error } = await supabase.from("sections").insert(data)
-  if (error) return { success: false, message: error.message }
-  revalidate(brand.slug)
-  return { success: true }
-}
-
-export async function updateSection(id: string, data: { title: string }) {
-  const supabase = createClient()
-  const { data: section } = await supabase.from("sections").select("brands(slug)").eq("id", id).single()
-  if (!section) return { success: false, message: "Section not found." }
-
-  const { error } = await supabase.from("sections").update(data).eq("id", id)
-  if (error) return { success: false, message: error.message }
-  revalidate(section.brands!.slug)
-  return { success: true }
-}
-
-export async function deleteSection(id: string) {
-  const supabase = createClient()
-  const { data: section } = await supabase.from("sections").select("brands(slug)").eq("id", id).single()
-  if (!section) return { success: false, message: "Section not found." }
-
-  const { error } = await supabase.from("sections").delete().eq("id", id)
-  if (error) return { success: false, message: error.message }
-  revalidate(section.brands!.slug)
-  return { success: true }
-}
-
-export async function updateSectionOrder(order: { id: string; position: number }[]) {
-  const supabase = createClient()
-  const { data: brandData, error: brandError } = await supabase
-    .from("sections")
-    .select("brands(slug)")
-    .eq("id", order[0].id)
+  // Step 1: Fetch the core brand data.
+  const { data: brand, error: brandError } = await supabase
+    .from("brands")
+    .select("id, name, slug, logo, emails, active")
+    .eq("slug", slug)
     .single()
-  if (brandError || !brandData) return { success: false, message: "Could not find brand to revalidate." }
 
-  const { error } = await supabase.from("sections").upsert(order)
-  if (error) return { success: false, message: error.message }
-
-  revalidate(brandData.brands!.slug)
-  return { success: true }
-}
-
-// Item Actions
-const itemSchema = z.object({
-  name: z.string().min(1),
-  code: z.string().min(1),
-  description: z.string().optional(),
-  field_type: z.string(),
-  placeholder: z.string().optional(),
-  is_required: z.boolean(),
-  section_id: z.string(),
-  brand_id: z.string(),
-  position: z.number(),
-})
-export async function createItem(data: z.infer<typeof itemSchema>) {
-  const supabase = createClient()
-  const { data: brand } = await supabase.from("brands").select("slug").eq("id", data.brand_id).single()
-  if (!brand) return { success: false, message: "Brand not found." }
-
-  const { error } = await supabase.from("items").insert(data)
-  if (error) return { success: false, message: error.message }
-  revalidate(brand.slug)
-  return { success: true }
-}
-
-export async function updateItem(
-  id: string,
-  data: Omit<z.infer<typeof itemSchema>, "section_id" | "brand_id" | "position">,
-) {
-  const supabase = createClient()
-  const { data: item } = await supabase.from("items").select("brands(slug)").eq("id", id).single()
-  if (!item) return { success: false, message: "Item not found." }
-
-  const { error } = await supabase.from("items").update(data).eq("id", id)
-  if (error) return { success: false, message: error.message }
-  revalidate(item.brands!.slug)
-  return { success: true }
-}
-
-export async function deleteItem(id: string) {
-  const supabase = createClient()
-  const { data: item } = await supabase.from("items").select("brands(slug)").eq("id", id).single()
-  if (!item) return { success: false, message: "Item not found." }
-
-  const { error } = await supabase.from("items").delete().eq("id", id)
-  if (error) return { success: false, message: error.message }
-  revalidate(item.brands!.slug)
-  return { success: true }
-}
-
-// Option Actions
-const optionSchema = z.object({
-  id: z.string().optional(),
-  label: z.string(),
-  value: z.string(),
-  item_id: z.string(),
-  brand_id: z.string(),
-  sort_order: z.number(),
-})
-export async function updateOrCreateOption(data: z.infer<typeof optionSchema>) {
-  const supabase = createClient()
-  const { id, ...upsertData } = data
-  const { error } = await supabase
-    .from("options")
-    .upsert({ id, ...upsertData }, { onConflict: "id", defaultToNull: false })
-  if (error) {
-    console.error("Option upsert error:", error)
-    return { success: false, message: error.message }
+  if (brandError) {
+    console.error(`Error fetching brand '${slug}':`, brandError.message)
+    return null
   }
-  return { success: true }
+
+  // Step 2: Fetch related data in parallel using correct table names.
+  const [locationsResult, sectionsResult] = await Promise.all([
+    supabase.from("clinic_locations").select("*").eq("brand_id", brand.id),
+    supabase.from("product_sections").select("*").eq("brand_id", brand.id).order("sort_order"),
+  ])
+
+  if (sectionsResult.error) {
+    console.error(`Error fetching product_sections for brand ${slug}:`, sectionsResult.error.message)
+    return null
+  }
+
+  const clinicLocations = locationsResult.data || []
+  const productSections = sectionsResult.data || []
+
+  // Step 3: Fetch items for each section and map to the expected `Section` type.
+  const sections: Section[] = await Promise.all(
+    productSections.map(async (pSection) => {
+      const { data: productItems, error: itemsError } = await supabase
+        .from("product_items")
+        .select("*")
+        .eq("section_id", pSection.id)
+        .order("sort_order")
+
+      if (itemsError) {
+        console.error(`Error fetching items for section ${pSection.id}:`, itemsError.message)
+        return null
+      }
+
+      const items: Item[] = (productItems || []).map((pItem) => ({
+        ...pItem,
+        position: pItem.sort_order,
+        field_type: pItem.field_type || "text",
+        options: (pItem.options as Option[]) || [],
+      }))
+
+      return {
+        id: pSection.id,
+        title: pSection.title,
+        position: pSection.sort_order,
+        brand_id: pSection.brand_id,
+        items: items,
+      }
+    }),
+  ).then((results) => results.filter((s): s is Section => s !== null))
+
+  revalidatePath(`/forms/${slug}`)
+  revalidatePath(`/admin/editor/${slug}`)
+
+  return {
+    ...brand,
+    clinic_locations: clinicLocations,
+    sections: sections,
+  }
 }
 
-export async function deleteOption(id: string) {
-  const supabase = createClient()
-  const { error } = await supabase.from("options").delete().eq("id", id)
-  if (error) return { success: false, message: error.message }
-  return { success: true }
+export async function getUploadedFiles() {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.storage.from("files").list("", {
+    limit: 100,
+    offset: 0,
+    sortBy: { column: "created_at", order: "desc" },
+  })
+
+  if (error) {
+    console.error("Error fetching files:", error)
+    return []
+  }
+  return data
 }
