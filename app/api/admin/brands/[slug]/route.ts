@@ -9,7 +9,7 @@ export async function GET(request: NextRequest, { params }: { params: { slug: st
     // Step 1: Fetch the core brand data.
     const { data: brand, error: brandError } = await supabase
       .from("brands")
-      .select("id, name, slug, logo_url, emails, active")
+      .select("id, name, slug, logo, emails, active")
       .eq("slug", params.slug)
       .single()
 

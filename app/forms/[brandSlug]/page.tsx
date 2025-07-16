@@ -12,7 +12,7 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
   // Step 1: Fetch the core brand data.
   const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select("id, name, slug, logo_url, emails, active")
+    .select("id, name, slug, logo, emails, active")
     .eq("slug", slug)
     .eq("active", true)
     .single()
@@ -84,9 +84,9 @@ export default async function BrandFormPage({ params }: { params: { brandSlug: s
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            {brand.logo_url ? (
+            {brand.logo ? (
               <Image
-                src={brand.logo_url || "/placeholder.svg"}
+                src={brand.logo || "/placeholder.svg"}
                 alt={`${brand.name} Logo`}
                 width={160}
                 height={40}

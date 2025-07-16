@@ -21,12 +21,12 @@ const BrandSchema = z.object({
   ),
 })
 
-async function handleLogoUpload(logoFile: File | null, currentLogoUrl: string | null | undefined) {
+async function handleLogoUpload(logoFile: File | null, currentLogo: string | null | undefined) {
   if (logoFile && logoFile.size > 0) {
-    if (currentLogoUrl) {
+    if (currentLogo) {
       try {
-        if (currentLogoUrl.includes("blob.vercel-storage.com")) {
-          await del(currentLogoUrl)
+        if (currentLogo.includes("blob.vercel-storage.com")) {
+          await del(currentLogo)
         }
       } catch (error) {
         console.error("Failed to delete old logo, it might not exist:", error)
@@ -37,7 +37,7 @@ async function handleLogoUpload(logoFile: File | null, currentLogoUrl: string | 
     })
     return blob.url
   }
-  return currentLogoUrl
+  return currentLogo
 }
 
 const toBoolean = (value: string | null) => value === "true"
@@ -70,7 +70,7 @@ export async function createBrand(prevState: any, formData: FormData) {
     .from("brands")
     .insert({
       ...brandDetails,
-      logo_url: logoUrl,
+      logo: logoUrl,
     })
     .select("id")
     .single()
@@ -112,14 +112,14 @@ export async function updateBrand(id: string, prevState: any, formData: FormData
     }
   }
 
-  const { data: currentBrand } = await supabase.from("brands").select("logo_url").eq("id", id).single()
+  const { data: currentBrand } = await supabase.from("brands").select("logo").eq("id", id).single()
   const logoFile = formData.get("logo") as File | null
-  const logoUrl = await handleLogoUpload(logoFile, currentBrand?.logo_url)
+  const logoUrl = await handleLogoUpload(logoFile, currentBrand?.logo)
   const { clinic_locations, ...brandDetails } = validatedFields.data
 
   const { error } = await supabase
     .from("brands")
-    .update({ ...brandDetails, logo_url: logoUrl })
+    .update({ ...brandDetails, logo: logoUrl })
     .eq("id", id)
 
   if (error) {
