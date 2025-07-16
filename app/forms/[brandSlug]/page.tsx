@@ -2,47 +2,82 @@ import { createClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
 import Image from "next/image"
 import { BrandForm } from "./form"
-import type { BrandData } from "@/lib/types"
+import type { BrandData, Item, Section } from "@/lib/types"
 
 export const revalidate = 0
 
-export default async function BrandFormPage({ params }: { params: { brandSlug: string } }) {
+async function getBrandData(slug: string): Promise<BrandData | null> {
   const supabase = createClient()
 
-  const { data: brand, error } = await supabase
+  // Step 1: Fetch the core brand data.
+  const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select(
-      `
-    *,
-    clinic_locations (*),
-    sections (
-      *,
-      items (
-        *,
-        options (*)
-      )
-    )
-  `,
-    )
-    .eq("slug", params.brandSlug)
+    .select("id, name, slug, logo_url, emails, active")
+    .eq("slug", slug)
     .eq("active", true)
-    .single<BrandData>()
+    .single()
 
-  if (error || !brand) {
-    console.error("Error fetching brand:", error?.message)
-    notFound()
+  if (brandError || !brand) {
+    console.error(`Error fetching active brand with slug ${slug}:`, brandError?.message)
+    return null
   }
 
-  // Sort sections and items by their position
-  brand.sections.sort((a, b) => a.position - b.position)
-  brand.sections.forEach((section) => {
-    section.items.sort((a, b) => a.position - b.position)
-    section.items.forEach((item) => {
-      if (item.options) {
-        item.options.sort((a, b) => a.sort_order - b.sort_order)
-      }
-    })
-  })
+  // Step 2: Fetch all related data in parallel.
+  const [locationsResult, sectionsResult] = await Promise.all([
+    supabase.from("clinic_locations").select("*").eq("brand_id", brand.id),
+    supabase.from("sections").select("*").eq("brand_id", brand.id).order("position"),
+  ])
+
+  const { data: clinicLocations, error: locationsError } = locationsResult
+  const { data: sections, error: sectionsError } = sectionsResult
+
+  if (locationsError) console.error(`Error fetching clinic locations for brand ${slug}:`, locationsError)
+  if (sectionsError) console.error(`Error fetching sections for brand ${slug}:`, sectionsError)
+
+  // Step 3: For each section, fetch its items and their options.
+  const sectionsWithItems = await Promise.all(
+    (sections || []).map(async (section: Section) => {
+      const { data: items, error: itemsError } = await supabase
+        .from("items")
+        .select("*")
+        .eq("section_id", section.id)
+        .order("position")
+
+      if (itemsError) console.error(`Error fetching items for section ${section.id}:`, itemsError)
+
+      const itemsWithOptions = await Promise.all(
+        (items || []).map(async (item: Item) => {
+          const { data: options, error: optionsError } = await supabase
+            .from("options")
+            .select("*")
+            .eq("item_id", item.id)
+            .order("sort_order")
+
+          if (optionsError) console.error(`Error fetching options for item ${item.id}:`, optionsError)
+
+          return { ...item, options: options || [] }
+        }),
+      )
+      return { ...section, items: itemsWithOptions }
+    }),
+  )
+
+  // Step 4: Assemble and return the final object.
+  const fullBrandData: BrandData = {
+    ...brand,
+    clinic_locations: clinicLocations || [],
+    sections: sectionsWithItems,
+  }
+
+  return fullBrandData
+}
+
+export default async function BrandFormPage({ params }: { params: { brandSlug: string } }) {
+  const brand = await getBrandData(params.brandSlug)
+
+  if (!brand) {
+    notFound()
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
