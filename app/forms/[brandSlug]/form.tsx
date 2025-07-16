@@ -17,18 +17,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { submitOrder } from "./actions"
-import type { BrandData } from "@/lib/types"
-import { cn } from "@/lib/utils"
+import type { BrandData, LocationOption } from "@/lib/types"
 
 interface BrandFormProps {
   brand: BrandData
+  locationOptions: LocationOption[]
 }
 
-// Custom class for styling native select to look like shadcn/ui Input
-const nativeSelectClassName =
-  "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-
-export function BrandForm({ brand }: BrandFormProps) {
+export function BrandForm({ brand, locationOptions }: BrandFormProps) {
   const router = useRouter()
 
   const formSchema = React.useMemo(() => {
@@ -169,20 +165,20 @@ export function BrandForm({ brand }: BrandFormProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Bill To</FormLabel>
-                    <FormControl>
-                      <select {...field} className={cn(nativeSelectClassName, !field.value && "text-muted-foreground")}>
-                        <option value="" disabled>
-                          Select a billing location
-                        </option>
-                        {(brand.clinic_locations || [])
-                          .filter((loc) => loc && loc.id && loc.name)
-                          .map((loc) => (
-                            <option key={loc.id} value={loc.id}>
-                              {loc.name}
-                            </option>
-                          ))}
-                      </select>
-                    </FormControl>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a billing location" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {locationOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -193,20 +189,20 @@ export function BrandForm({ brand }: BrandFormProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Deliver To</FormLabel>
-                    <FormControl>
-                      <select {...field} className={cn(nativeSelectClassName, !field.value && "text-muted-foreground")}>
-                        <option value="" disabled>
-                          Select a delivery location
-                        </option>
-                        {(brand.clinic_locations || [])
-                          .filter((loc) => loc && loc.id && loc.name)
-                          .map((loc) => (
-                            <option key={loc.id} value={loc.id}>
-                              {loc.name}
-                            </option>
-                          ))}
-                      </select>
-                    </FormControl>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a delivery location" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {locationOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

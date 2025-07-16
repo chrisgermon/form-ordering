@@ -2,7 +2,7 @@ import { createClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
 import Image from "next/image"
 import { BrandForm } from "./form"
-import type { BrandData, Item, Section, Brand, ClinicLocation } from "@/lib/types"
+import type { BrandData, Item, Section, Brand, ClinicLocation, LocationOption } from "@/lib/types"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Terminal } from "lucide-react"
 
@@ -24,7 +24,6 @@ async function getBrandData(slug: string): Promise<BrandFetchResult> {
     .single<Brand>()
 
   if (brandError || !brand) {
-    // Log the error but return a clear status. This could be a legitimate 404.
     if (brandError) {
       console.error(`Error fetching brand with slug ${slug}:`, brandError.message)
     }
@@ -47,14 +46,8 @@ async function getBrandData(slug: string): Promise<BrandFetchResult> {
 
   if (locationsError || sectionsError) {
     console.error(`Error fetching related data for brand ${slug}:`, { locationsError, sectionsError })
-    // If we can't get sections, the form is unusable. Treat as not found.
     return { status: "not_found" }
   }
-
-  // Data sanitization: Ensure clinic locations are valid before passing to client
-  const validClinicLocations = (clinicLocations || []).filter(
-    (loc: any): loc is ClinicLocation => loc && typeof loc.id === "string" && typeof loc.name === "string",
-  )
 
   // Step 4: For each section, fetch its items and their options.
   const sectionsWithItems = await Promise.all(
@@ -87,7 +80,7 @@ async function getBrandData(slug: string): Promise<BrandFetchResult> {
   // Step 5: Assemble and return the final object.
   const fullBrandData: BrandData = {
     ...brand,
-    clinic_locations: validClinicLocations,
+    clinic_locations: (clinicLocations as ClinicLocation[]) || [],
     sections: sectionsWithItems,
   }
 
@@ -118,6 +111,14 @@ export default async function BrandFormPage({ params }: { params: { brandSlug: s
 
   const brand = result.data
 
+  // Create a simplified, safe array for the form's dropdowns
+  const locationOptions: LocationOption[] = (brand.clinic_locations || [])
+    .filter((loc) => loc && loc.id && loc.name)
+    .map((loc) => ({
+      value: loc.id,
+      label: loc.name,
+    }))
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm sticky top-0 z-10">
@@ -141,7 +142,7 @@ export default async function BrandFormPage({ params }: { params: { brandSlug: s
         </div>
       </header>
       <main className="container mx-auto p-4 md:p-8">
-        <BrandForm brand={brand} />
+        <BrandForm brand={brand} locationOptions={locationOptions} />
       </main>
       <footer className="py-4 text-center text-sm text-gray-500">
         <p>
