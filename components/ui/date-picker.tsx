@@ -1,74 +1,70 @@
 "use client"
 
+import type React from "react"
 import { useRef, useEffect } from "react"
-import flatpickr from "flatpickr"
 import type { Instance } from "flatpickr"
-import "flatpickr/dist/flatpickr.css"
-import "@/app/styles/custom-flatpickr.css"
-
+import "flatpickr/dist/flatpickr.min.css"
+import "@/app/styles/custom-flatpickr.css" // Custom theme
 import { cn } from "@/lib/utils"
-import { CalendarIcon } from "lucide-react"
 
 interface DatePickerProps {
-  value: Date | string | null
+  value?: Date | string
   onChange: (date: Date) => void
-  className?: string
   placeholder?: string
+  className?: string
 }
 
-export function DatePicker({ value, onChange, className, placeholder }: DatePickerProps) {
-  const wrapperRef = useRef<HTMLDivElement>(null)
-  const fp = useRef<Instance | null>(null)
+export const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, placeholder, className }) => {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const fpInstanceRef = useRef<Instance | null>(null)
 
   useEffect(() => {
-    if (!wrapperRef.current) return
+    if (!inputRef.current) return
 
-    // Find the input element within the wrapper
-    const inputElement = wrapperRef.current.querySelector("input")
-    if (!inputElement) return
-
-    fp.current = flatpickr(wrapperRef.current, {
-      wrap: true, // Important for positioning icon
-      altInput: true,
-      altFormat: "d-m-Y", // Display format
-      dateFormat: "Y-m-d", // Value format
-      defaultDate: value ? new Date(value) : new Date(),
-      minDate: "today",
-      disableMobile: true,
-      onChange: (selectedDates) => {
-        if (selectedDates[0]) {
-          onChange(selectedDates[0])
-        }
-      },
+    // Dynamically import flatpickr to ensure it's only loaded on the client
+    import("flatpickr").then((flatpickrModule) => {
+      const flatpickr = flatpickrModule.default
+      if (inputRef.current) {
+        const instance = flatpickr(inputRef.current, {
+          altInput: true,
+          altFormat: "d-m-Y",
+          dateFormat: "Y-m-d",
+          defaultDate: value ? new Date(value) : undefined,
+          onChange: (selectedDates) => {
+            if (selectedDates[0]) {
+              onChange(selectedDates[0])
+            }
+          },
+        })
+        fpInstanceRef.current = instance
+      }
     })
 
     return () => {
-      fp.current?.destroy()
+      if (fpInstanceRef.current) {
+        fpInstanceRef.current.destroy()
+        fpInstanceRef.current = null
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []) // Run only on mount
 
+  // Effect to update the date when the prop changes from outside
   useEffect(() => {
-    if (value && fp.current) {
-      fp.current.setDate(value, false)
+    if (fpInstanceRef.current && value) {
+      fpInstanceRef.current.setDate(new Date(value), false)
     }
   }, [value])
 
   return (
-    <div ref={wrapperRef} className="relative w-full">
-      <input
-        type="text"
-        placeholder={placeholder || "Select a date"}
-        className={cn(
-          "flex h-10 w-full rounded-md border border-input bg-gray-100 px-3 py-2 pl-10 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-          className,
-        )}
-        data-input // flatpickr hook to identify the input
-      />
-      <CalendarIcon
-        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-        data-toggle // flatpickr hook to toggle the calendar
-      />
-    </div>
+    <input
+      ref={inputRef}
+      type="text"
+      placeholder={placeholder || "Select a date"}
+      className={cn(
+        "block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm",
+        className,
+      )}
+    />
   )
 }
