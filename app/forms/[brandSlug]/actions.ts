@@ -66,18 +66,15 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
       return { success: false, message: "Your order is empty. Please specify a quantity for at least one item." }
     }
 
-    // 3. Create submission record
-    const billToAddress = `${billTo.name} - ${billTo.address}`
-    const deliverToAddress = `${deliverTo.name} - ${deliverTo.address}`
-
+    // 3. Create submission record - Using location IDs as per schema
     const { data: submission, error: submissionError } = await supabase
       .from("submissions")
       .insert({
         brand_id: brand.id,
         ordered_by: orderInfo.orderedBy,
         email: orderInfo.email,
-        bill_to: billToAddress,
-        deliver_to: deliverToAddress,
+        bill_to: billTo.id,
+        deliver_to: deliverTo.id,
         notes: orderInfo.notes,
         items: orderItems,
       })
@@ -123,6 +120,8 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
       message = error.message
     } else if (typeof error === "string") {
       message = error
+    } else if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+      message = error.message
     }
     return { success: false, message }
   }

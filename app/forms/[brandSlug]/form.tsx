@@ -113,9 +113,12 @@ export function BrandForm({ brand }: BrandFormProps) {
       toast.success("Order submitted successfully!")
       router.push(`/forms/${brand.slug}/success?orderId=${result.submissionId}`)
     } else {
-      let errorMessage = "An error occurred while submitting your order."
-      if (result.message && typeof result.message === "string") {
+      let errorMessage = "An unknown error occurred."
+      if (typeof result.message === "string") {
         errorMessage = result.message
+      } else if (result.message) {
+        // If the message is not a string, stringify it to prevent crashing.
+        errorMessage = JSON.stringify(result.message)
       }
       toast.error(errorMessage)
     }
