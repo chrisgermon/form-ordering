@@ -2,7 +2,7 @@ import { createClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
 import Image from "next/image"
 import { BrandForm } from "./form"
-import type { BrandData, Item, Section, Brand } from "@/lib/types"
+import type { BrandData, Item, Section, Brand, ClinicLocation } from "@/lib/types"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Terminal } from "lucide-react"
 
@@ -51,6 +51,11 @@ async function getBrandData(slug: string): Promise<BrandFetchResult> {
     return { status: "not_found" }
   }
 
+  // Data sanitization: Ensure clinic locations are valid before passing to client
+  const validClinicLocations = (clinicLocations || []).filter(
+    (loc: any): loc is ClinicLocation => loc && typeof loc.id === "string" && typeof loc.name === "string",
+  )
+
   // Step 4: For each section, fetch its items and their options.
   const sectionsWithItems = await Promise.all(
     (sections || []).map(async (section: Section) => {
@@ -82,7 +87,7 @@ async function getBrandData(slug: string): Promise<BrandFetchResult> {
   // Step 5: Assemble and return the final object.
   const fullBrandData: BrandData = {
     ...brand,
-    clinic_locations: clinicLocations || [],
+    clinic_locations: validClinicLocations,
     sections: sectionsWithItems,
   }
 

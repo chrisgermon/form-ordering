@@ -173,8 +173,8 @@ export function BrandForm({ brand }: BrandFormProps) {
                       </FormControl>
                       <SelectContent>
                         {brand.clinic_locations.map((loc) => (
-                          <SelectItem key={loc.id} value={loc.id}>
-                            {loc.name}
+                          <SelectItem key={loc.id} value={String(loc.id)}>
+                            {String(loc.name)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -197,8 +197,8 @@ export function BrandForm({ brand }: BrandFormProps) {
                       </FormControl>
                       <SelectContent>
                         {brand.clinic_locations.map((loc) => (
-                          <SelectItem key={loc.id} value={loc.id}>
-                            {loc.name}
+                          <SelectItem key={loc.id} value={String(loc.id)}>
+                            {String(loc.name)}
                           </SelectItem>
                         ))}
                       </SelectContent>
