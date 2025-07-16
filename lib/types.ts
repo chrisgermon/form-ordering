@@ -54,26 +54,29 @@ export interface Brand {
   active: boolean
 }
 
-// Composite type for the server-side data fetching
-export type BrandData = Brand & {
-  clinic_locations: ClinicLocation[]
-  sections: (Section & {
-    items: (Item & {
-      options: Option[]
-    })[]
-  })[]
-}
-
-// New type for the sanitized data returned by the API
-export interface SanitizedBrandData {
-  name: string
-  slug: string
-  logo: string | null
+// This new type defines the clean props passed from Server to Client Component
+export interface ClientFormParams {
+  brandSlug: string
+  brandName: string
+  brandLogo: string | null
   locationOptions: LocationOption[]
   sections: Section[]
 }
 
-// Types for order submission and processing
+// This is the payload for the submitOrder server action
+export interface OrderPayload {
+  brandSlug: string
+  orderInfo: {
+    orderedBy: string
+    email: string
+    billToId: string
+    deliverToId: string
+    notes?: string
+  }
+  items: Record<string, string | number | boolean>
+}
+
+// This type is for PDF generation, which needs the full location objects
 export interface OrderInfo {
   orderNumber: string
   orderedBy: string
@@ -87,12 +90,6 @@ export interface OrderItem {
   code: string
   name: string
   quantity: string | number
-}
-
-export interface OrderPayload {
-  brandSlug: string
-  items: Record<string, OrderItem>
-  orderInfo: OrderInfo
 }
 
 export interface UploadedFile {
