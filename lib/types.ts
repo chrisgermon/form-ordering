@@ -64,6 +64,15 @@ export type BrandData = Brand & {
   })[]
 }
 
+// New type for the sanitized data returned by the API
+export interface SanitizedBrandData {
+  name: string
+  slug: string
+  logo: string | null
+  locationOptions: LocationOption[]
+  sections: Section[]
+}
+
 // Types for order submission and processing
 export interface OrderInfo {
   orderNumber: string
