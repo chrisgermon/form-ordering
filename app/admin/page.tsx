@@ -1,44 +1,57 @@
 import { createClient } from "@/utils/supabase/server"
 import AdminDashboard from "./AdminDashboard"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Terminal } from "lucide-react"
+import { AlertCircle } from "lucide-react"
+import type { Brand, FileRecord, Submission } from "@/lib/types"
+
+async function getBrands(): Promise<{ data: Brand[] | null; error: string | null }> {
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase.from("brands").select("*").order("name")
+    if (error) throw error
+    return { data, error: null }
+  } catch (e: any) {
+    return { data: null, error: e.message }
+  }
+}
+
+async function getSubmissions(): Promise<{ data: Submission[] | null; error: string | null }> {
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase.from("submissions").select("*").order("created_at", { ascending: false })
+    if (error) throw error
+    return { data, error: null }
+  } catch (e: any) {
+    return { data: null, error: e.message }
+  }
+}
+
+async function getFiles(): Promise<{ data: FileRecord[] | null; error: string | null }> {
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase.from("files").select("*").order("uploaded_at", { ascending: false })
+    if (error) throw error
+    return { data, error: null }
+  } catch (e: any) {
+    return { data: null, error: e.message }
+  }
+}
 
 export default async function AdminPage() {
-  const supabase = createClient()
+  const [brands, submissions, files] = await Promise.all([getBrands(), getSubmissions(), getFiles()])
 
-  try {
-    const brandsData = supabase.from("brands").select("*").order("name")
-    const filesData = supabase.from("files").select("*").order("uploaded_at", { ascending: false })
-    const submissionsData = supabase.from("submissions").select("*").order("created_at", { ascending: false })
-
-    const [
-      { data: brands, error: brandsError },
-      { data: files, error: filesError },
-      { data: submissions, error: submissionsError },
-    ] = await Promise.all([brandsData, filesData, submissionsData])
-
-    if (brandsError || filesError || submissionsError) {
-      const errorMessages = [brandsError?.message, filesError?.message, submissionsError?.message]
-        .filter(Boolean)
-        .join(", ")
-      throw new Error(errorMessages || "An unknown error occurred while fetching admin data.")
-    }
-
-    return <AdminDashboard brands={brands || []} files={files || []} submissions={submissions || []} />
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred."
-    console.error("Admin Page Error:", errorMessage)
+  if (brands.error || submissions.error || files.error) {
+    const errorMessage = brands.error || submissions.error || files.error
     return (
-      <div className="container mx-auto py-10">
+      <div className="container mx-auto p-4 md:p-8">
         <Alert variant="destructive">
-          <Terminal className="h-4 w-4" />
-          <AlertTitle>Error Loading Admin Dashboard</AlertTitle>
-          <AlertDescription>
-            <p>There was a problem fetching the necessary data. Please check the server logs for more details.</p>
-            <p className="font-mono bg-muted p-2 rounded-md mt-2 text-xs">{errorMessage}</p>
-          </AlertDescription>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{errorMessage}</AlertDescription>
         </Alert>
       </div>
     )
   }
+
+  return <AdminDashboard brands={brands.data || []} submissions={submissions.data || []} files={files.data || []} />
 }
