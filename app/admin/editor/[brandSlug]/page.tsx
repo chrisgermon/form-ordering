@@ -2,34 +2,35 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Terminal } from "lucide-react"
 import type { BrandData } from "@/lib/types"
 import FormEditor from "./form-editor"
-
-async function getBrandData(slug: string): Promise<{ brand: BrandData | null; error: string | null }> {
-  try {
-    // Ensure NEXT_PUBLIC_APP_URL is set in your environment variables
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || ""
-    const res = await fetch(`${appUrl}/api/admin/brands/${slug}`, {
-      cache: "no-store",
-    })
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      return { brand: null, error: data.error || "Failed to fetch brand data" }
-    }
-
-    return { brand: data, error: null }
-  } catch (e) {
-    const error = e instanceof Error ? e.message : "An unknown error occurred"
-    console.error("Error in getBrandData:", error)
-    return { brand: null, error }
-  }
-}
+import { createAdminClient } from "@/utils/supabase/server"
+import { notFound } from "next/navigation"
 
 export default async function FormEditorPage({ params }: { params: { brandSlug: string } }) {
-  const { brand, error } = await getBrandData(params.brandSlug)
+  const supabase = createAdminClient()
+  const { data: brand, error } = await supabase
+    .from("brands")
+    .select(
+      `
+    *,
+    clinic_locations(*),
+    sections(
+      *,
+      items(
+        *,
+        options(*)
+      )
+    )
+  `,
+    )
+    .eq("slug", params.brandSlug)
+    .order("position", { foreignTable: "sections" })
+    .order("position", { foreignTable: "sections.items" })
+    .order("sort_order", { foreignTable: "sections.items.options" })
+    .single()
 
   if (error) {
-    if (error.includes("Could not find a relationship between 'brands' and 'clinic_locations'")) {
+    console.error("Error fetching brand for editor:", error)
+    if (error.message.includes("Could not find a relationship between 'brands' and 'clinic_locations'")) {
       return (
         <div className="container mx-auto p-4 sm:p-6 lg:p-8">
           <Alert variant="destructive">
@@ -70,17 +71,17 @@ export default async function FormEditorPage({ params }: { params: { brandSlug: 
         </div>
       )
     }
-
     return (
       <div className="container mx-auto p-4 sm:p-6 lg:p-8">
         <Alert variant="destructive">
           <Terminal className="h-4 w-4" />
-          <AlertTitle>Error Loading Brand</AlertTitle>
+          <AlertTitle>Database Error</AlertTitle>
           <AlertDescription>
-            <p>There was an error loading the data for this brand.</p>
-            <pre className="mt-2 whitespace-pre-wrap rounded-md bg-slate-950 p-4 text-sm text-slate-50">
-              <code>{error}</code>
-            </pre>
+            <p>Could not fetch brand data. This might be due to a database schema issue.</p>
+            <p className="mt-2 font-mono text-xs">{error.message}</p>
+            <p className="mt-4">
+              Please ensure all database migration scripts have been run correctly in your Supabase SQL editor.
+            </p>
           </AlertDescription>
         </Alert>
       </div>
@@ -88,8 +89,8 @@ export default async function FormEditorPage({ params }: { params: { brandSlug: 
   }
 
   if (!brand) {
-    return <div>Brand not found.</div>
+    notFound()
   }
 
-  return <FormEditor initialBrand={brand} />
+  return <FormEditor initialBrand={brand as BrandData} />
 }
