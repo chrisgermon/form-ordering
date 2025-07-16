@@ -8,15 +8,16 @@ export async function GET(request: NextRequest, { params }: { params: { slug: st
       .from("brands")
       .select(
         `
-        id, name, slug, logo, emails, active,
-        sections (
+      id, name, slug, logo_url, emails, active,
+      clinic_locations(*),
+      sections (
+        *,
+        items (
           *,
-          items (
-            *,
-            options (*)
-          )
+          options (*)
         )
-      `,
+      )
+    `,
       )
       .eq("slug", params.slug)
       .single()

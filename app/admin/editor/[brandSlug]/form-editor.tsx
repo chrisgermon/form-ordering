@@ -23,14 +23,16 @@ import { AddSectionDialog, ConfirmDeleteDialog } from "./dialogs"
 import { updateSectionOrder, deleteSection as deleteSectionAction } from "./actions"
 import type { BrandData, Section } from "@/lib/types"
 
-export function FormEditor({ brand }: { brand: BrandData }) {
+export default function FormEditor({ brand }: { brand: BrandData }) {
   const router = useRouter()
   const [sections, setSections] = React.useState(brand.sections)
   const [isAddSectionOpen, setAddSectionOpen] = React.useState(false)
   const [deletingSection, setDeletingSection] = React.useState<Section | null>(null)
 
   React.useEffect(() => {
-    setSections([...brand.sections].sort((a, b) => a.position - b.position))
+    if (brand.sections) {
+      setSections([...brand.sections].sort((a, b) => a.position - b.position))
+    }
   }, [brand.sections])
 
   const sensors = useSensors(

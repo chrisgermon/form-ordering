@@ -12,6 +12,7 @@ const BrandSchema = z.object({
   emails: z.array(z.string().email()),
   clinic_locations: z.array(
     z.object({
+      id: z.string().uuid().optional(),
       name: z.string().min(1),
       address: z.string().min(1),
       phone: z.string().optional().or(z.literal("")),
@@ -63,20 +64,36 @@ export async function createBrand(prevState: any, formData: FormData) {
   const logoFile = formData.get("logo") as File | null
   const logoUrl = await handleLogoUpload(logoFile, null)
 
-  const { error } = await supabase.from("brands").insert({
-    ...validatedFields.data,
-    logo: logoUrl,
-  })
+  const { clinic_locations, ...brandDetails } = validatedFields.data
 
-  if (error) {
-    return { message: `Database Error: ${error.message}`, success: false }
+  const { data: newBrand, error: brandError } = await supabase
+    .from("brands")
+    .insert({
+      ...brandDetails,
+      logo_url: logoUrl,
+    })
+    .select("id")
+    .single()
+
+  if (brandError || !newBrand) {
+    return { message: `Database Error: ${brandError?.message}`, success: false }
+  }
+
+  if (clinic_locations && clinic_locations.length > 0) {
+    const newRecords = clinic_locations.map(({ id, ...rest }) => ({ ...rest, brand_id: newBrand.id }))
+    const { error: locationsError } = await supabase.from("clinic_locations").insert(newRecords)
+
+    if (locationsError) {
+      await supabase.from("brands").delete().eq("id", newBrand.id)
+      return { message: `Database Error creating locations: ${locationsError.message}`, success: false }
+    }
   }
 
   revalidatePath("/admin")
   return { message: "Brand created successfully.", success: true }
 }
 
-export async function updateBrand(id: number, prevState: any, formData: FormData) {
+export async function updateBrand(id: string, prevState: any, formData: FormData) {
   const supabase = createClient()
 
   const validatedFields = BrandSchema.safeParse({
@@ -95,17 +112,53 @@ export async function updateBrand(id: number, prevState: any, formData: FormData
     }
   }
 
-  const { data: currentBrand } = await supabase.from("brands").select("logo").eq("id", id).single()
+  const { data: currentBrand } = await supabase.from("brands").select("logo_url").eq("id", id).single()
   const logoFile = formData.get("logo") as File | null
-  const logoUrl = await handleLogoUpload(logoFile, currentBrand?.logo)
+  const logoUrl = await handleLogoUpload(logoFile, currentBrand?.logo_url)
+  const { clinic_locations, ...brandDetails } = validatedFields.data
 
   const { error } = await supabase
     .from("brands")
-    .update({ ...validatedFields.data, logo: logoUrl })
+    .update({ ...brandDetails, logo_url: logoUrl })
     .eq("id", id)
 
   if (error) {
     return { message: `Database Error: ${error.message}`, success: false }
+  }
+
+  // Sync clinic locations
+  const { data: existingLocations, error: fetchError } = await supabase
+    .from("clinic_locations")
+    .select("id")
+    .eq("brand_id", id)
+
+  if (fetchError) {
+    return { message: `Database Error: ${fetchError.message}`, success: false }
+  }
+
+  const existingIds = existingLocations.map((l) => l.id)
+  const newIds = clinic_locations.map((l) => l.id).filter(Boolean) as string[]
+
+  const toDelete = existingIds.filter((eid) => !newIds.includes(eid))
+  if (toDelete.length > 0) {
+    await supabase.from("clinic_locations").delete().in("id", toDelete)
+  }
+
+  const toUpdate = clinic_locations.filter((l) => l.id && existingIds.includes(l.id))
+  if (toUpdate.length > 0) {
+    const updates = toUpdate.map((l) =>
+      supabase
+        .from("clinic_locations")
+        .update({ name: l.name, address: l.address, phone: l.phone, email: l.email })
+        .eq("id", l.id!),
+    )
+    await Promise.all(updates)
+  }
+
+  const toInsert = clinic_locations.filter((l) => !l.id)
+  if (toInsert.length > 0) {
+    const newRecords = toInsert.map(({ id: locId, ...rest }) => ({ ...rest, brand_id: id }))
+    await supabase.from("clinic_locations").insert(newRecords)
   }
 
   revalidatePath("/admin")
@@ -157,7 +210,7 @@ export async function fetchBrandData(slug: string) {
   const supabase = createClient()
   const { data, error } = await supabase
     .from("brands")
-    .select(`*, sections(*, items(*, options(*)))`)
+    .select(`*, clinic_locations(*), sections(*, items(*, options(*)))`)
     .eq("slug", slug)
     .single()
 

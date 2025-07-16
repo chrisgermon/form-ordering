@@ -13,16 +13,16 @@ export default async function BrandFormPage({ params }: { params: { brandSlug: s
     .from("brands")
     .select(
       `
+    *,
+    clinic_locations (*),
+    sections (
       *,
-      clinic_locations (*),
-      sections (
+      items (
         *,
-        items (
-          *,
-          options (*)
-        )
+        options (*)
       )
-    `,
+    )
+  `,
     )
     .eq("slug", params.brandSlug)
     .eq("active", true)
