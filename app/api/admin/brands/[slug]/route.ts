@@ -26,7 +26,8 @@ export async function GET(request: NextRequest, { params }: { params: { slug: st
 
     return NextResponse.json(brand)
   } catch (error) {
-    console.error(`Error fetching brand ${params.slug}:`, error)
-    return NextResponse.json({ error: `Failed to fetch brand ${params.slug}` }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : `Failed to fetch brand ${params.slug}`
+    console.error(`Error fetching brand ${params.slug}:`, errorMessage)
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
