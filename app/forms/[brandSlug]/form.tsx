@@ -283,11 +283,12 @@ export function BrandForm({ brand }: BrandFormProps) {
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
-                                    {item.options.map((opt) => (
-                                      <SelectItem key={opt.id} value={opt.value}>
-                                        {opt.label || opt.value}
-                                      </SelectItem>
-                                    ))}
+                                    {Array.isArray(item.options) &&
+                                      item.options.map((opt) => (
+                                        <SelectItem key={opt.id} value={opt.value}>
+                                          {opt.label || opt.value}
+                                        </SelectItem>
+                                      ))}
                                   </SelectContent>
                                 </Select>
                               )}
@@ -297,14 +298,15 @@ export function BrandForm({ brand }: BrandFormProps) {
                                   defaultValue={field.value}
                                   className="flex flex-col space-y-1 pt-2"
                                 >
-                                  {item.options.map((opt) => (
-                                    <FormItem key={opt.id} className="flex items-center space-x-3 space-y-0">
-                                      <FormControl>
-                                        <RadioGroupItem value={opt.value} />
-                                      </FormControl>
-                                      <FormLabel className="font-normal">{opt.label || opt.value}</FormLabel>
-                                    </FormItem>
-                                  ))}
+                                  {Array.isArray(item.options) &&
+                                    item.options.map((opt) => (
+                                      <FormItem key={opt.id} className="flex items-center space-x-3 space-y-0">
+                                        <FormControl>
+                                          <RadioGroupItem value={opt.value} />
+                                        </FormControl>
+                                        <FormLabel className="font-normal">{opt.label || opt.value}</FormLabel>
+                                      </FormItem>
+                                    ))}
                                 </RadioGroup>
                               )}
                             </>
