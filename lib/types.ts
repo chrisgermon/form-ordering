@@ -5,15 +5,28 @@ export type ClinicLocation = {
   email: string
 }
 
-export type Brand = {
-  id: number
-  created_at: string
+export type Option = {
+  id: string
+  brand_id: string
+  item_id: string
+  value: string
+  label: string | null
+  sort_order: number
+}
+
+export type Item = {
+  id: string
+  brand_id: string
+  section_id: string
+  code: string | null
   name: string
-  slug: string
-  logo: string | null
-  active: boolean
-  emails: string[]
-  clinic_locations: ClinicLocation[]
+  description: string | null
+  field_type: "text" | "textarea" | "select" | "checkbox" | "radio" | "date"
+  options: Option[] // Corrected from string[] to Option[]
+  placeholder: string | null
+  is_required: boolean
+  position: number
+  sample_link: string | null
 }
 
 export type Section = {
@@ -24,17 +37,16 @@ export type Section = {
   items: Item[]
 }
 
-export type Item = {
+export type BrandData = {
   id: string
-  brand_id: string
-  section_id: string
-  code: string | null
+  created_at: string
   name: string
-  field_type: "text" | "textarea" | "select" | "checkbox" | "radio" | "date"
-  options: string[] | null
-  placeholder: string | null
-  is_required: boolean
-  position: number
+  slug: string
+  logo: string | null
+  active: boolean
+  emails: string[]
+  clinic_locations: ClinicLocation[]
+  sections: Section[]
 }
 
 export type FileRecord = {

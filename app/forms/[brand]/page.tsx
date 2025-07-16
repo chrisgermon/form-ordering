@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
 import { BrandFacingForm } from "@/components/brand-facing-form"
-import type { BrandData } from "@/lib/types"
+import type { BrandData, Item, Section } from "@/lib/types"
 import { resolveAssetUrl } from "@/lib/utils"
 
 export const revalidate = 0 // Revalidate data on every request
@@ -33,10 +33,15 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
   }
 
   // Ensure sections and items are sorted by position
-  const sortedSections = (brand.sections || []).sort((a, b) => a.position - b.position)
+  const sortedSections = ((brand.sections as Section[] | null) ?? []).sort((a, b) => a.position - b.position)
   sortedSections.forEach((section) => {
     if (section.items) {
-      section.items.sort((a, b) => a.position - b.position)
+      section.items.sort((a, b) => (a as Item).position - (b as Item).position)
+      section.items.forEach((item) => {
+        if ((item as Item).options) {
+          ;(item as Item).options.sort((a, b) => a.sort_order - b.sort_order)
+        }
+      })
     }
   })
 

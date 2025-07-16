@@ -1,225 +1,333 @@
 "use client"
 
+import type { BrandData, ClinicLocation, Item, Section } from "@/lib/types"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { toast } from "sonner"
-import { format } from "date-fns"
-
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { cn } from "@/lib/utils"
-import type { BrandData } from "@/lib/types"
-import { CalendarIcon } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState } from "react"
+import { submitOrder } from "@/app/api/submit-order/route"
+import { Toaster } from "@/components/ui/toaster"
+import { useToast } from "@/components/ui/use-toast"
 
-// Dynamically build the Zod schema from the form structure
-const buildZodSchema = (brandData: BrandData) => {
-  if (!brandData || !brandData.sections) {
-    return z.object({}) // Return empty schema if data is not ready
+// Dynamically generate Zod schema from brand data
+const generateSchema = (brandData: BrandData) => {
+  const schemaFields: Record<string, z.ZodTypeAny> = {
+    orderedBy: z.string().min(1, "Your name is required"),
+    email: z.string().email("Invalid email address"),
+    billTo: z.string().min(1, "Billing location is required"),
+    deliverTo: z.string().min(1, "Delivery location is required"),
+    notes: z.string().optional(),
   }
 
-  const schemaShape = brandData.sections.reduce(
-    (acc, section) => {
-      section.items.forEach((item) => {
-        let fieldSchema: z.ZodTypeAny
+  brandData.sections.forEach((section) => {
+    section.items.forEach((item) => {
+      const fieldName = `item_${item.id}`
+      let fieldSchema: z.ZodTypeAny
 
-        switch (item.field_type) {
-          case "text":
-          case "textarea":
-            fieldSchema = z.string()
-            break
-          case "date":
-            fieldSchema = z.date().nullable()
-            break
-          case "select":
-            fieldSchema = z.string()
-            break
-          case "checkbox_group":
-            fieldSchema = z.array(z.string())
-            break
-          default:
-            fieldSchema = z.any()
-        }
-
-        if (item.is_required) {
-          if (item.field_type === "checkbox_group") {
-            fieldSchema = (fieldSchema as z.ZodArray<any>).min(1, { message: "Please select at least one option." })
+      switch (item.field_type) {
+        case "text":
+        case "textarea":
+        case "date":
+          fieldSchema = z.string()
+          break
+        case "select":
+        case "radio":
+          fieldSchema = z.string()
+          break
+        case "checkbox":
+          // For a group of checkboxes, expect an array of strings
+          if (item.options && item.options.length > 1) {
+            fieldSchema = z.array(z.string()).optional()
           } else {
-            fieldSchema = (fieldSchema as z.ZodString).min(1, { message: "This field is required." })
+            // For a single checkbox, expect a boolean
+            fieldSchema = z.boolean().default(false)
           }
-        } else {
-          fieldSchema = fieldSchema.optional()
+          break
+        default:
+          fieldSchema = z.any()
+      }
+
+      if (item.is_required) {
+        if (fieldSchema instanceof z.ZodString) {
+          fieldSchema = fieldSchema.min(1, `${item.name} is required.`)
+        } else if (fieldSchema instanceof z.ZodArray) {
+          fieldSchema = fieldSchema.min(1, `Please select at least one option for ${item.name}.`)
         }
+      } else {
+        fieldSchema = fieldSchema.optional()
+      }
+      schemaFields[fieldName] = fieldSchema
+    })
+  })
 
-        acc[item.code] = fieldSchema
-      })
-      return acc
-    },
-    {} as Record<string, z.ZodTypeAny>,
-  )
-
-  return z.object(schemaShape)
+  return z.object(schemaFields)
 }
 
 export function BrandFacingForm({ brandData }: { brandData: BrandData }) {
-  const validationSchema = buildZodSchema(brandData)
-  const {
-    control,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    reset,
-  } = useForm({
-    resolver: zodResolver(validationSchema),
+  const { toast } = useToast()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const FormSchema = generateSchema(brandData)
+  const form = useForm<z.infer<typeof FormSchema>>({
+    resolver: zodResolver(FormSchema),
+    defaultValues: {
+      orderedBy: "",
+      email: "",
+      billTo: "",
+      deliverTo: "",
+      notes: "",
+    },
   })
 
-  // Defensive check to prevent crash
-  if (!brandData || !brandData.sections) {
+  const onSubmit = async (data: z.infer<typeof FormSchema>) => {
+    setIsSubmitting(true)
+    try {
+      const result = await submitOrder(brandData.slug, data)
+      if (result.success) {
+        toast({
+          title: "Order Submitted!",
+          description: "Your order has been successfully submitted. A confirmation email is on its way.",
+        })
+        form.reset()
+      } else {
+        throw new Error(result.message || "An unknown error occurred.")
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred."
+      toast({
+        title: "Submission Failed",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const renderField = (item: Item) => {
+    const fieldName = `item_${item.id}` as const
+    const error = form.formState.errors[fieldName]
+
     return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-lg text-muted-foreground">Loading form...</p>
+      <div key={item.id} className="mb-6">
+        <Label htmlFor={fieldName} className="text-lg font-semibold text-gray-800">
+          {item.name}
+          {item.is_required && <span className="text-red-500 ml-1">*</span>}
+        </Label>
+        {item.description && <p className="text-sm text-gray-500 mb-2">{item.description}</p>}
+
+        <Controller
+          name={fieldName}
+          control={form.control}
+          render={({ field }) => {
+            switch (item.field_type) {
+              case "text":
+                return (
+                  <Input {...field} id={fieldName} placeholder={item.placeholder || ""} value={field.value || ""} />
+                )
+              case "textarea":
+                return (
+                  <Textarea {...field} id={fieldName} placeholder={item.placeholder || ""} value={field.value || ""} />
+                )
+              case "date":
+                return <Input type="date" {...field} id={fieldName} value={field.value || ""} />
+              case "select":
+                return (
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <SelectTrigger id={fieldName}>
+                      <SelectValue placeholder={item.placeholder || "Select an option"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {item.options?.map((option) => (
+                        <SelectItem key={option.id} value={option.value}>
+                          {option.label || option.value}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )
+              case "radio":
+                return (
+                  <RadioGroup
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                    className="flex flex-col space-y-1"
+                  >
+                    {item.options?.map((option) => (
+                      <div key={option.id} className="flex items-center space-x-3">
+                        <RadioGroupItem value={option.value} id={`${fieldName}-${option.id}`} />
+                        <Label htmlFor={`${fieldName}-${option.id}`}>{option.label || option.value}</Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                )
+              case "checkbox":
+                // Handle checkbox group
+                if (item.options && item.options.length > 1) {
+                  return (
+                    <div>
+                      {item.options.map((option) => (
+                        <div key={option.id} className="flex items-center space-x-2 mb-2">
+                          <Checkbox
+                            id={`${fieldName}-${option.id}`}
+                            checked={(field.value as string[])?.includes(option.value)}
+                            onCheckedChange={(checked) => {
+                              const currentValue = (field.value as string[]) || []
+                              if (checked) {
+                                field.onChange([...currentValue, option.value])
+                              } else {
+                                field.onChange(currentValue.filter((v) => v !== option.value))
+                              }
+                            }}
+                          />
+                          <Label htmlFor={`${fieldName}-${option.id}`}>{option.label || option.value}</Label>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                }
+                // Handle single checkbox
+                return (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id={fieldName} checked={!!field.value} onCheckedChange={field.onChange} />
+                    <Label htmlFor={fieldName}>{item.placeholder || "Confirm"}</Label>
+                  </div>
+                )
+              default:
+                return <p>Unsupported field type: {item.field_type}</p>
+            }
+          }}
+        />
+        {error && <p className="text-sm font-medium text-red-500 mt-1">{String(error.message)}</p>}
       </div>
     )
   }
 
-  const onSubmit = async (data: z.infer<typeof validationSchema>) => {
-    const promise = fetch("/api/submit-order", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ brandId: brandData.id, formData: data }),
-    })
-
-    toast.promise(promise, {
-      loading: "Submitting order...",
-      success: (res) => {
-        if (!res.ok) throw new Error("Submission failed.")
-        reset()
-        return "Order submitted successfully!"
-      },
-      error: "Failed to submit order.",
-    })
-  }
-
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
-      <Card className="mb-8">
-        <CardHeader className="text-center">
-          {brandData.logo && (
-            <img
-              src={brandData.logo || "/placeholder.svg"}
-              alt={`${brandData.name} Logo`}
-              className="w-48 mx-auto mb-4"
-            />
-          )}
-          <CardTitle className="text-3xl font-bold">{brandData.name} Order Form</CardTitle>
+    <div className="container mx-auto max-w-4xl py-8 px-4">
+      <Toaster />
+      <Card className="shadow-lg">
+        <CardHeader className="bg-gray-50 p-6 border-b">
+          <div className="flex items-center space-x-4">
+            {brandData.logo && (
+              <Image
+                src={brandData.logo || "/placeholder.svg"}
+                alt={`${brandData.name} Logo`}
+                width={80}
+                height={80}
+                className="object-contain"
+              />
+            )}
+            <CardTitle className="text-3xl font-bold text-gray-800">{brandData.name} Order Form</CardTitle>
+          </div>
         </CardHeader>
-      </Card>
-
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-        {brandData.sections.map((section) => (
-          <Card key={section.id}>
-            <CardHeader>
-              <CardTitle>{section.title}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {section.items.map((item) => (
-                <div key={item.id}>
-                  <Label htmlFor={item.code} className="text-base font-semibold">
-                    {item.name} {item.is_required && <span className="text-destructive">*</span>}
+        <CardContent className="p-8">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            {/* Order Info Section */}
+            <div className="space-y-6">
+              <h2 className="text-2xl font-semibold border-b pb-2">Order Information</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <Label htmlFor="orderedBy" className="font-semibold">
+                    Your Name<span className="text-red-500 ml-1">*</span>
                   </Label>
-                  {item.description && <p className="text-sm text-muted-foreground mb-2">{item.description}</p>}
-
-                  <Controller
-                    name={item.code}
-                    control={control}
-                    render={({ field }) => {
-                      switch (item.field_type) {
-                        case "text":
-                          return <Input {...field} id={item.code} placeholder={item.placeholder} />
-                        case "textarea":
-                          return <Textarea {...field} id={item.code} placeholder={item.placeholder} />
-                        case "select":
-                          return (
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <SelectTrigger id={item.code}>
-                                <SelectValue placeholder={item.placeholder || "Select an option"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {(item.options || []).map((option) => (
-                                  <SelectItem key={option.id} value={option.value}>
-                                    {option.value}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )
-                        case "date":
-                          return (
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <Button
-                                  variant={"outline"}
-                                  className={cn(
-                                    "w-full justify-start text-left font-normal",
-                                    !field.value && "text-muted-foreground",
-                                  )}
-                                >
-                                  <CalendarIcon className="mr-2 h-4 w-4" />
-                                  {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0">
-                                <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
-                              </PopoverContent>
-                            </Popover>
-                          )
-                        case "checkbox_group":
-                          return (
-                            <div className="space-y-2 rounded-md border p-4">
-                              {(item.options || []).map((option) => (
-                                <div key={option.id} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={`${item.code}-${option.value}`}
-                                    checked={field.value?.includes(option.value)}
-                                    onCheckedChange={(checked) => {
-                                      const currentValue = field.value || []
-                                      if (checked) {
-                                        field.onChange([...currentValue, option.value])
-                                      } else {
-                                        field.onChange(currentValue.filter((v: string) => v !== option.value))
-                                      }
-                                    }}
-                                  />
-                                  <Label htmlFor={`${item.code}-${option.value}`}>{option.value}</Label>
-                                </div>
-                              ))}
-                            </div>
-                          )
-                        default:
-                          return <p>Unsupported field type</p>
-                      }
-                    }}
-                  />
-                  {errors[item.code] && (
-                    <p className="text-sm font-medium text-destructive mt-2">{errors[item.code]?.message as string}</p>
+                  <Input id="orderedBy" {...form.register("orderedBy")} />
+                  {form.formState.errors.orderedBy && (
+                    <p className="text-sm text-red-500 mt-1">{form.formState.errors.orderedBy.message}</p>
                   )}
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-        ))}
-        <div className="flex justify-end">
-          <Button type="submit" size="lg" disabled={isSubmitting}>
-            {isSubmitting ? "Submitting..." : "Submit Order"}
-          </Button>
-        </div>
-      </form>
+                <div>
+                  <Label htmlFor="email" className="font-semibold">
+                    Your Email<span className="text-red-500 ml-1">*</span>
+                  </Label>
+                  <Input id="email" type="email" {...form.register("email")} />
+                  {form.formState.errors.email && (
+                    <p className="text-sm text-red-500 mt-1">{form.formState.errors.email.message}</p>
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor="billTo" className="font-semibold">
+                    Bill To<span className="text-red-500 ml-1">*</span>
+                  </Label>
+                  <Controller
+                    name="billTo"
+                    control={form.control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select billing location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(brandData.clinic_locations as ClinicLocation[])?.map((loc) => (
+                            <SelectItem key={loc.name} value={loc.name}>
+                              {loc.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  {form.formState.errors.billTo && (
+                    <p className="text-sm text-red-500 mt-1">{form.formState.errors.billTo.message}</p>
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor="deliverTo" className="font-semibold">
+                    Deliver To<span className="text-red-500 ml-1">*</span>
+                  </Label>
+                  <Controller
+                    name="deliverTo"
+                    control={form.control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select delivery location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(brandData.clinic_locations as ClinicLocation[])?.map((loc) => (
+                            <SelectItem key={loc.name} value={loc.name}>
+                              {loc.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  {form.formState.errors.deliverTo && (
+                    <p className="text-sm text-red-500 mt-1">{form.formState.errors.deliverTo.message}</p>
+                  )}
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="notes" className="font-semibold">
+                  Notes / Special Instructions
+                </Label>
+                <Textarea id="notes" {...form.register("notes")} />
+              </div>
+            </div>
+
+            {/* Dynamic Form Sections */}
+            {brandData.sections.map((section: Section) => (
+              <div key={section.id} className="space-y-6 pt-6 border-t">
+                <h2 className="text-2xl font-semibold">{section.title}</h2>
+                {section.items.map((item: Item) => renderField(item))}
+              </div>
+            ))}
+
+            <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
+              {isSubmitting ? "Submitting..." : "Submit Order"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }
