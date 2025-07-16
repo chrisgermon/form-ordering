@@ -7,20 +7,21 @@ import { notFound } from "next/navigation"
 
 export default async function FormEditorPage({ params }: { params: { brandSlug: string } }) {
   const supabase = createAdminClient()
-  const { data: brand, error } = await supabase
+
+  // Step 1: Fetch the core brand data without the problematic nested relation.
+  const { data: brandBase, error: brandError } = await supabase
     .from("brands")
     .select(
       `
-    *,
-    clinic_locations(*),
-    sections(
       *,
-      items(
+      sections(
         *,
-        options(*)
+        items(
+          *,
+          options(*)
+        )
       )
-    )
-  `,
+    `,
     )
     .eq("slug", params.brandSlug)
     .order("position", { foreignTable: "sections" })
@@ -28,69 +29,43 @@ export default async function FormEditorPage({ params }: { params: { brandSlug: 
     .order("sort_order", { foreignTable: "sections.items.options" })
     .single()
 
-  if (error) {
-    console.error("Error fetching brand for editor:", error)
-    if (error.message.includes("Could not find a relationship between 'brands' and 'clinic_locations'")) {
-      return (
-        <div className="container mx-auto p-4 sm:p-6 lg:p-8">
-          <Alert variant="destructive">
-            <Terminal className="h-4 w-4" />
-            <AlertTitle>Database Schema Mismatch</AlertTitle>
-            <AlertDescription>
-              <p className="mb-4">
-                The application can't fetch clinic locations because the database relationship is missing or not
-                recognized. This is a critical error that needs to be fixed by updating your database schema.
-              </p>
-              <p className="font-semibold">To fix this, please run the latest SQL script in your Supabase project:</p>
-              <ol className="list-decimal list-inside my-2 space-y-1">
-                <li>
-                  Navigate to the{" "}
-                  <a
-                    href="https://supabase.com/dashboard"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium text-primary underline underline-offset-4"
-                  >
-                    Supabase Dashboard
-                  </a>
-                  , select your project, and go to the <strong>SQL Editor</strong>.
-                </li>
-                <li>
-                  Copy the entire contents of the file: <code>scripts/21-ensure-clinic-locations-relationship.sql</code>
-                </li>
-                <li>
-                  Paste the SQL into the editor and click <strong>"Run"</strong>.
-                </li>
-              </ol>
-              <p>
-                This will correctly configure the table relationships and allow the application to work as expected.
-                After running the script, please refresh this page.
-              </p>
-            </AlertDescription>
-          </Alert>
-        </div>
-      )
-    }
+  if (brandError) {
+    console.error("Error fetching base brand data for editor:", brandError)
     return (
       <div className="container mx-auto p-4 sm:p-6 lg:p-8">
         <Alert variant="destructive">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Database Error</AlertTitle>
           <AlertDescription>
-            <p>Could not fetch brand data. This might be due to a database schema issue.</p>
-            <p className="mt-2 font-mono text-xs">{error.message}</p>
-            <p className="mt-4">
-              Please ensure all database migration scripts have been run correctly in your Supabase SQL editor.
-            </p>
+            <p>Could not fetch the primary brand data.</p>
+            <p className="mt-2 font-mono text-xs">{brandError.message}</p>
           </AlertDescription>
         </Alert>
       </div>
     )
   }
 
-  if (!brand) {
+  if (!brandBase) {
     notFound()
   }
 
-  return <FormEditor initialBrand={brand as BrandData} />
+  // Step 2: Fetch the clinic locations in a separate, simple query.
+  const { data: clinicLocations, error: locationsError } = await supabase
+    .from("clinic_locations")
+    .select("*")
+    .eq("brand_id", brandBase.id)
+
+  if (locationsError) {
+    // Log the error but don't block the page from rendering.
+    // The user can still edit the rest of the form.
+    console.error("Error fetching clinic locations:", locationsError)
+  }
+
+  // Step 3: Combine the data into the final object for the editor component.
+  const brand: BrandData = {
+    ...brandBase,
+    clinic_locations: clinicLocations || [],
+  }
+
+  return <FormEditor initialBrand={brand} />
 }
