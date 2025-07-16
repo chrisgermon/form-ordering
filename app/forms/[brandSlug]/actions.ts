@@ -67,14 +67,17 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
     }
 
     // 3. Create submission record
+    const billToAddress = `${billTo.name} - ${billTo.address}`
+    const deliverToAddress = `${deliverTo.name} - ${deliverTo.address}`
+
     const { data: submission, error: submissionError } = await supabase
       .from("submissions")
       .insert({
         brand_id: brand.id,
         ordered_by: orderInfo.orderedBy,
         email: orderInfo.email,
-        bill_to: billTo.id, // CRITICAL FIX: Ensure we use the location ID
-        deliver_to: deliverTo.id, // CRITICAL FIX: Ensure we use the location ID
+        bill_to: billToAddress,
+        deliver_to: deliverToAddress,
         notes: orderInfo.notes,
         items: orderItems,
       })
@@ -83,8 +86,11 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
 
     if (submissionError || !submission) {
       console.error("Submission Error: Failed to save submission", submissionError)
-      const dbErrorMessage = submissionError?.message || "Failed to save your order."
-      return { success: false, message: `Database error: ${dbErrorMessage}` }
+      const message =
+        submissionError?.message && typeof submissionError.message === "string"
+          ? submissionError.message
+          : "Failed to save your order. Please try again."
+      return { success: false, message: `Database error: ${message}` }
     }
 
     // 4. Generate PDF
@@ -112,7 +118,12 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
     return { success: true, submissionId: submission.id }
   } catch (error) {
     console.error("Unexpected Submission Error:", error)
-    const message = error instanceof Error ? error.message : "An unknown error occurred during submission."
+    let message = "An unexpected error occurred. Please contact support."
+    if (error instanceof Error) {
+      message = error.message
+    } else if (typeof error === "string") {
+      message = error
+    }
     return { success: false, message }
   }
 }
