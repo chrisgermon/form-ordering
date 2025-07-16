@@ -55,7 +55,7 @@ export function OrderForm({ brandSlug, locationOptions, sections }: OrderFormPro
               } else if (item.field_type === "number") {
                 fieldSchema = z.coerce.number({ required_error: "This field is required." }).min(0)
               } else {
-                fieldSchema = fieldSchema.min(1, { message: "This field is required." })
+                fieldSchema = z.string().min(1, { message: "This field is required." })
               }
             }
 
