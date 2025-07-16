@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import Image from "next/image"
+import Link from "next/link"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Terminal } from "lucide-react"
 import { ClientForm } from "./client-form"
@@ -94,6 +95,9 @@ export default async function BrandFormPage({ params }: { params: { brandSlug: s
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4 w-[160px]">
+            <Link href="/" className="text-sm text-gray-600 hover:underline">
+              ← All Brands
+            </Link>
             {clientProps.brandLogo && (
               <Image
                 src={clientProps.brandLogo || "/placeholder.svg"}

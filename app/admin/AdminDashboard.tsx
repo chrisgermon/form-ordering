@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -18,6 +19,7 @@ interface AdminDashboardProps {
 }
 
 export function AdminDashboard({ brands, submissions, files }: AdminDashboardProps) {
+  const router = useRouter()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
 
@@ -31,9 +33,14 @@ export function AdminDashboard({ brands, submissions, files }: AdminDashboardPro
     setIsFormOpen(true)
   }
 
-  const handleCloseForm = () => {
+  const handleFormSuccess = () => {
     setIsFormOpen(false)
     setSelectedBrand(null)
+    router.refresh()
+  }
+
+  const handleBrandChange = () => {
+    router.refresh()
   }
 
   return (
@@ -51,24 +58,26 @@ export function AdminDashboard({ brands, submissions, files }: AdminDashboardPro
           </Button>
         </div>
         <TabsContent value="brands">
-          <BrandGrid brands={brands} onEditBrand={handleEditBrand} />
+          <BrandGrid
+            brands={brands}
+            onEditBrand={handleEditBrand}
+            onBrandChange={handleBrandChange}
+          />
         </TabsContent>
         <TabsContent value="submissions">
-          <SubmissionsTable submissions={submissions} />
+          <SubmissionsTable submissions={submissions} brands={brands} />
         </TabsContent>
         <TabsContent value="files">
           <FileManager files={files} brands={brands} />
         </TabsContent>
       </Tabs>
 
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{selectedBrand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
-          </DialogHeader>
-          <BrandForm brand={selectedBrand} onClose={handleCloseForm} />
-        </DialogContent>
-      </Dialog>
+      <BrandForm
+        isOpen={isFormOpen}
+        onOpenChange={setIsFormOpen}
+        brand={selectedBrand}
+        onFormSuccess={handleFormSuccess}
+      />
     </div>
   )
 }
