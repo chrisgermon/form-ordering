@@ -1,6 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Terminal } from "lucide-react"
-import type { BrandData } from "@/lib/types"
+import type { BrandData, Item, Section } from "@/lib/types"
 import FormEditor from "./form-editor"
 import { createAdminClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
@@ -8,29 +8,15 @@ import { notFound } from "next/navigation"
 export default async function FormEditorPage({ params }: { params: { brandSlug: string } }) {
   const supabase = createAdminClient()
 
-  // Step 1: Fetch the core brand data without the problematic nested relation.
-  const { data: brandBase, error: brandError } = await supabase
+  // Step 1: Fetch the core brand data.
+  const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select(
-      `
-      *,
-      sections(
-        *,
-        items(
-          *,
-          options(*)
-        )
-      )
-    `,
-    )
+    .select("*")
     .eq("slug", params.brandSlug)
-    .order("position", { foreignTable: "sections" })
-    .order("position", { foreignTable: "sections.items" })
-    .order("sort_order", { foreignTable: "sections.items.options" })
     .single()
 
   if (brandError) {
-    console.error("Error fetching base brand data for editor:", brandError)
+    console.error("Error fetching brand data for editor:", brandError)
     return (
       <div className="container mx-auto p-4 sm:p-6 lg:p-8">
         <Alert variant="destructive">
@@ -45,27 +31,56 @@ export default async function FormEditorPage({ params }: { params: { brandSlug: 
     )
   }
 
-  if (!brandBase) {
+  if (!brand) {
     notFound()
   }
 
-  // Step 2: Fetch the clinic locations in a separate, simple query.
-  const { data: clinicLocations, error: locationsError } = await supabase
-    .from("clinic_locations")
-    .select("*")
-    .eq("brand_id", brandBase.id)
+  // Step 2: Fetch all related data in separate, simple queries.
+  const [locationsResult, sectionsResult] = await Promise.all([
+    supabase.from("clinic_locations").select("*").eq("brand_id", brand.id),
+    supabase.from("sections").select("*").eq("brand_id", brand.id).order("position"),
+  ])
 
-  if (locationsError) {
-    // Log the error but don't block the page from rendering.
-    // The user can still edit the rest of the form.
-    console.error("Error fetching clinic locations:", locationsError)
-  }
+  const { data: clinicLocations, error: locationsError } = locationsResult
+  const { data: sections, error: sectionsError } = sectionsResult
 
-  // Step 3: Combine the data into the final object for the editor component.
-  const brand: BrandData = {
-    ...brandBase,
+  if (locationsError) console.error("Error fetching clinic locations:", locationsError)
+  if (sectionsError) console.error("Error fetching sections:", sectionsError)
+
+  // Step 3: For each section, fetch its items and their options.
+  const sectionsWithItems = await Promise.all(
+    (sections || []).map(async (section: Section) => {
+      const { data: items, error: itemsError } = await supabase
+        .from("items")
+        .select("*")
+        .eq("section_id", section.id)
+        .order("position")
+
+      if (itemsError) console.error(`Error fetching items for section ${section.id}:`, itemsError)
+
+      const itemsWithOptions = await Promise.all(
+        (items || []).map(async (item: Item) => {
+          const { data: options, error: optionsError } = await supabase
+            .from("options")
+            .select("*")
+            .eq("item_id", item.id)
+            .order("sort_order")
+
+          if (optionsError) console.error(`Error fetching options for item ${item.id}:`, optionsError)
+
+          return { ...item, options: options || [] }
+        }),
+      )
+      return { ...section, items: itemsWithOptions }
+    }),
+  )
+
+  // Step 4: Assemble the final BrandData object.
+  const brandData: BrandData = {
+    ...brand,
     clinic_locations: clinicLocations || [],
+    sections: sectionsWithItems,
   }
 
-  return <FormEditor initialBrand={brand} />
+  return <FormEditor initialBrand={brandData} />
 }
