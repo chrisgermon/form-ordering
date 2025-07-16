@@ -1,30 +1,12 @@
 "use server"
 
 import { createClient } from "@/utils/supabase/server"
-import { z } from "zod"
 import { generateOrderPdf } from "@/lib/pdf"
 import { sendOrderConfirmationEmail } from "@/lib/email"
-import type { ClinicLocation, Item } from "@/lib/types"
+import type { ClinicLocation, Item, OrderPayload } from "@/lib/types"
 
-const formSchema = z.object({
-  brandSlug: z.string(),
-  orderInfo: z.object({
-    orderedBy: z.string(),
-    email: z.string().email(),
-    billToId: z.string(),
-    deliverToId: z.string(),
-    notes: z.string().optional(),
-  }),
-  items: z.record(z.any()),
-})
-
-export async function submitOrder(payload: z.infer<typeof formSchema>) {
-  const validation = formSchema.safeParse(payload)
-  if (!validation.success) {
-    return { success: false, message: "Invalid form data." }
-  }
-
-  const { brandSlug, orderInfo, items: submittedItems } = validation.data
+export async function submitOrder(payload: OrderPayload) {
+  const { brandSlug, orderInfo, items: submittedItems } = payload
   const supabase = createClient()
 
   try {
@@ -51,13 +33,20 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
     const allItems: Item[] = brand.sections.flatMap((s: any) => s.items)
     const orderItems = Object.entries(submittedItems)
       .map(([itemId, value]) => {
-        if (!value || (typeof value === "string" && value.trim() === "")) return null
+        // Explicitly handle all non-value cases
+        if (value === false || value === null || value === undefined) return null
+        if (typeof value === "string" && value.trim() === "") return null
+
         const itemDetails = allItems.find((i) => i.id === itemId)
         if (!itemDetails) return null
+
+        // For checkboxes that are true, the quantity is 1. Otherwise, use the provided value.
+        const quantity = value === true ? 1 : value
+
         return {
           code: itemDetails.code,
           name: itemDetails.name,
-          quantity: value,
+          quantity: quantity,
         }
       })
       .filter(Boolean) as { code: string; name: string; quantity: string | number }[]
@@ -66,7 +55,7 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
       return { success: false, message: "Your order is empty. Please specify a quantity for at least one item." }
     }
 
-    // 3. Create submission record - Using location IDs as per schema
+    // 3. Create submission record
     const { data: submission, error: submissionError } = await supabase
       .from("submissions")
       .insert({
@@ -83,11 +72,7 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
 
     if (submissionError || !submission) {
       console.error("Submission Error: Failed to save submission", submissionError)
-      const message =
-        submissionError?.message && typeof submissionError.message === "string"
-          ? submissionError.message
-          : "Failed to save your order. Please try again."
-      return { success: false, message: `Database error: ${message}` }
+      return { success: false, message: `Database error: ${submissionError?.message}` }
     }
 
     // 4. Generate PDF
@@ -107,7 +92,7 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
     // 5. Send email
     await sendOrderConfirmationEmail({
       to: [orderInfo.email, ...brand.emails],
-      brand: brand, // Pass the full brand object
+      brand: brand,
       orderId: submission.id,
       pdfBuffer,
     })
@@ -115,14 +100,7 @@ export async function submitOrder(payload: z.infer<typeof formSchema>) {
     return { success: true, submissionId: submission.id }
   } catch (error) {
     console.error("Unexpected Submission Error:", error)
-    let message = "An unexpected error occurred. Please contact support."
-    if (error instanceof Error) {
-      message = error.message
-    } else if (typeof error === "string") {
-      message = error
-    } else if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
-      message = error.message
-    }
+    const message = error instanceof Error ? error.message : "An unexpected error occurred."
     return { success: false, message }
   }
 }

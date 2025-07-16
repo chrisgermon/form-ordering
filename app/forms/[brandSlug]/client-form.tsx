@@ -20,7 +20,7 @@ import { Separator } from "@/components/ui/separator"
 import { submitOrder } from "./actions"
 import type { ClientFormParams } from "@/lib/types"
 
-export function ClientForm({ brandName, brandSlug, brandLogo, locationOptions, sections }: ClientFormParams) {
+export function ClientForm({ brandSlug, locationOptions, sections }: ClientFormParams) {
   const router = useRouter()
 
   const formSchema = React.useMemo(() => {
@@ -156,8 +156,8 @@ export function ClientForm({ brandName, brandSlug, brandLogo, locationOptions, s
                       </FormControl>
                       <SelectContent>
                         {locationOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
+                          <SelectItem key={String(opt.value)} value={String(opt.value)}>
+                            {String(opt.label)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -180,8 +180,8 @@ export function ClientForm({ brandName, brandSlug, brandLogo, locationOptions, s
                       </FormControl>
                       <SelectContent>
                         {locationOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
+                          <SelectItem key={String(opt.value)} value={String(opt.value)}>
+                            {String(opt.label)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -210,7 +210,7 @@ export function ClientForm({ brandName, brandSlug, brandLogo, locationOptions, s
         {sections.map((section) => (
           <Card key={section.id}>
             <CardHeader>
-              <CardTitle>{section.title}</CardTitle>
+              <CardTitle>{String(section.title)}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               {section.items.map((item, index) => (
@@ -222,10 +222,10 @@ export function ClientForm({ brandName, brandSlug, brandLogo, locationOptions, s
                       <FormItem>
                         <div className="flex flex-col space-y-2">
                           <FormLabel className="font-semibold text-base">
-                            {item.name}
+                            {String(item.name)}
                             {item.is_required && <span className="text-red-500 ml-1">*</span>}
                           </FormLabel>
-                          {item.description && <FormDescription>{item.description}</FormDescription>}
+                          {item.description && <FormDescription>{String(item.description)}</FormDescription>}
                           <FormControl>
                             <>
                               {item.field_type === "text" && (
@@ -267,8 +267,8 @@ export function ClientForm({ brandName, brandSlug, brandLogo, locationOptions, s
                                   </FormControl>
                                   <SelectContent>
                                     {item.options.map((opt) => (
-                                      <SelectItem key={opt.id} value={opt.value}>
-                                        {opt.label || opt.value}
+                                      <SelectItem key={opt.id} value={String(opt.value)}>
+                                        {String(opt.label || opt.value)}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
@@ -283,9 +283,9 @@ export function ClientForm({ brandName, brandSlug, brandLogo, locationOptions, s
                                   {item.options.map((opt) => (
                                     <FormItem key={opt.id} className="flex items-center space-x-3 space-y-0">
                                       <FormControl>
-                                        <RadioGroupItem value={opt.value} />
+                                        <RadioGroupItem value={String(opt.value)} />
                                       </FormControl>
-                                      <FormLabel className="font-normal">{opt.label || opt.value}</FormLabel>
+                                      <FormLabel className="font-normal">{String(opt.label || opt.value)}</FormLabel>
                                     </FormItem>
                                   ))}
                                 </RadioGroup>
