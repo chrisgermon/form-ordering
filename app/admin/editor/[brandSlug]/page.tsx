@@ -6,11 +6,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Terminal } from "lucide-react"
 import Link from "next/link"
 
-async function getBrandDataForEditor(slug: string): Promise<BrandData | null> {
+async function getBrandData(slug: string): Promise<BrandData | { error: string }> {
   const supabase = createClient()
-  let brandId: string | null = null
-  let relationshipError = ""
-
   try {
     // Step 1: Fetch the core brand data.
     const { data: brand, error: brandError } = await supabase
@@ -19,39 +16,22 @@ async function getBrandDataForEditor(slug: string): Promise<BrandData | null> {
       .eq("slug", slug)
       .single()
 
-    if (brandError) {
-      if (brandError.message.includes("relationship")) {
-        relationshipError = brandError.message
-        // Try to fetch just the brand ID to continue
-        const { data: brandOnly } = await supabase.from("brands").select("id").eq("slug", slug).single()
-        if (brandOnly) brandId = brandOnly.id
-      } else {
-        throw brandError
-      }
-    }
-
-    if (!brand && !brandId) {
-      console.error(`Editor: Brand with slug ${slug} not found.`)
-      return null
-    }
-
-    const finalBrandId = brand?.id || brandId
-    if (!finalBrandId) {
-      console.error(`Editor: Could not determine brand ID for slug ${slug}.`)
-      return null
+    if (brandError) throw brandError
+    if (!brand) {
+      notFound()
     }
 
     // Step 2: Fetch all related data in parallel.
     const [locationsResult, sectionsResult] = await Promise.all([
-      supabase.from("clinic_locations").select("*").eq("brand_id", finalBrandId),
-      supabase.from("sections").select("*").eq("brand_id", finalBrandId).order("position"),
+      supabase.from("clinic_locations").select("*").eq("brand_id", brand.id),
+      supabase.from("sections").select("*").eq("brand_id", brand.id).order("position"),
     ])
 
     const { data: clinicLocations, error: locationsError } = locationsResult
     const { data: sections, error: sectionsError } = sectionsResult
 
-    if (locationsError?.message.includes("relationship")) relationshipError = locationsError.message
-    if (sectionsError?.message.includes("relationship")) relationshipError = sectionsError.message
+    if (locationsError) console.error(`Error fetching clinic locations for brand ${slug}:`, locationsError)
+    if (sectionsError) throw new Error("Could not fetch sections. Check database relationships.")
 
     // Step 3: For each section, fetch its items and their options.
     const sectionsWithItems = await Promise.all(
@@ -83,73 +63,45 @@ async function getBrandDataForEditor(slug: string): Promise<BrandData | null> {
 
     // Step 4: Assemble and return the final object.
     const fullBrandData: BrandData = {
-      ...(brand || { id: finalBrandId, slug, name: "Unknown", logo: null, emails: [], active: false }),
+      ...brand,
       clinic_locations: clinicLocations || [],
       sections: sectionsWithItems,
-    }
-
-    if (relationshipError) {
-      // Attach the error to the returned data so the UI can display it
-      ;(fullBrandData as any).relationshipError = relationshipError
     }
 
     return fullBrandData
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    console.error(`Failed to get brand data for editor (${slug}):`, errorMessage)
+    console.error(`Error in getBrandData for slug ${slug}:`, errorMessage)
     if (errorMessage.includes("relationship")) {
-      return {
-        id: "",
-        name: "Error",
-        slug: slug,
-        logo: null,
-        emails: [],
-        active: false,
-        clinic_locations: [],
-        sections: [],
-        relationshipError: errorMessage,
-      } as any
+      return { error: `Database Error: ${errorMessage}` }
     }
-    return null
+    notFound()
   }
 }
 
 export default async function FormEditorPage({ params }: { params: { brandSlug: string } }) {
-  const brandData = await getBrandDataForEditor(params.brandSlug)
+  const brandData = await getBrandData(params.brandSlug)
 
-  if (!brandData) {
-    notFound()
-  }
-
-  const relationshipError = (brandData as any).relationshipError
-
-  return (
-    <div className="flex flex-col h-screen">
-      {relationshipError && (
-        <Alert variant="destructive" className="m-4">
+  if ("error" in brandData) {
+    return (
+      <div className="container mx-auto p-8">
+        <Alert variant="destructive">
           <Terminal className="h-4 w-4" />
-          <AlertTitle>Database Relationship Error</AlertTitle>
+          <AlertTitle>Error Loading Form Editor</AlertTitle>
           <AlertDescription>
+            <p className="mb-2">{brandData.error}</p>
             <p>
-              Could not fetch the full brand data. This usually means a database relationship is missing or
-              misconfigured.
+              This usually indicates a problem with the database schema relationships. Please ensure your database
+              schema is up to date. You may need to run the latest migration script in your Supabase SQL Editor.
             </p>
-            <p className="font-mono text-xs bg-red-900/20 p-2 rounded-md my-2">{relationshipError}</p>
-            <p>
-              Please go to your{" "}
-              <Link
-                href={`https://supabase.com/dashboard/project/${process.env.NEXT_PUBLIC_SUPABASE_PROJECT_ID}/sql/new`}
-                target="_blank"
-                className="underline"
-              >
-                Supabase SQL Editor
-              </Link>{" "}
-              and run the latest schema correction script to fix this.
-            </p>
+            <Link href={`/admin`} className="font-bold underline mt-2 inline-block">
+              Return to Admin Dashboard
+            </Link>
           </AlertDescription>
         </Alert>
-      )}
-      <FormEditor initialBrand={brandData} />
-    </div>
-  )
+      </div>
+    )
+  }
+
+  return <FormEditor brand={brandData} />
 }
