@@ -33,14 +33,12 @@ export async function submitOrder(payload: OrderPayload) {
     const allItems: Item[] = brand.sections.flatMap((s: any) => s.items)
     const orderItems = Object.entries(submittedItems)
       .map(([itemId, value]) => {
-        // Explicitly handle all non-value cases
         if (value === false || value === null || value === undefined) return null
         if (typeof value === "string" && value.trim() === "") return null
 
         const itemDetails = allItems.find((i) => i.id === itemId)
         if (!itemDetails) return null
 
-        // For checkboxes that are true, the quantity is 1. Otherwise, use the provided value.
         const quantity = value === true ? 1 : value
 
         return {
