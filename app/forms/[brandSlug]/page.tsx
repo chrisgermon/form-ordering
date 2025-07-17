@@ -1,96 +1,130 @@
-import { notFound } from "next/navigation"
-import Image from "next/image"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Terminal } from "lucide-react"
-import { ClientForm } from "./client-form"
-import type { Brand, LocationOption, Section, Item, ClientFormParams } from "@/lib/types"
-import { createClient } from "@/utils/supabase/server"
+"use client"
 
-export const revalidate = 0
+import { notFound } from "next/navigation";
+import Image from "next/image";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Terminal } from "lucide-react";
+import { ClientForm } from "./client-form";
+import type {
+  Brand,
+  LocationOption,
+  Section,
+  Item,
+  ClientFormParams,
+  Option,
+} from "@/lib/types";
+import { createClient } from "@/utils/supabase/server";
+
+export const revalidate = 0;
 
 type BrandFetchResult = {
-  status: "found" | "inactive" | "not_found"
-  data: ClientFormParams | { name: string } | null
-}
+  status: "found" | "inactive" | "not_found";
+  data: ClientFormParams | { name: string } | null;
+};
 
-// This function now uses manual joins to be resilient against schema cache issues.
-async function getSanitizedBrandData(slug: string): Promise<BrandFetchResult> {
-  const supabase = createClient()
+// Fetches brand data and related objects
+async function getSanitizedBrandData(
+  slug: string,
+): Promise<BrandFetchResult> {
+  const supabase = createClient();
 
-  // Step 1: Fetch the core brand data.
+  // Fetch the core brand data
   const { data: brand, error: brandError } = await supabase
-    .from("brands")
+    .from<Brand>("brands")
     .select("id, name, slug, logo, active")
     .eq("slug", slug)
-    .single<Pick<Brand, "id" | "name" | "slug" | "logo" | "active">>()
+    .single();
 
   if (brandError || !brand) {
-    console.error(`Data fetching error for slug "${slug}":`, brandError?.message)
-    return { status: "not_found", data: null }
+    console.error(`Data fetching error for slug "${slug}":`, brandError?.message);
+    return { status: "not_found", data: null };
   }
 
   if (!brand.active) {
-    return { status: "inactive", data: { name: brand.name } }
+    return { status: "inactive", data: { name: brand.name } };
   }
 
-  // Step 2: Fetch related data in parallel.
+  // Fetch related data in parallel
   const [locationsResult, sectionsResult] = await Promise.all([
-    supabase.from("clinic_locations").select("id, name").eq("brand_id", brand.id),
-    supabase.from("sections").select("id, title, position").eq("brand_id", brand.id).order("position"),
-  ])
+    supabase
+      .from("clinic_locations")
+      .select("id, name")
+      .eq("brand_id", brand.id),
+    supabase
+      .from("sections")
+      .select("id, title, position")
+      .eq("brand_id", brand.id)
+      .order("position"),
+  ]);
 
   if (sectionsResult.error) {
-    console.error(`Error fetching sections for brand ${slug}:`, sectionsResult.error.message)
-    return { status: "not_found", data: null } // Can't render a form without sections.
+    console.error(
+      `Error fetching sections for brand ${slug}:`,
+      sectionsResult.error.message,
+    );
+    return { status: "not_found", data: null };
   }
 
-  const clinicLocations = locationsResult.data || []
-  const sectionsData = sectionsResult.data || []
+  const clinicLocations = locationsResult.data || [];
+  const sectionsData = sectionsResult.data || [];
 
-  // Step 3: Fetch items for each section.
+  // Fetch items for each section
   const sanitizedSections: Section[] = await Promise.all(
     sectionsData.map(async (section) => {
       const { data: itemsData, error: itemsError } = await supabase
-        .from("items")
+        .from<Item>("items")
         .select("*")
         .eq("section_id", section.id)
-        .order("position")
+        .order("position");
 
       if (itemsError) {
-        console.error(`Error fetching items for section ${section.id}:`, itemsError.message)
-        return null // Skip this section if its items can't be fetched.
+        console.error(
+          `Error fetching items for section ${section.id}:`,
+          itemsError.message,
+        );
+        return null;
       }
 
       const itemsWithSafeOptions: Item[] = await Promise.all(
         (itemsData || []).map(async (item) => {
           const { data: optionsData, error: optionsError } = await supabase
-            .from("options")
+            .from<Option>("options")
             .select("id, value, label, sort_order")
             .eq("item_id", item.id)
-            .order("sort_order")
+            .order("sort_order");
 
           if (optionsError) {
-            console.error(`Error fetching options for item ${item.id}:`, optionsError.message)
+            console.error(
+              `Error fetching options for item ${item.id}:`,
+              optionsError.message,
+            );
           }
 
           const safeOptions = (optionsData || []).map((opt) => ({
             ...opt,
-            label: opt.label || opt.value, // Ensure label is never null
-          }))
+            label: opt.label || opt.value,
+          }));
 
-          return { ...item, options: safeOptions } as Item
+          return { ...item, options: safeOptions } as Item;
         }),
-      )
+      );
 
-      return { ...section, items: itemsWithSafeOptions }
+      return { ...section, items: itemsWithSafeOptions };
     }),
-  ).then((results) => results.filter((s): s is Section => s !== null && s.items.length > 0))
+  ).then((results) =>
+    results.filter((s): s is Section => s !== null && s.items.length > 0),
+  );
 
-  // Step 4: Assemble the final, clean props object for the client.
+  // **NEW:** Avoid rendering the form if no sections exist
+  if (sanitizedSections.length === 0) {
+    console.warn(`No sections available for brand "${slug}".`);
+    return { status: "not_found", data: null };
+  }
+
   const locationOptions: LocationOption[] = clinicLocations.map((loc) => ({
     value: String(loc.id),
     label: String(loc.name),
-  }))
+  }));
 
   const clientProps: ClientFormParams = {
     brandName: brand.name,
@@ -98,50 +132,53 @@ async function getSanitizedBrandData(slug: string): Promise<BrandFetchResult> {
     brandLogo: brand.logo,
     locationOptions,
     sections: sanitizedSections,
-  }
+  };
 
-  return { status: "found", data: clientProps }
+  return { status: "found", data: clientProps };
 }
 
-export default async function BrandFormPage({ params }: { params: { brandSlug: string } }) {
-  const { status, data } = await getSanitizedBrandData(params.brandSlug)
+export default async function BrandFormPage({
+  params,
+}: {
+  params: { brandSlug: string };
+}) {
+  const { status, data } = await getSanitizedBrandData(params.brandSlug);
 
   if (status === "not_found") {
-    notFound()
+    notFound();
   }
 
   if (status === "inactive") {
-    const { name } = data as { name: string }
+    const { name } = data as { name: string };
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <Alert variant="destructive" className="max-w-lg">
           <Terminal className="h-4 w-4" />
           <AlertTitle>Form Currently Unavailable</AlertTitle>
           <AlertDescription>
-            The order form for "{name}" is not currently active. Please contact the administrator for assistance.
+            The order form for "{name}" is not currently active. Please contact
+            the administrator for assistance.
           </AlertDescription>
         </Alert>
       </div>
-    )
+    );
   }
 
-  const clientProps = data as ClientFormParams
+  const clientProps = data as ClientFormParams;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4 w-[160px]">
-            {clientProps.brandLogo && (
-              <Image
-                src={clientProps.brandLogo || "/placeholder.svg"}
-                alt={`${clientProps.brandName} Logo`}
-                width={160}
-                height={40}
-                className="object-contain h-10 w-auto"
-                priority
-              />
-            )}
+            <Image
+              src={clientProps.brandLogo || "/placeholder.svg"}
+              alt={`${clientProps.brandName} Logo`}
+              width={160}
+              height={40}
+              className="object-contain h-10 w-auto"
+              priority
+            />
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-800 text-center flex-1">
             {clientProps.brandName} Order Form
@@ -154,9 +191,10 @@ export default async function BrandFormPage({ params }: { params: { brandSlug: s
       </main>
       <footer className="py-4 text-center text-sm text-gray-500">
         <p>
-          &copy; {new Date().getFullYear()} {clientProps.brandName}. All rights reserved.
+          &copy; {new Date().getFullYear()} {clientProps.brandName}. All rights
+          reserved.
         </p>
       </footer>
     </div>
-  )
+  );
 }
