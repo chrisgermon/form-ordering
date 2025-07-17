@@ -1,117 +1,52 @@
-import type { Brand, OrderInfo, OrderItem } from "@/lib/types"
+import nodemailer from "nodemailer"
 
-interface EmailPayload {
-  orderInfo: OrderInfo
-  items: OrderItem[]
-  brand: Brand
-  pdfBuffer: Buffer
-}
-
-export async function sendOrderEmail(submissionId: string, pdfBuffer: Buffer): Promise<void> {
-  console.log("=== SEND EMAIL START ===")
-  console.log("Submission ID:", submissionId)
-  console.log("PDF Buffer size:", pdfBuffer.length)
+export async function sendOrderEmail(
+  toEmail: string,
+  orderNumber: string,
+  brandName: string,
+  pdfBuffer: Buffer,
+): Promise<void> {
+  console.log("=== SENDING EMAIL ===")
+  console.log("To:", toEmail)
+  console.log("Order number:", orderNumber)
+  console.log("Brand:", brandName)
 
   try {
-    // For now, just log that we would send an email
-    // In a real implementation, you'd use a service like Resend, SendGrid, etc.
-    console.log("Email would be sent with PDF attachment")
-    console.log("PDF content preview:", pdfBuffer.toString("utf-8").substring(0, 200))
+    const transporter = nodemailer.createTransporter({
+      host: "smtp.mailgun.org",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.MAILGUN_SMTP_USERNAME,
+        pass: process.env.MAILGUN_SMTP_PASSWORD,
+      },
+    })
 
-    console.log("=== SEND EMAIL SUCCESS ===")
+    const mailOptions = {
+      from: process.env.FROM_EMAIL || "noreply@example.com",
+      to: String(toEmail || ""),
+      subject: `Order Confirmation - ${String(orderNumber || "")} - ${String(brandName || "")}`,
+      html: `
+        <h2>Order Confirmation</h2>
+        <p>Thank you for your order!</p>
+        <p><strong>Order Number:</strong> ${String(orderNumber || "")}</p>
+        <p><strong>Brand:</strong> ${String(brandName || "")}</p>
+        <p>Please find your order details attached as a PDF.</p>
+        <p>If you have any questions, please contact us.</p>
+      `,
+      attachments: [
+        {
+          filename: `order-${String(orderNumber || "unknown")}.pdf`,
+          content: pdfBuffer,
+          contentType: "application/pdf",
+        },
+      ],
+    }
 
-    // Placeholder for actual email sending logic
-    // const { orderInfo, items, brand } = payload // Uncomment and use this line if you need to extract orderInfo, items, and brand from submissionId
-
-    // const transporter = nodemailer.createTransport({
-    //   host: "smtp.mailgun.org",
-    //   port: 587,
-    //   secure: false,
-    //   auth: {
-    //     user: process.env.MAILGUN_SMTP_USERNAME,
-    //     pass: process.env.MAILGUN_SMTP_PASSWORD,
-    //   },
-    // })
-
-    // const itemsList = items
-    //   .map((item) => `• ${item.name} ${item.code ? `(${item.code})` : ""} - Quantity: ${item.quantity}`)
-    //   .join("\n")
-
-    // const emailText = `
-    // New Order Received
-
-    // Order Details:
-    // - Order Number: ${orderInfo.orderNumber}
-    // - Ordered By: ${orderInfo.orderedBy}
-    // - Email: ${orderInfo.email}
-    // - Brand: ${brand.name}
-
-    // Delivery Information:
-    // ${orderInfo.deliverTo?.name}
-    // ${orderInfo.deliverTo?.address}
-
-    // Billing Information:
-    // ${orderInfo.billTo?.name}
-    // ${orderInfo.billTo?.address}
-
-    // Items Ordered:
-    // ${itemsList}
-
-    // ${orderInfo.notes ? `Notes: ${orderInfo.notes}` : ""}
-
-    // Please find the detailed order form attached as a PDF.
-    // `
-
-    // const emailHtml = `
-    //   <h2>New Order Received</h2>
-
-    //   <h3>Order Details:</h3>
-    //   <ul>
-    //     <li><strong>Order Number:</strong> ${orderInfo.orderNumber}</li>
-    //     <li><strong>Ordered By:</strong> ${orderInfo.orderedBy}</li>
-    //     <li><strong>Email:</strong> ${orderInfo.email}</li>
-    //     <li><strong>Brand:</strong> ${brand.name}</li>
-    //   </ul>
-
-    //   <h3>Delivery Information:</h3>
-    //   <p>
-    //     ${orderInfo.deliverTo?.name}<br>
-    //     ${orderInfo.deliverTo?.address}
-    //   </p>
-
-    //   <h3>Billing Information:</h3>
-    //   <p>
-    //     ${orderInfo.billTo?.name}<br>
-    //     ${orderInfo.billTo?.address}
-    //   </p>
-
-    //   <h3>Items Ordered:</h3>
-    //   <ul>
-    //     ${items.map((item) => `<li>${item.name} ${item.code ? `(${item.code})` : ""} - Quantity: ${item.quantity}</li>`).join("")}
-    //   </ul>
-
-    //   ${orderInfo.notes ? `<h3>Notes:</h3><p>${orderInfo.notes}</p>` : ""}
-
-    //   <p>Please find the detailed order form attached as a PDF.</p>
-    // `
-
-    // await transporter.sendMail({
-    //   from: process.env.FROM_EMAIL,
-    //   to: process.env.FROM_EMAIL,
-    //   cc: orderInfo.email,
-    //   subject: `New Order: ${orderInfo.orderNumber} - ${brand.name}`,
-    //   text: emailText,
-    //   html: emailHtml,
-    //   attachments: [
-    //     {
-    //       filename: `order-${orderInfo.orderNumber}.pdf`,
-    //       content: pdfBuffer,
-    //       contentType: "application/pdf",
-    //     },
-    //   ],
-    // })
+    const result = await transporter.sendMail(mailOptions)
+    console.log("Email sent successfully:", result.messageId)
   } catch (error) {
-    console.error("=== SEND EMAIL ERROR ===", error)
-    throw error
+    console.error("Email sending error:", error)
+    throw new Error(`Failed to send email: ${String(error)}`)
   }
 }

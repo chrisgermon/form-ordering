@@ -42,35 +42,32 @@ export default async function FormPage({ params }: { params: { brandSlug: string
       console.error("Error fetching locations:", locationsError)
     }
 
-    // Fetch sections with explicit error handling
+    // Fetch sections separately to avoid relationship issues
     console.log("Fetching sections for brand:", brand.id)
     const { data: sections, error: sectionsError } = await supabase
-      .from("form_sections")
-      .select(`
-        id,
-        title,
-        order_index,
-        brand_id,
-        items:form_items(
-          id,
-          name,
-          code,
-          description,
-          field_type,
-          placeholder,
-          is_required,
-          order_index,
-          section_id,
-          brand_id
-        )
-      `)
+      .from("product_sections")
+      .select("id, title, sort_order, brand_id")
       .eq("brand_id", brand.id)
-      .order("order_index")
+      .order("sort_order")
 
     console.log("Sections query result:", { sections, error: sectionsError })
 
     if (sectionsError) {
       console.error("Error fetching sections:", sectionsError)
+    }
+
+    // Fetch items separately to avoid relationship issues
+    console.log("Fetching items for brand:", brand.id)
+    const { data: items, error: itemsError } = await supabase
+      .from("product_items")
+      .select("id, name, code, description, field_type, placeholder, is_required, sort_order, section_id, brand_id")
+      .eq("brand_id", brand.id)
+      .order("sort_order")
+
+    console.log("Items query result:", { items, error: itemsError })
+
+    if (itemsError) {
+      console.error("Error fetching items:", itemsError)
     }
 
     // Create completely safe location options - ONLY strings
@@ -88,27 +85,30 @@ export default async function FormPage({ params }: { params: { brandSlug: string
       }
     })
 
-    // Create completely safe sections data
+    // Create completely safe sections data by combining sections and items
     const safeSections = (sections || []).map((section) => {
+      const sectionItems = (items || [])
+        .filter((item) => String(item?.section_id) === String(section?.id))
+        .map((item) => ({
+          id: String(item?.id || ""),
+          name: String(item?.name || "Untitled Item"),
+          code: item?.code ? String(item.code) : undefined,
+          description: item?.description ? String(item.description) : undefined,
+          field_type: String(item?.field_type || "text"),
+          placeholder: item?.placeholder ? String(item.placeholder) : undefined,
+          is_required: Boolean(item?.is_required),
+          order_index: Number(item?.sort_order || 0),
+          section_id: String(item?.section_id || ""),
+          brand_id: String(item?.brand_id || ""),
+        }))
+        .sort((a, b) => a.order_index - b.order_index)
+
       const sectionData = {
         id: String(section?.id || ""),
         title: String(section?.title || "Untitled Section"),
-        order_index: Number(section?.order_index || 0),
+        order_index: Number(section?.sort_order || 0),
         brand_id: String(section?.brand_id || ""),
-        items: (section?.items || [])
-          .map((item) => ({
-            id: String(item?.id || ""),
-            name: String(item?.name || "Untitled Item"),
-            code: item?.code ? String(item.code) : undefined,
-            description: item?.description ? String(item.description) : undefined,
-            field_type: String(item?.field_type || "text"),
-            placeholder: item?.placeholder ? String(item.placeholder) : undefined,
-            is_required: Boolean(item?.is_required),
-            order_index: Number(item?.order_index || 0),
-            section_id: String(item?.section_id || ""),
-            brand_id: String(item?.brand_id || ""),
-          }))
-          .sort((a, b) => a.order_index - b.order_index),
+        items: sectionItems,
       }
 
       console.log("Created section:", sectionData)

@@ -92,37 +92,3 @@ export interface OrderItem {
   created_at: string
   updated_at: string
 }
-
-export interface ClientFormParams {
-  brandSlug: string
-  brandName: string
-  brandLogo?: string
-  locationOptions: LocationOption[]
-  sections: Array<{
-    id: string
-    title: string
-    position: number
-    brand_id: string
-    items: Array<{
-      id: string
-      section_id: string
-      brand_id: string
-      code?: string
-      name: string
-      description?: string
-      sample_link?: string
-      field_type: string
-      placeholder?: string
-      is_required: boolean
-      position: number
-      options: Array<{
-        id: string
-        item_id: string
-        brand_id: string
-        value: string
-        label?: string
-        sort_order: number
-      }>
-    }>
-  }>
-}

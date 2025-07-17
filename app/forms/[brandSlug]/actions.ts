@@ -1,136 +1,125 @@
 "use server"
 
 import { createClient } from "@/utils/supabase/server"
-import { redirect } from "next/navigation"
 import { generatePDF } from "@/lib/pdf"
 import { sendOrderEmail } from "@/lib/email"
 
-interface OrderInfo {
-  orderedBy: string
-  email: string
-  billToId: string
-  deliverToId: string
-  notes?: string
-}
-
-interface SubmitOrderParams {
+interface OrderPayload {
   brandSlug: string
-  orderInfo: OrderInfo
-  items: Record<string, any>
+  orderInfo: {
+    orderedBy: string
+    email: string
+    billToId: string
+    deliverToId: string
+    notes?: string
+  }
+  items: Record<string, string | number | boolean>
 }
 
-export async function submitOrder(prevState: any, formData: FormData) {
-  console.log("=== SUBMIT ORDER ACTION START ===")
+export async function submitOrder(payload: OrderPayload) {
+  console.log("=== SUBMIT ORDER ACTION ===")
+  console.log("Payload:", payload)
+
+  const supabase = createClient()
 
   try {
-    const supabase = createClient()
-
-    // Extract form data
-    const brandSlug = String(formData.get("brandSlug") || "")
-    const orderedBy = String(formData.get("orderedBy") || "")
-    const email = String(formData.get("email") || "")
-    const deliverTo = String(formData.get("deliverTo") || "")
-    const billTo = String(formData.get("billTo") || "")
-    const notes = String(formData.get("notes") || "")
-
-    console.log("Form data extracted:", {
-      brandSlug,
-      orderedBy,
-      email,
-      deliverTo,
-      billTo,
-      notes,
-    })
-
-    // Validate required fields
-    if (!brandSlug || !orderedBy || !email || !deliverTo || !billTo) {
-      console.error("Missing required fields")
-      return {
-        error: "Please fill in all required fields",
-      }
-    }
-
     // Get brand
-    const { data: brand, error: brandError } = await supabase.from("brands").select("*").eq("slug", brandSlug).single()
+    const { data: brand, error: brandError } = await supabase
+      .from("brands")
+      .select("*")
+      .eq("slug", payload.brandSlug)
+      .single()
 
     if (brandError || !brand) {
       console.error("Brand not found:", brandError)
-      return {
-        error: "Brand not found",
-      }
+      return { success: false, error: "Brand not found" }
     }
 
-    // Create order submission
+    // Get locations
+    const { data: billToLocation, error: billToError } = await supabase
+      .from("clinic_locations")
+      .select("*")
+      .eq("id", payload.orderInfo.billToId)
+      .single()
+
+    const { data: deliverToLocation, error: deliverToError } = await supabase
+      .from("clinic_locations")
+      .select("*")
+      .eq("id", payload.orderInfo.deliverToId)
+      .single()
+
+    if (billToError || deliverToError || !billToLocation || !deliverToLocation) {
+      console.error("Location not found:", { billToError, deliverToError })
+      return { success: false, error: "Location not found" }
+    }
+
+    // Generate order number
+    const orderNumber = `ORD-${Date.now()}`
+
+    // Create submission record
     const { data: submission, error: submissionError } = await supabase
-      .from("order_submissions")
+      .from("submissions")
       .insert({
         brand_id: brand.id,
-        ordered_by: orderedBy,
-        email: email,
-        deliver_to_id: deliverTo,
-        bill_to_id: billTo,
-        notes: notes || null,
+        ordered_by: payload.orderInfo.orderedBy,
+        email: payload.orderInfo.email,
+        bill_to: billToLocation.name,
+        deliver_to: deliverToLocation.name,
+        items: payload.items,
         status: "pending",
+        order_data: {
+          orderNumber,
+          billToLocation,
+          deliverToLocation,
+          notes: payload.orderInfo.notes,
+        },
       })
       .select()
       .single()
 
     if (submissionError || !submission) {
       console.error("Failed to create submission:", submissionError)
-      return {
-        error: "Failed to create order submission",
-      }
+      return { success: false, error: "Failed to create order" }
     }
 
-    console.log("Order submission created:", submission.id)
-
-    // Process quantity items
-    const items = []
-    for (const [key, value] of formData.entries()) {
-      if (key.startsWith("quantity-") && value && Number(value) > 0) {
-        const itemId = key.replace("quantity-", "")
-        const quantity = Number(value)
-
-        items.push({
-          submission_id: submission.id,
-          item_id: itemId,
-          quantity: quantity,
-        })
-      }
+    // Generate PDF
+    const orderData = {
+      orderNumber,
+      orderedBy: payload.orderInfo.orderedBy,
+      email: payload.orderInfo.email,
+      billTo: {
+        name: billToLocation.name,
+        address: billToLocation.address,
+      },
+      deliverTo: {
+        name: deliverToLocation.name,
+        address: deliverToLocation.address,
+      },
+      notes: payload.orderInfo.notes || "",
     }
 
-    console.log("Items to insert:", items)
+    const orderItems = Object.entries(payload.items)
+      .filter(([_, value]) => value && value !== "" && value !== false)
+      .map(([itemId, quantity]) => ({
+        id: itemId,
+        name: `Item ${itemId}`,
+        code: itemId,
+        quantity: typeof quantity === "number" ? quantity : 1,
+      }))
 
-    // Insert order items
-    if (items.length > 0) {
-      const { error: itemsError } = await supabase.from("order_items").insert(items)
+    console.log("Generating PDF with:", { orderData, orderItems })
 
-      if (itemsError) {
-        console.error("Failed to insert order items:", itemsError)
-        return {
-          error: "Failed to save order items",
-        }
-      }
-    }
+    const pdfBuffer = await generatePDF(orderData, orderItems)
 
-    // Generate PDF and send email
-    try {
-      const pdfBuffer = await generatePDF(submission.id)
-      await sendOrderEmail(submission.id, pdfBuffer)
-      console.log("PDF generated and email sent successfully")
-    } catch (error) {
-      console.error("Failed to generate PDF or send email:", error)
-      // Don't fail the entire submission for this
-    }
+    // Send email
+    console.log("Sending email...")
+    await sendOrderEmail(payload.orderInfo.email, orderNumber, brand.name, pdfBuffer)
 
-    console.log("=== SUBMIT ORDER ACTION SUCCESS ===")
+    console.log("Order submitted successfully:", submission.id)
 
-    // Redirect to success page
-    redirect(`/forms/${brandSlug}/success?orderId=${submission.id}`)
+    return { success: true, submissionId: submission.id, orderNumber }
   } catch (error) {
-    console.error("=== SUBMIT ORDER ACTION ERROR ===", error)
-    return {
-      error: "An unexpected error occurred. Please try again.",
-    }
+    console.error("Submit order error:", error)
+    return { success: false, error: "An unexpected error occurred" }
   }
 }
