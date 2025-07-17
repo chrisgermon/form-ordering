@@ -20,15 +20,27 @@ import { Separator } from "@/components/ui/separator"
 import { submitOrder } from "./actions"
 import type { ClientFormParams } from "@/lib/types"
 
-export function ClientForm({ data }: { data: string }) {
+export const ClientForm = ({ data }: { data: string }) => {
   const router = useRouter()
+  const [parsedData, setParsedData] = React.useState<ClientFormParams | null>(null)
 
-  // Parse the data string to get the form parameters
-  const { brandSlug, locationOptions, sections }: ClientFormParams = JSON.parse(data)
+  React.useEffect(() => {
+    try {
+      console.log("Client form received serialized data. Parsing...")
+      const parsed = JSON.parse(data)
+      setParsedData(parsed)
+      console.log("Successfully parsed client form data:", parsed)
+    } catch (error) {
+      console.error("Failed to parse client form data:", error)
+      toast.error("Error: Could not load form data. Please refresh the page.")
+    }
+  }, [data])
 
   const formSchema = React.useMemo(() => {
+    if (!parsedData) return z.object({})
+
     const itemSchema = z.object(
-      sections
+      parsedData.sections
         .flatMap((section) => section.items)
         .reduce(
           (acc, item) => {
@@ -66,39 +78,73 @@ export function ClientForm({ data }: { data: string }) {
       notes: z.string().optional(),
       items: itemSchema,
     })
-  }, [sections])
+  }, [parsedData])
 
   type FormValues = z.infer<typeof formSchema>
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      orderedBy: "",
-      email: "",
-      billTo: "",
-      deliverTo: "",
-      notes: "",
-      items: sections
-        .flatMap((s) => s.items)
-        .reduce((acc, item) => {
-          acc[item.id] = item.field_type === "checkbox" ? false : ""
-          return acc
-        }, {} as any),
-    },
+    resolver: zodResolver(formSchema as any),
+    defaultValues: React.useMemo(() => {
+      if (!parsedData) return {}
+      return {
+        orderedBy: "",
+        email: "",
+        billTo: "",
+        deliverTo: "",
+        notes: "",
+        items: parsedData.sections
+          .flatMap((s) => s.items)
+          .reduce((acc, item) => {
+            acc[item.id] = item.field_type === "checkbox" ? false : ""
+            return acc
+          }, {} as any),
+      }
+    }, [parsedData]),
   })
 
-  async function onSubmit(data: FormValues) {
+  React.useEffect(() => {
+    if (parsedData) {
+      form.reset({
+        orderedBy: "",
+        email: "",
+        billTo: "",
+        deliverTo: "",
+        notes: "",
+        items: parsedData.sections
+          .flatMap((s) => s.items)
+          .reduce((acc, item) => {
+            acc[item.id] = item.field_type === "checkbox" ? false : ""
+            return acc
+          }, {} as any),
+      })
+    }
+  }, [parsedData, form])
+
+  if (!parsedData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-lg font-semibold">Loading form...</p>
+          <p className="text-muted-foreground">If this takes too long, please refresh the page.</p>
+        </div>
+      </div>
+    )
+  }
+
+  const { brandSlug, locationOptions, sections } = parsedData
+
+  async function onSubmit(formData: FormValues) {
     const toastId = toast.loading("Submitting your order, please wait...")
     const result = await submitOrder({
       brandSlug: brandSlug,
       orderInfo: {
-        orderedBy: data.orderedBy,
-        email: data.email,
-        billToId: data.billTo,
-        deliverToId: data.deliverTo,
-        notes: data.notes,
+        orderedBy: formData.orderedBy,
+        email: formData.email,
+        billToId: formData.billTo,
+        deliverToId: formData.deliverTo,
+        notes: formData.notes,
       },
-      items: data.items,
+      items: formData.items,
     })
     toast.dismiss(toastId)
     if (result.success) {
@@ -159,8 +205,8 @@ export function ClientForm({ data }: { data: string }) {
                       </FormControl>
                       <SelectContent>
                         {locationOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
+                          <SelectItem key={String(opt.value)} value={String(opt.value)}>
+                            {String(opt.label)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -183,8 +229,8 @@ export function ClientForm({ data }: { data: string }) {
                       </FormControl>
                       <SelectContent>
                         {locationOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
+                          <SelectItem key={String(opt.value)} value={String(opt.value)}>
+                            {String(opt.label)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -213,7 +259,7 @@ export function ClientForm({ data }: { data: string }) {
         {sections.map((section) => (
           <Card key={section.id}>
             <CardHeader>
-              <CardTitle>{section.title}</CardTitle>
+              <CardTitle>{String(section.title)}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               {section.items.map((item, index) => (
@@ -225,10 +271,10 @@ export function ClientForm({ data }: { data: string }) {
                       <FormItem>
                         <div className="flex flex-col space-y-2">
                           <FormLabel className="font-semibold text-base">
-                            {item.name}
+                            {String(item.name)}
                             {item.is_required && <span className="text-red-500 ml-1">*</span>}
                           </FormLabel>
-                          {item.description && <FormDescription>{item.description}</FormDescription>}
+                          {item.description && <FormDescription>{String(item.description)}</FormDescription>}
                           <FormControl>
                             <>
                               {item.field_type === "text" && (
@@ -270,8 +316,8 @@ export function ClientForm({ data }: { data: string }) {
                                   </FormControl>
                                   <SelectContent>
                                     {item.options.map((opt) => (
-                                      <SelectItem key={opt.id} value={opt.value}>
-                                        {opt.label || opt.value}
+                                      <SelectItem key={String(opt.id)} value={String(opt.value)}>
+                                        {String(opt.label || opt.value)}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
@@ -284,11 +330,11 @@ export function ClientForm({ data }: { data: string }) {
                                   className="flex flex-col space-y-1 pt-2"
                                 >
                                   {item.options.map((opt) => (
-                                    <FormItem key={opt.id} className="flex items-center space-x-3 space-y-0">
+                                    <FormItem key={String(opt.id)} className="flex items-center space-x-3 space-y-0">
                                       <FormControl>
-                                        <RadioGroupItem value={opt.value} />
+                                        <RadioGroupItem value={String(opt.value)} />
                                       </FormControl>
-                                      <FormLabel className="font-normal">{opt.label || opt.value}</FormLabel>
+                                      <FormLabel className="font-normal">{String(opt.label || opt.value)}</FormLabel>
                                     </FormItem>
                                   ))}
                                 </RadioGroup>

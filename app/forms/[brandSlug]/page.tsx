@@ -1,132 +1,91 @@
 import { notFound } from "next/navigation"
 import Image from "next/image"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Terminal } from "lucide-react"
-import { ClientForm } from "./form"
-import type { LocationOption, Section, Item, ClientFormParams, Brand } from "@/lib/types"
 import { createClient } from "@/utils/supabase/server"
+import { ClientForm } from "./client-form"
+import type { ClientFormParams } from "@/lib/types"
 
 export const revalidate = 0
 
-type BrandFetchResult = {
-  status: "found" | "inactive" | "not_found" | "error"
-  data: ClientFormParams | { name: string } | null
-  message?: string
-}
-
-async function getBrandClientParams(slug: string): Promise<BrandFetchResult> {
+export default async function FormPage({ params }: { params: { brandSlug: string } }) {
   const supabase = createClient()
+  const { brandSlug } = params
 
-  const { data: brand, error: brandError } = await supabase
+  console.log(`Fetching data for brand: ${brandSlug}`)
+
+  const { data: brandData, error: brandError } = await supabase
     .from("brands")
-    .select("id, name, slug, logo, active, description")
-    .eq("slug", slug)
-    .single<Brand>()
+    .select("id, name, slug, description, logo_url")
+    .eq("slug", brandSlug)
+    .single()
 
-  if (brandError || !brand) {
-    console.error(`Brand fetch error for slug "${slug}":`, brandError?.message)
-    return { status: "not_found", data: null }
-  }
-
-  if (!brand.active) {
-    return { status: "inactive", data: { name: brand.name } }
-  }
-
-  try {
-    const [locationsResult, sectionsResult] = await Promise.all([
-      supabase.from("clinic_locations").select("id, name, address").eq("brand_id", brand.id),
-      supabase.from("sections").select("id, title, position").eq("brand_id", brand.id).order("position"),
-    ])
-
-    if (locationsResult.error) throw new Error(`Failed to fetch clinic locations: ${locationsResult.error.message}`)
-    if (sectionsResult.error) throw new Error(`Failed to fetch sections: ${sectionsResult.error.message}`)
-
-    const locationOptions: LocationOption[] = (locationsResult.data || []).map((loc) => ({
-      value: String(loc.id),
-      label: `${loc.name}${loc.address ? ` - ${loc.address}` : ""}`,
-    }))
-
-    const sections: Section[] = await Promise.all(
-      (sectionsResult.data || []).map(async (section) => {
-        const { data: itemsData, error: itemsError } = await supabase
-          .from("items")
-          .select("*")
-          .eq("section_id", section.id)
-          .order("position")
-        if (itemsError) throw new Error(`Failed to fetch items for section ${section.id}: ${itemsError.message}`)
-
-        const itemsWithSafeOptions: Item[] = await Promise.all(
-          (itemsData || []).map(async (item) => {
-            const { data: optionsData, error: optionsError } = await supabase
-              .from("options")
-              .select("id, value, label, sort_order")
-              .eq("item_id", item.id)
-              .order("sort_order")
-            if (optionsError) console.warn(`Could not fetch options for item ${item.id}: ${optionsError.message}`)
-            return { ...item, options: optionsData || [] } as Item
-          }),
-        )
-        return { ...section, items: itemsWithSafeOptions }
-      }),
-    )
-
-    const clientProps: ClientFormParams = {
-      brandName: brand.name,
-      brandSlug: brand.slug,
-      brandLogo: brand.logo,
-      locationOptions,
-      sections: sections.filter((s) => s.items.length > 0),
-    }
-
-    return { status: "found", data: clientProps }
-  } catch (error) {
-    console.error("Error constructing brand client params:", error)
-    const message = error instanceof Error ? error.message : "An unknown error occurred."
-    return { status: "error", data: { name: brand.name }, message }
-  }
-}
-
-export default async function BrandFormPage({ params }: { params: { brandSlug: string } }) {
-  const { status, data, message } = await getBrandClientParams(params.brandSlug)
-
-  if (status === "not_found") {
+  if (brandError || !brandData) {
+    console.error(`Error fetching brand '${brandSlug}':`, brandError?.message)
     notFound()
   }
+  console.log("Successfully fetched brand:", brandData.name)
 
-  const brandName = (data as { name: string })?.name || "this form"
+  const { data: locationsData, error: locationsError } = await supabase
+    .from("clinic_locations")
+    .select("id, name, address")
+    .eq("brand_id", brandData.id)
 
-  if (status === "inactive" || status === "error") {
-    return (
-      <div className="container mx-auto flex min-h-screen items-center justify-center p-4">
-        <Alert variant="destructive" className="max-w-lg">
-          <Terminal className="h-4 w-4" />
-          <AlertTitle>{status === "inactive" ? "Form Unavailable" : "Error Loading Form"}</AlertTitle>
-          <AlertDescription>
-            {message || `The order form for "${brandName}" is not currently active. Please contact an administrator.`}
-          </AlertDescription>
-        </Alert>
-      </div>
-    )
+  if (locationsError) {
+    console.error(`Error fetching locations for brand '${brandSlug}':`, locationsError.message)
+    return <div>Error loading clinic locations. Please try again later.</div>
+  }
+  console.log(`Successfully fetched ${locationsData.length} locations.`)
+
+  const { data: sectionsData, error: sectionsError } = await supabase
+    .from("sections")
+    .select("*, items(*, options(*))")
+    .eq("brand_id", brandData.id)
+    .order("position", { ascending: true })
+    .order("position", { foreignTable: "items", ascending: true })
+
+  if (sectionsError) {
+    console.error(`Error fetching sections for brand '${brandSlug}':`, sectionsError.message)
+    return <div>Error loading form sections. Please try again later.</div>
+  }
+  console.log(`Successfully fetched ${sectionsData.length} sections.`)
+
+  const clientFormParams: ClientFormParams = {
+    brandSlug: brandData.slug,
+    locationOptions: locationsData.map((loc) => ({
+      value: loc.id,
+      label: `${loc.name} - ${loc.address || "Address not available"}`,
+    })),
+    sections: sectionsData.map((section) => ({
+      ...section,
+      items: section.items.map((item) => ({
+        ...item,
+        options: item.options || [],
+      })),
+    })),
   }
 
-  const clientProps = data as ClientFormParams
+  console.log("Prepared client form params. Serializing data...")
+  const serializedData = JSON.stringify(clientFormParams)
+  console.log("Data serialized. Rendering page.")
 
   return (
-    <div className="container mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
-      <div className="mb-8 flex flex-col items-center text-center">
-        {clientProps.brandLogo && (
+    <div className="container mx-auto p-4 md:p-8">
+      <header className="mb-8 flex flex-col items-center text-center">
+        {brandData.logo_url && (
           <Image
-            src={clientProps.brandLogo || "/placeholder.svg"}
-            alt={`${clientProps.brandName} Logo`}
+            src={brandData.logo_url || "/placeholder.svg"}
+            alt={`${brandData.name} Logo`}
             width={200}
             height={100}
             className="mb-4 h-auto w-auto max-h-24 object-contain"
             priority
           />
         )}
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{clientProps.brandName} Order Form</h1>
-      </div>
-      <ClientForm data={JSON.stringify(clientProps)} />
+        <h1 className="text-4xl font-bold">{brandData.name} Order Form</h1>
+        {brandData.description && <p className="mt-2 text-lg text-muted-foreground">{brandData.description}</p>}
+      </header>
+      <main>
+        <ClientForm data={serializedData} />
+      </main>
     </div>
   )
 }
