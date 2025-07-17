@@ -1,124 +1,70 @@
 "use server"
 
 import { createClient } from "@/utils/supabase/server"
-import { generatePDF } from "@/lib/pdf"
-import { sendOrderEmail } from "@/lib/email"
+import { revalidatePath } from "next/cache"
+import type { ActionPayload } from "@/lib/types"
 
-interface OrderPayload {
-  brandSlug: string
-  orderInfo: {
-    orderedBy: string
-    email: string
-    billToId: string
-    deliverToId: string
-    notes?: string
-  }
-  items: Record<string, string | number | boolean>
-}
-
-export async function submitOrder(payload: OrderPayload) {
-  console.log("=== SUBMIT ORDER ACTION ===")
-  console.log("Payload:", payload)
-
+export async function submitOrder(payload: ActionPayload) {
   const supabase = createClient()
+  const { brandSlug, formData } = payload
+  console.log("Server Action: Received form data:", formData)
 
   try {
-    // Get brand
+    // 1. Fetch brand and location details on the server for security
     const { data: brand, error: brandError } = await supabase
       .from("brands")
-      .select("*")
-      .eq("slug", payload.brandSlug)
+      .select("id, name")
+      .eq("slug", brandSlug)
       .single()
+    if (brandError) throw new Error("Brand not found.")
 
-    if (brandError || !brand) {
-      console.error("Brand not found:", brandError)
-      return { success: false, error: "Brand not found" }
-    }
-
-    // Get locations
     const { data: billToLocation, error: billToError } = await supabase
       .from("clinic_locations")
-      .select("*")
-      .eq("id", payload.orderInfo.billToId)
+      .select("name, address")
+      .eq("id", formData.billToId)
       .single()
+    if (billToError) throw new Error("Billing location not found.")
 
     const { data: deliverToLocation, error: deliverToError } = await supabase
       .from("clinic_locations")
-      .select("*")
-      .eq("id", payload.orderInfo.deliverToId)
+      .select("name, address")
+      .eq("id", formData.deliverToId)
       .single()
+    if (deliverToError) throw new Error("Delivery location not found.")
 
-    if (billToError || deliverToError || !billToLocation || !deliverToLocation) {
-      console.error("Location not found:", { billToError, deliverToError })
-      return { success: false, error: "Location not found" }
-    }
-
-    // Generate order number
-    const orderNumber = `ORD-${Date.now()}`
-
-    // Create submission record
+    // 2. Insert the main submission record
     const { data: submission, error: submissionError } = await supabase
-      .from("form_submissions")
+      .from("submissions")
       .insert({
         brand_id: brand.id,
-        order_number: orderNumber,
-        ordered_by: payload.orderInfo.orderedBy,
-        email: payload.orderInfo.email,
-        deliver_to_id: payload.orderInfo.deliverToId,
-        bill_to_id: payload.orderInfo.billToId,
-        notes: payload.orderInfo.notes || null,
-        items: JSON.stringify(payload.items),
-        status: "pending",
+        ordered_by: formData.orderedBy,
+        email: formData.email,
+        notes: formData.notes,
+        billing_address: `${billToLocation.name} - ${billToLocation.address}`,
+        delivery_address: `${deliverToLocation.name} - ${deliverToLocation.address}`,
+        form_data: formData.items, // Store the raw items object
       })
-      .select()
+      .select("id, created_at")
       .single()
 
-    if (submissionError || !submission) {
-      console.error("Failed to create submission:", submissionError)
-      return { success: false, error: "Failed to create order" }
+    if (submissionError) {
+      console.error("Error inserting submission:", submissionError)
+      throw new Error("Could not save your order submission.")
     }
 
-    // Generate PDF
-    const orderData = {
-      orderNumber,
-      orderedBy: payload.orderInfo.orderedBy,
-      email: payload.orderInfo.email,
-      billTo: {
-        name: billToLocation.name,
-        address: billToLocation.address,
-      },
-      deliverTo: {
-        name: deliverToLocation.name,
-        address: deliverToLocation.address,
-      },
-      notes: payload.orderInfo.notes || "",
+    // 3. Generate PDF and send email (implement these functions)
+    // const pdfBuffer = await generateOrderPdf({ ... });
+    // await sendOrderConfirmationEmail({ ..., pdfAttachment: pdfBuffer });
+
+    revalidatePath(`/forms/${brandSlug}`)
+    revalidatePath("/admin")
+
+    return {
+      success: true,
+      orderNumber: submission.id.toString().substring(0, 8).toUpperCase(),
     }
-
-    const orderItems = Object.entries(payload.items)
-      .filter(([_, value]) => value && value !== "" && value !== false)
-      .map(([itemId, quantity]) => ({
-        id: itemId,
-        name: `Item ${itemId}`,
-        code: itemId,
-        quantity: typeof quantity === "number" ? quantity : 1,
-      }))
-
-    console.log("Generating PDF with:", { orderData, orderItems })
-
-    try {
-      const pdfBuffer = await generatePDF(orderData, orderItems)
-      await sendOrderEmail(payload.orderInfo.email, orderNumber, brand.name, pdfBuffer)
-      console.log("PDF and email sent successfully")
-    } catch (error) {
-      console.error("PDF/Email error:", error)
-      // Don't fail the entire submission for this
-    }
-
-    console.log("Order submitted successfully:", submission.id)
-
-    return { success: true, submissionId: submission.id, orderNumber }
-  } catch (error) {
-    console.error("Submit order error:", error)
-    return { success: false, error: "An unexpected error occurred" }
+  } catch (error: any) {
+    console.error("Full error in submitOrder:", error)
+    return { success: false, error: error.message }
   }
 }

@@ -1,286 +1,278 @@
 "use client"
 
-import type React from "react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { toast } from "sonner"
 
-import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
+import type { ClientFormProps, FormValues } from "@/lib/types"
 import { submitOrder } from "./actions"
-import type { SafeFormData } from "@/lib/types"
 
-interface ClientFormProps {
-  formData: SafeFormData
-}
+// This is the named export that will be imported by page.tsx
+export function ClientForm(props: ClientFormProps) {
+  const { brand, locations, sections } = props
 
-export function ClientForm({ formData }: ClientFormProps) {
-  console.log("=== CLIENT FORM RENDER ===")
-  console.log("Form data:", formData)
-
-  const [orderInfo, setOrderInfo] = useState({
-    orderedBy: "",
-    email: "",
-    billToId: "",
-    deliverToId: "",
-    notes: "",
+  // Dynamically build the validation schema based on props
+  const formSchema = z.object({
+    orderedBy: z.string().min(1, "Your name is required."),
+    email: z.string().email("A valid email is required."),
+    billToId: z.string().min(1, "Please select a billing location."),
+    deliverToId: z.string().min(1, "Please select a delivery location."),
+    notes: z.string().optional(),
+    items: z.object(
+      sections
+        .flatMap((s) => s.items)
+        .reduce(
+          (acc, item) => {
+            const fieldId = `item_${item.id}`
+            if (item.fieldType === "number") {
+              acc[fieldId] = z.coerce.number().min(0).optional()
+            } else if (item.fieldType === "checkbox") {
+              acc[fieldId] = z.boolean().optional().default(false)
+            } else {
+              acc[fieldId] = z.string().optional()
+            }
+            return acc
+          },
+          {} as Record<string, z.ZodTypeAny>,
+        ),
+    ),
   })
 
-  const [items, setItems] = useState<Record<string, string | number | boolean>>({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      orderedBy: "",
+      email: "",
+      billToId: "",
+      deliverToId: "",
+      notes: "",
+      items: {},
+    },
+  })
 
-  const handleOrderInfoChange = (field: string, value: string) => {
-    setOrderInfo((prev) => ({ ...prev, [field]: value }))
-  }
+  async function onSubmit(formData: FormValues) {
+    const toastId = toast.loading("Submitting your order...")
 
-  const handleItemChange = (itemId: string, value: string | number | boolean) => {
-    setItems((prev) => ({ ...prev, [itemId]: value }))
-  }
+    const result = await submitOrder({
+      brandSlug: brand.slug,
+      formData,
+    })
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-    setError(null)
-
-    try {
-      const result = await submitOrder({
-        brandSlug: formData.brandSlug,
-        orderInfo,
-        items,
-      })
-
-      if (result.success) {
-        window.location.href = `/forms/${formData.brandSlug}/success?orderId=${result.submissionId}`
-      } else {
-        setError(result.error || "An error occurred")
-      }
-    } catch (err) {
-      console.error("Submit error:", err)
-      setError("An unexpected error occurred")
-    } finally {
-      setIsSubmitting(false)
+    if (result.success) {
+      toast.success("Order submitted successfully!", { id: toastId })
+      window.location.href = `/forms/${brand.slug}/success?orderNumber=${result.orderNumber}`
+    } else {
+      toast.error(result.error || "An unknown error occurred.", { id: toastId })
     }
   }
 
-  const renderFormItem = (item: any) => {
-    const itemId = String(item.id)
-    const itemName = String(item.name)
-    const itemCode = item.code ? String(item.code) : null
-    const fieldType = String(item.fieldType)
-    const placeholder = item.placeholder ? String(item.placeholder) : ""
-    const isRequired = Boolean(item.isRequired)
-
-    switch (fieldType) {
+  const renderItem = (item: ClientFormProps["sections"][0]["items"][0]) => {
+    const fieldName = `items.item_${item.id}` as const
+    switch (item.fieldType) {
       case "number":
         return (
-          <div key={itemId} className="space-y-2">
-            <Label htmlFor={itemId}>
-              {itemName}
-              {isRequired && <span className="text-red-500 ml-1">*</span>}
-            </Label>
-            {itemCode && <p className="text-sm text-gray-500">Code: {itemCode}</p>}
-            <Input
-              id={itemId}
-              type="number"
-              min="0"
-              placeholder={placeholder}
-              required={isRequired}
-              onChange={(e) => handleItemChange(itemId, Number.parseInt(e.target.value) || 0)}
-            />
-          </div>
+          <FormField
+            key={item.id}
+            control={form.control}
+            name={fieldName}
+            render={({ field }) => (
+              <FormItem className="flex items-center justify-between">
+                <FormLabel>{item.name}</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    className="w-24"
+                    {...field}
+                    onChange={(e) => field.onChange(e.target.value === "" ? undefined : +e.target.value)}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
         )
-
-      case "textarea":
-        return (
-          <div key={itemId} className="space-y-2">
-            <Label htmlFor={itemId}>
-              {itemName}
-              {isRequired && <span className="text-red-500 ml-1">*</span>}
-            </Label>
-            {itemCode && <p className="text-sm text-gray-500">Code: {itemCode}</p>}
-            <Textarea
-              id={itemId}
-              placeholder={placeholder}
-              required={isRequired}
-              onChange={(e) => handleItemChange(itemId, e.target.value)}
-            />
-          </div>
-        )
-
       case "checkbox":
         return (
-          <div key={itemId} className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Checkbox id={itemId} onCheckedChange={(checked) => handleItemChange(itemId, Boolean(checked))} />
-              <Label htmlFor={itemId}>
-                {itemName}
-                {isRequired && <span className="text-red-500 ml-1">*</span>}
-              </Label>
-            </div>
-            {itemCode && <p className="text-sm text-gray-500">Code: {itemCode}</p>}
-          </div>
+          <FormField
+            key={item.id}
+            control={form.control}
+            name={fieldName}
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                <FormControl>
+                  <Checkbox checked={field.value as boolean} onCheckedChange={field.onChange} />
+                </FormControl>
+                <FormLabel>{item.name}</FormLabel>
+              </FormItem>
+            )}
+          />
         )
-
+      case "textarea":
+        return (
+          <FormField
+            key={item.id}
+            control={form.control}
+            name={fieldName}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{item.name}</FormLabel>
+                <FormControl>
+                  <Textarea {...field} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        )
       default:
         return (
-          <div key={itemId} className="space-y-2">
-            <Label htmlFor={itemId}>
-              {itemName}
-              {isRequired && <span className="text-red-500 ml-1">*</span>}
-            </Label>
-            {itemCode && <p className="text-sm text-gray-500">Code: {itemCode}</p>}
-            <Input
-              id={itemId}
-              placeholder={placeholder}
-              required={isRequired}
-              onChange={(e) => handleItemChange(itemId, e.target.value)}
-            />
-          </div>
+          <FormField
+            key={item.id}
+            control={form.control}
+            name={fieldName}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{item.name}</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
         )
     }
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="mb-8 text-center">
-        {formData.brandLogo && (
-          <img
-            src={formData.brandLogo || "/placeholder.svg"}
-            alt={`${formData.brandName} logo`}
-            className="h-16 mx-auto mb-4"
-          />
+    <div className="max-w-4xl mx-auto p-4 sm:p-6">
+      <div className="text-center mb-8">
+        {brand.logo && (
+          <img src={brand.logo || "/placeholder.svg"} alt={`${brand.name} Logo`} className="h-20 mx-auto mb-4" />
         )}
-        <h1 className="text-3xl font-bold">{formData.brandName} Order Form</h1>
+        <h1 className="text-3xl sm:text-4xl font-bold">{brand.name} Order Form</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Order Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="orderedBy">
-                  Ordered By <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="orderedBy"
-                  required
-                  value={orderInfo.orderedBy}
-                  onChange={(e) => handleOrderInfoChange("orderedBy", e.target.value)}
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Order Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid md:grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="orderedBy"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Ordered By</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="billToId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Bill To</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a location" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {locations.map((loc) => (
+                            <SelectItem key={`bill-${loc.value}`} value={loc.value}>
+                              {loc.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="deliverToId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Deliver To</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a location" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {locations.map((loc) => (
+                            <SelectItem key={`del-${loc.value}`} value={loc.value}>
+                              {loc.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">
-                  Email <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  value={orderInfo.email}
-                  onChange={(e) => handleOrderInfoChange("email", e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="billTo">
-                  Bill To <span className="text-red-500">*</span>
-                </Label>
-                <Select
-                  required
-                  value={orderInfo.billToId}
-                  onValueChange={(value) => handleOrderInfoChange("billToId", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select billing location" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {formData.locationOptions.map((location) => {
-                      const value = String(location.value)
-                      const label = String(location.label)
-                      console.log("Rendering bill to option:", { value, label })
-                      return (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      )
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="deliverTo">
-                  Deliver To <span className="text-red-500">*</span>
-                </Label>
-                <Select
-                  required
-                  value={orderInfo.deliverToId}
-                  onValueChange={(value) => handleOrderInfoChange("deliverToId", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select delivery location" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {formData.locationOptions.map((location) => {
-                      const value = String(location.value)
-                      const label = String(location.label)
-                      console.log("Rendering deliver to option:", { value, label })
-                      return (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      )
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                placeholder="Additional notes or special instructions"
-                value={orderInfo.notes}
-                onChange={(e) => handleOrderInfoChange("notes", e.target.value)}
+              <FormField
+                control={form.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Optional notes or instructions..." {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {formData.sections.map((section) => {
-          const sectionId = String(section.id)
-          const sectionTitle = String(section.title)
-          console.log("Rendering section:", { sectionId, sectionTitle })
-
-          return (
-            <Card key={sectionId}>
+          {sections.map((section) => (
+            <Card key={section.id}>
               <CardHeader>
-                <CardTitle>{sectionTitle}</CardTitle>
+                <CardTitle>{section.title}</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">{section.items.map((item) => renderFormItem(item))}</CardContent>
+              <CardContent className="space-y-6">{section.items.map((item) => renderItem(item))}</CardContent>
             </Card>
-          )
-        })}
+          ))}
 
-        {error && <div className="text-red-600 bg-red-50 p-4 rounded-lg text-center">{error}</div>}
-
-        <div className="flex justify-center">
-          <Button type="submit" size="lg" disabled={isSubmitting}>
-            {isSubmitting ? "Submitting Order..." : "Submit Order"}
-          </Button>
-        </div>
-      </form>
+          <div className="flex justify-center">
+            <Button type="submit" size="lg" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? "Submitting..." : "Submit Order"}
+            </Button>
+          </div>
+        </form>
+      </Form>
     </div>
   )
 }

@@ -1,113 +1,78 @@
 import { createClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
 import { ClientForm } from "./client-form"
-import type { SafeFormData, LocationOption } from "@/lib/types"
+import type { ClientFormProps } from "@/lib/types"
 
+// Force dynamic rendering and disable caching
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
-export default async function FormPage({ params }: { params: { brandSlug: string } }) {
-  console.log("=== SERVER PAGE START ===")
-  console.log("Brand slug:", params.brandSlug)
-
+async function getFormData(brandSlug: string): Promise<ClientFormProps> {
   const supabase = createClient()
 
-  try {
-    // Get brand
-    const { data: brand, error: brandError } = await supabase
-      .from("brands")
-      .select("id, name, slug, logo, active")
-      .eq("slug", params.brandSlug)
-      .single()
+  // 1. Fetch Brand
+  const { data: brandData, error: brandError } = await supabase
+    .from("brands")
+    .select("id, name, slug, logo_url")
+    .eq("slug", brandSlug)
+    .single()
 
-    console.log("Brand result:", { brand, error: brandError })
-
-    if (brandError || !brand) {
-      console.error("Brand not found")
-      notFound()
-    }
-
-    // Get locations
-    const { data: locations, error: locationsError } = await supabase
-      .from("clinic_locations")
-      .select("id, name, address")
-      .eq("brand_id", brand.id)
-      .order("name")
-
-    console.log("Locations result:", { locations, error: locationsError })
-
-    // Get sections
-    const { data: sections, error: sectionsError } = await supabase
-      .from("form_sections")
-      .select("id, title, order_index")
-      .eq("brand_id", brand.id)
-      .order("order_index")
-
-    console.log("Sections result:", { sections, error: sectionsError })
-
-    // Get items
-    const { data: items, error: itemsError } = await supabase
-      .from("form_items")
-      .select("id, section_id, name, code, field_type, placeholder, is_required, order_index")
-      .eq("brand_id", brand.id)
-      .order("order_index")
-
-    console.log("Items result:", { items, error: itemsError })
-
-    // Create safe location options - ONLY STRINGS
-    const safeLocationOptions: LocationOption[] = (locations || []).map((loc) => {
-      const value = String(loc.id)
-      const name = String(loc.name || "Unknown")
-      const address = String(loc.address || "No address")
-      const label = `${name} - ${address}`
-
-      console.log("Creating location option:", { value, label })
-
-      return { value, label }
-    })
-
-    // Create safe sections - ONLY STRINGS
-    const safeSections = (sections || []).map((section) => {
-      const sectionId = String(section.id)
-      const sectionTitle = String(section.title || "Untitled")
-
-      const sectionItems = (items || [])
-        .filter((item) => String(item.section_id) === sectionId)
-        .map((item) => ({
-          id: String(item.id),
-          name: String(item.name || "Untitled Item"),
-          code: item.code ? String(item.code) : null,
-          fieldType: String(item.field_type || "text"),
-          placeholder: item.placeholder ? String(item.placeholder) : null,
-          isRequired: Boolean(item.is_required),
-        }))
-
-      console.log("Creating section:", { sectionId, sectionTitle, itemsCount: sectionItems.length })
-
-      return {
-        id: sectionId,
-        title: sectionTitle,
-        items: sectionItems,
-      }
-    })
-
-    // Create completely safe form data
-    const safeFormData: SafeFormData = {
-      brandName: String(brand.name),
-      brandSlug: String(brand.slug),
-      brandLogo: brand.logo ? String(brand.logo) : null,
-      locationOptions: safeLocationOptions,
-      sections: safeSections,
-    }
-
-    console.log("=== SAFE FORM DATA CREATED ===")
-    console.log("Brand name:", safeFormData.brandName)
-    console.log("Location options count:", safeFormData.locationOptions.length)
-    console.log("Sections count:", safeFormData.sections.length)
-
-    return <ClientForm formData={safeFormData} />
-  } catch (error) {
-    console.error("=== SERVER ERROR ===", error)
-    throw error
+  if (brandError || !brandData) {
+    console.error("Error fetching brand:", brandError)
+    notFound()
   }
+
+  // 2. Fetch Locations
+  const { data: locationsData, error: locationsError } = await supabase
+    .from("clinic_locations")
+    .select("id, name, address")
+    .eq("brand_id", brandData.id)
+
+  if (locationsError) {
+    console.error("Error fetching locations:", locationsError)
+    throw new Error("Could not fetch clinic locations.")
+  }
+
+  // 3. Fetch Sections and their Items
+  const { data: sectionsData, error: sectionsError } = await supabase
+    .from("product_sections")
+    .select("id, title, product_items (id, name, code, field_type)")
+    .eq("brand_id", brandData.id)
+    .order("sort_order", { ascending: true })
+    .order("sort_order", { foreignTable: "product_items", ascending: true })
+
+  if (sectionsError) {
+    console.error("Error fetching sections/items:", sectionsError)
+    throw new Error("Could not fetch form sections.")
+  }
+
+  // 4. Sanitize and format data for the client
+  const props: ClientFormProps = {
+    brand: {
+      slug: String(brandData.slug),
+      name: String(brandData.name),
+      logo: brandData.logo_url ? String(brandData.logo_url) : null,
+    },
+    locations: (locationsData || []).map((loc) => ({
+      value: String(loc.id),
+      label: `${String(loc.name)} - ${String(loc.address || "")}`,
+    })),
+    sections: (sectionsData || []).map((sec) => ({
+      id: String(sec.id),
+      title: String(sec.title),
+      items: (sec.product_items || []).map((item) => ({
+        id: String(item.id),
+        name: String(item.name),
+        code: item.code ? String(item.code) : null,
+        fieldType: String(item.field_type),
+      })),
+    })),
+  }
+
+  return props
+}
+
+export default async function FormPage({ params }: { params: { brandSlug: string } }) {
+  const formData = await getFormData(params.brandSlug)
+  return <ClientForm {...formData} />
 }
