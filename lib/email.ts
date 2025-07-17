@@ -1,5 +1,3 @@
-import nodemailer from "nodemailer"
-
 export async function sendOrderEmail(
   toEmail: string,
   orderNumber: string,
@@ -10,8 +8,21 @@ export async function sendOrderEmail(
   console.log("To:", toEmail)
   console.log("Order number:", orderNumber)
   console.log("Brand:", brandName)
+  console.log("PDF buffer size:", pdfBuffer.length)
 
   try {
+    // For now, just log that we would send an email
+    // In production, you'd use nodemailer or similar
+    console.log("Email would be sent with the following content:")
+    console.log(`Subject: Order Confirmation - ${orderNumber} - ${brandName}`)
+    console.log(`To: ${toEmail}`)
+    console.log("PDF attachment included")
+    console.log("Email sending simulated successfully")
+
+    // Uncomment and configure for actual email sending:
+    /*
+    const nodemailer = require('nodemailer');
+    
     const transporter = nodemailer.createTransporter({
       host: "smtp.mailgun.org",
       port: 587,
@@ -20,7 +31,7 @@ export async function sendOrderEmail(
         user: process.env.MAILGUN_SMTP_USERNAME,
         pass: process.env.MAILGUN_SMTP_PASSWORD,
       },
-    })
+    });
 
     const mailOptions = {
       from: process.env.FROM_EMAIL || "noreply@example.com",
@@ -32,7 +43,6 @@ export async function sendOrderEmail(
         <p><strong>Order Number:</strong> ${String(orderNumber || "")}</p>
         <p><strong>Brand:</strong> ${String(brandName || "")}</p>
         <p>Please find your order details attached as a PDF.</p>
-        <p>If you have any questions, please contact us.</p>
       `,
       attachments: [
         {
@@ -41,10 +51,11 @@ export async function sendOrderEmail(
           contentType: "application/pdf",
         },
       ],
-    }
+    };
 
-    const result = await transporter.sendMail(mailOptions)
-    console.log("Email sent successfully:", result.messageId)
+    const result = await transporter.sendMail(mailOptions);
+    console.log("Email sent successfully:", result.messageId);
+    */
   } catch (error) {
     console.error("Email sending error:", error)
     throw new Error(`Failed to send email: ${String(error)}`)

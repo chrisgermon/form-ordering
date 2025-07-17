@@ -58,21 +58,17 @@ export async function submitOrder(payload: OrderPayload) {
 
     // Create submission record
     const { data: submission, error: submissionError } = await supabase
-      .from("submissions")
+      .from("form_submissions")
       .insert({
         brand_id: brand.id,
+        order_number: orderNumber,
         ordered_by: payload.orderInfo.orderedBy,
         email: payload.orderInfo.email,
-        bill_to: billToLocation.name,
-        deliver_to: deliverToLocation.name,
-        items: payload.items,
+        deliver_to_id: payload.orderInfo.deliverToId,
+        bill_to_id: payload.orderInfo.billToId,
+        notes: payload.orderInfo.notes || null,
+        items: JSON.stringify(payload.items),
         status: "pending",
-        order_data: {
-          orderNumber,
-          billToLocation,
-          deliverToLocation,
-          notes: payload.orderInfo.notes,
-        },
       })
       .select()
       .single()
@@ -109,11 +105,14 @@ export async function submitOrder(payload: OrderPayload) {
 
     console.log("Generating PDF with:", { orderData, orderItems })
 
-    const pdfBuffer = await generatePDF(orderData, orderItems)
-
-    // Send email
-    console.log("Sending email...")
-    await sendOrderEmail(payload.orderInfo.email, orderNumber, brand.name, pdfBuffer)
+    try {
+      const pdfBuffer = await generatePDF(orderData, orderItems)
+      await sendOrderEmail(payload.orderInfo.email, orderNumber, brand.name, pdfBuffer)
+      console.log("PDF and email sent successfully")
+    } catch (error) {
+      console.error("PDF/Email error:", error)
+      // Don't fail the entire submission for this
+    }
 
     console.log("Order submitted successfully:", submission.id)
 

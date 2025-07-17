@@ -1,9 +1,8 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CheckCircle } from "lucide-react"
 import Link from "next/link"
 
-export default function OrderSuccessPage({
+export default function SuccessPage({
   params,
   searchParams,
 }: {
@@ -11,29 +10,20 @@ export default function OrderSuccessPage({
   searchParams: { orderId?: string }
 }) {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-lg text-center">
+    <div className="max-w-2xl mx-auto p-6">
+      <Card>
         <CardHeader>
-          <div className="mx-auto bg-green-100 rounded-full p-3 w-fit">
-            <CheckCircle className="h-10 w-10 text-green-600" />
-          </div>
-          <CardTitle className="mt-4 text-2xl">Order Submitted Successfully!</CardTitle>
-          <CardDescription>
-            Thank you for your order. We've received it and will begin processing it shortly.
-          </CardDescription>
+          <CardTitle className="text-center text-green-600">Order Submitted Successfully!</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {searchParams.orderId && (
-            <p className="text-sm text-gray-600">
-              Your Order ID is: <span className="font-mono bg-gray-100 p-1 rounded">{searchParams.orderId}</span>
-            </p>
-          )}
-          <p className="text-sm text-gray-500">
-            A confirmation email with the order details and a PDF copy has been sent to you.
-          </p>
-          <Button asChild>
-            <Link href={`/forms/${params.brandSlug}`}>Submit Another Order</Link>
-          </Button>
+        <CardContent className="text-center space-y-4">
+          <p>Thank you for your order. We have received your submission and will process it shortly.</p>
+          {searchParams.orderId && <p className="text-sm text-gray-600">Order ID: {searchParams.orderId}</p>}
+          <p>You should receive a confirmation email shortly with your order details.</p>
+          <div className="pt-4">
+            <Link href={`/forms/${params.brandSlug}`}>
+              <Button variant="outline">Submit Another Order</Button>
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>

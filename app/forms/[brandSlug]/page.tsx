@@ -1,139 +1,111 @@
 import { createClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
 import { ClientForm } from "./client-form"
+import type { SafeFormData, LocationOption } from "@/lib/types"
 
-// Force no caching
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
 export default async function FormPage({ params }: { params: { brandSlug: string } }) {
-  console.log("=== SERVER PAGE RENDER START ===")
+  console.log("=== SERVER PAGE START ===")
   console.log("Brand slug:", params.brandSlug)
 
   const supabase = createClient()
 
   try {
-    // Fetch brand with explicit error handling
-    console.log("Fetching brand...")
+    // Get brand
     const { data: brand, error: brandError } = await supabase
       .from("brands")
       .select("id, name, slug, logo, active")
       .eq("slug", params.brandSlug)
       .single()
 
-    console.log("Brand query result:", { brand, error: brandError })
+    console.log("Brand result:", { brand, error: brandError })
 
     if (brandError || !brand) {
-      console.error("Brand not found:", brandError)
+      console.error("Brand not found")
       notFound()
     }
 
-    // Fetch locations with explicit error handling
-    console.log("Fetching locations for brand:", brand.id)
+    // Get locations
     const { data: locations, error: locationsError } = await supabase
       .from("clinic_locations")
-      .select("id, name, address, brand_id")
+      .select("id, name, address")
       .eq("brand_id", brand.id)
       .order("name")
 
-    console.log("Locations query result:", { locations, error: locationsError })
+    console.log("Locations result:", { locations, error: locationsError })
 
-    if (locationsError) {
-      console.error("Error fetching locations:", locationsError)
-    }
-
-    // Fetch sections separately to avoid relationship issues
-    console.log("Fetching sections for brand:", brand.id)
+    // Get sections
     const { data: sections, error: sectionsError } = await supabase
-      .from("product_sections")
-      .select("id, title, sort_order, brand_id")
+      .from("form_sections")
+      .select("id, title, order_index")
       .eq("brand_id", brand.id)
-      .order("sort_order")
+      .order("order_index")
 
-    console.log("Sections query result:", { sections, error: sectionsError })
+    console.log("Sections result:", { sections, error: sectionsError })
 
-    if (sectionsError) {
-      console.error("Error fetching sections:", sectionsError)
-    }
-
-    // Fetch items separately to avoid relationship issues
-    console.log("Fetching items for brand:", brand.id)
+    // Get items
     const { data: items, error: itemsError } = await supabase
-      .from("product_items")
-      .select("id, name, code, description, field_type, placeholder, is_required, sort_order, section_id, brand_id")
+      .from("form_items")
+      .select("id, section_id, name, code, field_type, placeholder, is_required, order_index")
       .eq("brand_id", brand.id)
-      .order("sort_order")
+      .order("order_index")
 
-    console.log("Items query result:", { items, error: itemsError })
+    console.log("Items result:", { items, error: itemsError })
 
-    if (itemsError) {
-      console.error("Error fetching items:", itemsError)
-    }
-
-    // Create completely safe location options - ONLY strings
-    const safeLocationOptions = (locations || []).map((location) => {
-      const id = String(location?.id || "")
-      const name = String(location?.name || "Unknown Location")
-      const address = String(location?.address || "No Address")
+    // Create safe location options - ONLY STRINGS
+    const safeLocationOptions: LocationOption[] = (locations || []).map((loc) => {
+      const value = String(loc.id)
+      const name = String(loc.name || "Unknown")
+      const address = String(loc.address || "No address")
       const label = `${name} - ${address}`
 
-      console.log("Creating location option:", { id, name, address, label })
+      console.log("Creating location option:", { value, label })
+
+      return { value, label }
+    })
+
+    // Create safe sections - ONLY STRINGS
+    const safeSections = (sections || []).map((section) => {
+      const sectionId = String(section.id)
+      const sectionTitle = String(section.title || "Untitled")
+
+      const sectionItems = (items || [])
+        .filter((item) => String(item.section_id) === sectionId)
+        .map((item) => ({
+          id: String(item.id),
+          name: String(item.name || "Untitled Item"),
+          code: item.code ? String(item.code) : null,
+          fieldType: String(item.field_type || "text"),
+          placeholder: item.placeholder ? String(item.placeholder) : null,
+          isRequired: Boolean(item.is_required),
+        }))
+
+      console.log("Creating section:", { sectionId, sectionTitle, itemsCount: sectionItems.length })
 
       return {
-        value: id,
-        label: label,
-      }
-    })
-
-    // Create completely safe sections data by combining sections and items
-    const safeSections = (sections || []).map((section) => {
-      const sectionItems = (items || [])
-        .filter((item) => String(item?.section_id) === String(section?.id))
-        .map((item) => ({
-          id: String(item?.id || ""),
-          name: String(item?.name || "Untitled Item"),
-          code: item?.code ? String(item.code) : undefined,
-          description: item?.description ? String(item.description) : undefined,
-          field_type: String(item?.field_type || "text"),
-          placeholder: item?.placeholder ? String(item.placeholder) : undefined,
-          is_required: Boolean(item?.is_required),
-          order_index: Number(item?.sort_order || 0),
-          section_id: String(item?.section_id || ""),
-          brand_id: String(item?.brand_id || ""),
-        }))
-        .sort((a, b) => a.order_index - b.order_index)
-
-      const sectionData = {
-        id: String(section?.id || ""),
-        title: String(section?.title || "Untitled Section"),
-        order_index: Number(section?.sort_order || 0),
-        brand_id: String(section?.brand_id || ""),
+        id: sectionId,
+        title: sectionTitle,
         items: sectionItems,
       }
-
-      console.log("Created section:", sectionData)
-      return sectionData
     })
 
-    // Create the final form data object with ONLY safe data
-    const formData = {
-      brand: {
-        name: String(brand?.name || ""),
-        slug: String(brand?.slug || ""),
-        logo: brand?.logo ? String(brand.logo) : undefined,
-      },
+    // Create completely safe form data
+    const safeFormData: SafeFormData = {
+      brandName: String(brand.name),
+      brandSlug: String(brand.slug),
+      brandLogo: brand.logo ? String(brand.logo) : null,
       locationOptions: safeLocationOptions,
       sections: safeSections,
     }
 
-    console.log("=== FINAL FORM DATA ===")
-    console.log("Brand:", formData.brand)
-    console.log("Location options count:", formData.locationOptions.length)
-    console.log("Sections count:", formData.sections.length)
-    console.log("Location options:", JSON.stringify(formData.locationOptions, null, 2))
-    console.log("=== SERVER PAGE RENDER END ===")
+    console.log("=== SAFE FORM DATA CREATED ===")
+    console.log("Brand name:", safeFormData.brandName)
+    console.log("Location options count:", safeFormData.locationOptions.length)
+    console.log("Sections count:", safeFormData.sections.length)
 
-    return <ClientForm formData={formData} />
+    return <ClientForm formData={safeFormData} />
   } catch (error) {
     console.error("=== SERVER ERROR ===", error)
     throw error

@@ -11,15 +11,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { submitOrder } from "./actions"
-import type { ClientFormData } from "@/lib/types"
+import type { SafeFormData } from "@/lib/types"
 
 interface ClientFormProps {
-  formData: ClientFormData
+  formData: SafeFormData
 }
 
 export function ClientForm({ formData }: ClientFormProps) {
   console.log("=== CLIENT FORM RENDER ===")
-  console.log("Form data received:", formData)
+  console.log("Form data:", formData)
 
   const [orderInfo, setOrderInfo] = useState({
     orderedBy: "",
@@ -31,132 +31,114 @@ export function ClientForm({ formData }: ClientFormProps) {
 
   const [items, setItems] = useState<Record<string, string | number | boolean>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleOrderInfoChange = (field: string, value: string) => {
-    console.log("Order info change:", field, value)
     setOrderInfo((prev) => ({ ...prev, [field]: value }))
   }
 
   const handleItemChange = (itemId: string, value: string | number | boolean) => {
-    console.log("Item change:", itemId, value)
     setItems((prev) => ({ ...prev, [itemId]: value }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log("=== FORM SUBMIT ===")
-    console.log("Order info:", orderInfo)
-    console.log("Items:", items)
-
     setIsSubmitting(true)
+    setError(null)
 
     try {
       const result = await submitOrder({
-        brandSlug: formData.brand.slug,
+        brandSlug: formData.brandSlug,
         orderInfo,
         items,
       })
 
       if (result.success) {
-        console.log("Order submitted successfully:", result)
-        // Redirect to success page
-        window.location.href = `/forms/${formData.brand.slug}/success`
+        window.location.href = `/forms/${formData.brandSlug}/success?orderId=${result.submissionId}`
       } else {
-        console.error("Order submission failed:", result.error)
-        alert(`Error: ${result.error}`)
+        setError(result.error || "An error occurred")
       }
-    } catch (error) {
-      console.error("Submit error:", error)
-      alert("An error occurred while submitting the order")
+    } catch (err) {
+      console.error("Submit error:", err)
+      setError("An unexpected error occurred")
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const renderFormItem = (item: any) => {
-    console.log("Rendering form item:", item)
+    const itemId = String(item.id)
+    const itemName = String(item.name)
+    const itemCode = item.code ? String(item.code) : null
+    const fieldType = String(item.fieldType)
+    const placeholder = item.placeholder ? String(item.placeholder) : ""
+    const isRequired = Boolean(item.isRequired)
 
-    switch (item.field_type) {
-      case "text":
-        return (
-          <div key={item.id} className="space-y-2">
-            <Label htmlFor={item.id}>
-              {item.name}
-              {item.is_required && <span className="text-red-500 ml-1">*</span>}
-            </Label>
-            <Input
-              id={item.id}
-              placeholder={item.placeholder || ""}
-              required={item.is_required}
-              onChange={(e) => handleItemChange(item.id, e.target.value)}
-            />
-            {item.description && <p className="text-sm text-gray-600">{item.description}</p>}
-          </div>
-        )
-
+    switch (fieldType) {
       case "number":
         return (
-          <div key={item.id} className="space-y-2">
-            <Label htmlFor={item.id}>
-              {item.name}
-              {item.is_required && <span className="text-red-500 ml-1">*</span>}
+          <div key={itemId} className="space-y-2">
+            <Label htmlFor={itemId}>
+              {itemName}
+              {isRequired && <span className="text-red-500 ml-1">*</span>}
             </Label>
+            {itemCode && <p className="text-sm text-gray-500">Code: {itemCode}</p>}
             <Input
-              id={item.id}
+              id={itemId}
               type="number"
-              placeholder={item.placeholder || "0"}
-              required={item.is_required}
-              onChange={(e) => handleItemChange(item.id, Number.parseInt(e.target.value) || 0)}
+              min="0"
+              placeholder={placeholder}
+              required={isRequired}
+              onChange={(e) => handleItemChange(itemId, Number.parseInt(e.target.value) || 0)}
             />
-            {item.description && <p className="text-sm text-gray-600">{item.description}</p>}
           </div>
         )
 
       case "textarea":
         return (
-          <div key={item.id} className="space-y-2">
-            <Label htmlFor={item.id}>
-              {item.name}
-              {item.is_required && <span className="text-red-500 ml-1">*</span>}
+          <div key={itemId} className="space-y-2">
+            <Label htmlFor={itemId}>
+              {itemName}
+              {isRequired && <span className="text-red-500 ml-1">*</span>}
             </Label>
+            {itemCode && <p className="text-sm text-gray-500">Code: {itemCode}</p>}
             <Textarea
-              id={item.id}
-              placeholder={item.placeholder || ""}
-              required={item.is_required}
-              onChange={(e) => handleItemChange(item.id, e.target.value)}
+              id={itemId}
+              placeholder={placeholder}
+              required={isRequired}
+              onChange={(e) => handleItemChange(itemId, e.target.value)}
             />
-            {item.description && <p className="text-sm text-gray-600">{item.description}</p>}
           </div>
         )
 
       case "checkbox":
         return (
-          <div key={item.id} className="space-y-2">
+          <div key={itemId} className="space-y-2">
             <div className="flex items-center space-x-2">
-              <Checkbox id={item.id} onCheckedChange={(checked) => handleItemChange(item.id, checked)} />
-              <Label htmlFor={item.id}>
-                {item.name}
-                {item.is_required && <span className="text-red-500 ml-1">*</span>}
+              <Checkbox id={itemId} onCheckedChange={(checked) => handleItemChange(itemId, Boolean(checked))} />
+              <Label htmlFor={itemId}>
+                {itemName}
+                {isRequired && <span className="text-red-500 ml-1">*</span>}
               </Label>
             </div>
-            {item.description && <p className="text-sm text-gray-600">{item.description}</p>}
+            {itemCode && <p className="text-sm text-gray-500">Code: {itemCode}</p>}
           </div>
         )
 
       default:
         return (
-          <div key={item.id} className="space-y-2">
-            <Label htmlFor={item.id}>
-              {item.name}
-              {item.is_required && <span className="text-red-500 ml-1">*</span>}
+          <div key={itemId} className="space-y-2">
+            <Label htmlFor={itemId}>
+              {itemName}
+              {isRequired && <span className="text-red-500 ml-1">*</span>}
             </Label>
+            {itemCode && <p className="text-sm text-gray-500">Code: {itemCode}</p>}
             <Input
-              id={item.id}
-              placeholder={item.placeholder || ""}
-              required={item.is_required}
-              onChange={(e) => handleItemChange(item.id, e.target.value)}
+              id={itemId}
+              placeholder={placeholder}
+              required={isRequired}
+              onChange={(e) => handleItemChange(itemId, e.target.value)}
             />
-            {item.description && <p className="text-sm text-gray-600">{item.description}</p>}
           </div>
         )
     }
@@ -165,18 +147,17 @@ export function ClientForm({ formData }: ClientFormProps) {
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="mb-8 text-center">
-        {formData.brand.logo && (
+        {formData.brandLogo && (
           <img
-            src={formData.brand.logo || "/placeholder.svg"}
-            alt={`${formData.brand.name} logo`}
+            src={formData.brandLogo || "/placeholder.svg"}
+            alt={`${formData.brandName} logo`}
             className="h-16 mx-auto mb-4"
           />
         )}
-        <h1 className="text-3xl font-bold">{formData.brand.name} Order Form</h1>
+        <h1 className="text-3xl font-bold">{formData.brandName} Order Form</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Order Information */}
         <Card>
           <CardHeader>
             <CardTitle>Order Information</CardTitle>
@@ -223,11 +204,16 @@ export function ClientForm({ formData }: ClientFormProps) {
                     <SelectValue placeholder="Select billing location" />
                   </SelectTrigger>
                   <SelectContent>
-                    {formData.locationOptions.map((location) => (
-                      <SelectItem key={location.value} value={location.value}>
-                        {location.label}
-                      </SelectItem>
-                    ))}
+                    {formData.locationOptions.map((location) => {
+                      const value = String(location.value)
+                      const label = String(location.label)
+                      console.log("Rendering bill to option:", { value, label })
+                      return (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -245,11 +231,16 @@ export function ClientForm({ formData }: ClientFormProps) {
                     <SelectValue placeholder="Select delivery location" />
                   </SelectTrigger>
                   <SelectContent>
-                    {formData.locationOptions.map((location) => (
-                      <SelectItem key={location.value} value={location.value}>
-                        {location.label}
-                      </SelectItem>
-                    ))}
+                    {formData.locationOptions.map((location) => {
+                      const value = String(location.value)
+                      const label = String(location.label)
+                      console.log("Rendering deliver to option:", { value, label })
+                      return (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -267,17 +258,23 @@ export function ClientForm({ formData }: ClientFormProps) {
           </CardContent>
         </Card>
 
-        {/* Product Sections */}
-        {formData.sections.map((section) => (
-          <Card key={section.id}>
-            <CardHeader>
-              <CardTitle>{section.title}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">{section.items.map((item) => renderFormItem(item))}</CardContent>
-          </Card>
-        ))}
+        {formData.sections.map((section) => {
+          const sectionId = String(section.id)
+          const sectionTitle = String(section.title)
+          console.log("Rendering section:", { sectionId, sectionTitle })
 
-        {/* Submit Button */}
+          return (
+            <Card key={sectionId}>
+              <CardHeader>
+                <CardTitle>{sectionTitle}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">{section.items.map((item) => renderFormItem(item))}</CardContent>
+            </Card>
+          )
+        })}
+
+        {error && <div className="text-red-600 bg-red-50 p-4 rounded-lg text-center">{error}</div>}
+
         <div className="flex justify-center">
           <Button type="submit" size="lg" disabled={isSubmitting}>
             {isSubmitting ? "Submitting Order..." : "Submit Order"}
