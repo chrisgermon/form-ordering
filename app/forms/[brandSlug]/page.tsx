@@ -3,27 +3,26 @@ import Image from "next/image"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Terminal } from "lucide-react"
 import { ClientForm } from "./client-form"
-import type { Brand, ClinicLocation, LocationOption, Section, Item, Option, ClientFormParams } from "@/lib/types"
+import type { Brand, LocationOption, Section, Item, ClientFormParams } from "@/lib/types"
 import { createClient } from "@/utils/supabase/server"
 
 export const revalidate = 0
 
-// This is a pure Server Component responsible for fetching and sanitizing data.
-async function getSanitizedBrandData(
-  slug: string,
-): Promise<{ status: "found" | "inactive" | "not_found"; data: ClientFormParams | { name: string } | null }> {
+type BrandFetchResult = {
+  status: "found" | "inactive" | "not_found"
+  data: ClientFormParams | { name: string } | null
+}
+
+// This function now uses manual joins to be resilient against schema cache issues.
+async function getSanitizedBrandData(slug: string): Promise<BrandFetchResult> {
   const supabase = createClient()
 
+  // Step 1: Fetch the core brand data.
   const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select("*, clinic_locations(*), sections(*, items(*, options(*)))")
+    .select("id, name, slug, logo, active")
     .eq("slug", slug)
-    .single<
-      Brand & {
-        clinic_locations: ClinicLocation[]
-        sections: (Section & { items: (Item & { options: Option[] })[] })[]
-      }
-    >()
+    .single<Pick<Brand, "id" | "name" | "slug" | "logo" | "active">>()
 
   if (brandError || !brand) {
     console.error(`Data fetching error for slug "${slug}":`, brandError?.message)
@@ -34,26 +33,65 @@ async function getSanitizedBrandData(
     return { status: "inactive", data: { name: brand.name } }
   }
 
-  // 1. Sanitize Location Options into a simple, safe format.
-  const locationOptions: LocationOption[] = (brand.clinic_locations || [])
-    .filter((loc): loc is ClinicLocation => loc && typeof loc.id === "string" && typeof loc.name === "string")
-    .map((loc) => ({ value: loc.id, label: loc.name }))
+  // Step 2: Fetch related data in parallel.
+  const [locationsResult, sectionsResult] = await Promise.all([
+    supabase.from("clinic_locations").select("id, name").eq("brand_id", brand.id),
+    supabase.from("sections").select("id, title, position").eq("brand_id", brand.id).order("position"),
+  ])
 
-  // 2. Sanitize all Sections, Items, and Options.
-  const sanitizedSections: Section[] = (brand.sections || [])
-    .filter((s) => s && s.items) // Ensure section and its items exist
-    .map((section) => {
-      const sanitizedItems = (section.items || []).map((item) => {
-        const sanitizedOptions = (item.options || [])
-          .filter((opt): opt is Option => opt && typeof opt.value === "string")
-          .map((opt) => ({ ...opt, label: opt.label || opt.value }))
-        return { ...item, options: sanitizedOptions }
-      })
-      return { ...section, items: sanitizedItems }
-    })
-    .filter((section) => section.items.length > 0)
+  if (sectionsResult.error) {
+    console.error(`Error fetching sections for brand ${slug}:`, sectionsResult.error.message)
+    return { status: "not_found", data: null } // Can't render a form without sections.
+  }
 
-  // 3. Assemble the final, clean props object for the client.
+  const clinicLocations = locationsResult.data || []
+  const sectionsData = sectionsResult.data || []
+
+  // Step 3: Fetch items for each section.
+  const sanitizedSections: Section[] = await Promise.all(
+    sectionsData.map(async (section) => {
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("items")
+        .select("*")
+        .eq("section_id", section.id)
+        .order("position")
+
+      if (itemsError) {
+        console.error(`Error fetching items for section ${section.id}:`, itemsError.message)
+        return null // Skip this section if its items can't be fetched.
+      }
+
+      const itemsWithSafeOptions: Item[] = await Promise.all(
+        (itemsData || []).map(async (item) => {
+          const { data: optionsData, error: optionsError } = await supabase
+            .from("options")
+            .select("id, value, label, sort_order")
+            .eq("item_id", item.id)
+            .order("sort_order")
+
+          if (optionsError) {
+            console.error(`Error fetching options for item ${item.id}:`, optionsError.message)
+          }
+
+          const safeOptions = (optionsData || []).map((opt) => ({
+            ...opt,
+            label: opt.label || opt.value, // Ensure label is never null
+          }))
+
+          return { ...item, options: safeOptions } as Item
+        }),
+      )
+
+      return { ...section, items: itemsWithSafeOptions }
+    }),
+  ).then((results) => results.filter((s): s is Section => s !== null && s.items.length > 0))
+
+  // Step 4: Assemble the final, clean props object for the client.
+  const locationOptions: LocationOption[] = clinicLocations.map((loc) => ({
+    value: String(loc.id),
+    label: String(loc.name),
+  }))
+
   const clientProps: ClientFormParams = {
     brandName: brand.name,
     brandSlug: brand.slug,
