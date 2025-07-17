@@ -67,4 +67,29 @@ GROUP BY
 HAVING
   COUNT(i.id) = 0;
 
+-- 5. Check the actual data types and structure of clinic_locations
+SELECT 
+  id,
+  name,
+  address,
+  pg_typeof(name) as name_type,
+  pg_typeof(address) as address_type,
+  length(name) as name_length,
+  length(address) as address_length
+FROM clinic_locations
+LIMIT 5;
+
+-- 6. Check for any unusual characters or data in location names/addresses
+SELECT 
+  id,
+  name,
+  address,
+  ascii(substring(name, 1, 1)) as first_char_ascii,
+  ascii(substring(address, 1, 1)) as address_first_char_ascii
+FROM clinic_locations
+WHERE 
+  name ~ '[^\x20-\x7E]' OR  -- Non-printable characters
+  address ~ '[^\x20-\x7E]'
+LIMIT 10;
+
 -- End of diagnostic script.
