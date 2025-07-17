@@ -3,48 +3,70 @@
 import { createClient } from "@/utils/supabase/server"
 import { generateOrderPdf } from "@/lib/pdf"
 import { sendOrderConfirmationEmail } from "@/lib/email"
-import type { ClinicLocation, Item, OrderPayload } from "@/lib/types"
+import type { ClinicLocation, OrderPayload, Brand } from "@/lib/types"
 
 export async function submitOrder(payload: OrderPayload) {
   const { brandSlug, orderInfo, items: submittedItems } = payload
   const supabase = createClient()
 
   try {
-    // 1. Fetch brand, locations, and all possible items for this brand
+    // Step 1: Fetch the brand and all its locations directly.
     const { data: brand, error: brandError } = await supabase
       .from("brands")
-      .select("*, clinic_locations(*), sections(items(*))")
+      .select("*")
       .eq("slug", brandSlug)
-      .single()
+      .single<Brand>()
 
     if (brandError || !brand) {
       console.error("Submission Error: Brand not found", brandError)
       return { success: false, message: "Brand not found." }
     }
 
-    const billTo = brand.clinic_locations.find((loc: ClinicLocation) => loc.id === orderInfo.billToId)
-    const deliverTo = brand.clinic_locations.find((loc: ClinicLocation) => loc.id === orderInfo.deliverToId)
+    const { data: allLocations, error: locationsError } = await supabase
+      .from("clinic_locations")
+      .select("*")
+      .eq("brand_id", brand.id)
+
+    if (locationsError) {
+      console.error("Submission Error: Could not fetch locations", locationsError)
+      return { success: false, message: "Could not verify locations." }
+    }
+
+    const billTo = allLocations.find((loc: ClinicLocation) => loc.id === orderInfo.billToId)
+    const deliverTo = allLocations.find((loc: ClinicLocation) => loc.id === orderInfo.deliverToId)
 
     if (!billTo || !deliverTo) {
       return { success: false, message: "Invalid billing or delivery location." }
     }
 
-    // 2. Filter and format submitted items
-    const allItems: Item[] = brand.sections.flatMap((s: any) => s.items)
+    // Step 2: Fetch all possible items for the brand to validate against.
+    const { data: allItems, error: itemsError } = await supabase
+      .from("items")
+      .select("id, code, name")
+      .eq("brand_id", brand.id)
+
+    if (itemsError) {
+      console.error("Submission Error: Could not fetch items", itemsError)
+      return { success: false, message: "Could not verify items." }
+    }
+
+    // Step 3: Filter and format submitted items.
     const orderItems = Object.entries(submittedItems)
       .map(([itemId, value]) => {
-        if (value === false || value === null || value === undefined) return null
-        if (typeof value === "string" && value.trim() === "") return null
-
+        if (
+          value === false ||
+          value === null ||
+          value === undefined ||
+          (typeof value === "string" && value.trim() === "")
+        ) {
+          return null
+        }
         const itemDetails = allItems.find((i) => i.id === itemId)
         if (!itemDetails) return null
-
-        const quantity = value === true ? 1 : value
-
         return {
           code: itemDetails.code,
           name: itemDetails.name,
-          quantity: quantity,
+          quantity: value === true ? 1 : value,
         }
       })
       .filter(Boolean) as { code: string; name: string; quantity: string | number }[]
@@ -53,7 +75,7 @@ export async function submitOrder(payload: OrderPayload) {
       return { success: false, message: "Your order is empty. Please specify a quantity for at least one item." }
     }
 
-    // 3. Create submission record
+    // Step 4: Create the submission record.
     const { data: submission, error: submissionError } = await supabase
       .from("submissions")
       .insert({
@@ -73,7 +95,7 @@ export async function submitOrder(payload: OrderPayload) {
       return { success: false, message: `Database error: ${submissionError?.message}` }
     }
 
-    // 4. Generate PDF
+    // Step 5: Generate PDF and send email.
     const pdfBuffer = await generateOrderPdf({
       orderInfo: {
         orderNumber: submission.id,
@@ -87,7 +109,6 @@ export async function submitOrder(payload: OrderPayload) {
       brand,
     })
 
-    // 5. Send email
     await sendOrderConfirmationEmail({
       to: [orderInfo.email, ...brand.emails],
       brand: brand,
