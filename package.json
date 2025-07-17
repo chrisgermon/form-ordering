@@ -63,7 +63,6 @@
     "next": "14.2.16",
     "next-themes": "latest",
     "nodemailer": "latest",
-    "pdfkit": "latest",
     "postcss": "^8.4.41",
     "puppeteer-core": "latest",
     "react": "^18",

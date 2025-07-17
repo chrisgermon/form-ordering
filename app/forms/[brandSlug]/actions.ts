@@ -1,109 +1,138 @@
 "use server"
 
 import { createClient } from "@/utils/supabase/server"
-import { generatePDF } from "@/lib/pdf"
+import { generateOrderPdf } from "@/lib/pdf"
 import { sendOrderEmail } from "@/lib/email"
-import type { OrderPayload } from "@/lib/types"
+import type { OrderInfo, OrderItem } from "@/lib/types"
 
-export async function submitOrder(payload: OrderPayload) {
+export async function submitOrder(prevState: any, formData: FormData) {
   try {
     const supabase = createClient()
 
-    // Get brand info
-    const { data: brand, error: brandError } = await supabase
-      .from("brands")
-      .select("id, name, emails")
-      .eq("slug", payload.brandSlug)
-      .single()
+    // Extract form data
+    const orderedBy = formData.get("orderedBy") as string
+    const email = formData.get("email") as string
+    const deliverToId = formData.get("deliverTo") as string
+    const billToId = formData.get("billTo") as string
+    const notes = formData.get("notes") as string
 
-    if (brandError || !brand) {
-      return { success: false, message: "Brand not found" }
+    if (!orderedBy || !email || !deliverToId || !billToId) {
+      return { error: "Please fill in all required fields." }
     }
 
-    // Get location info for bill to and deliver to
-    const { data: billToLocation, error: billToError } = await supabase
+    // Get brand from URL (we need to extract this from the form or pass it)
+    const brandSlug = formData.get("brandSlug") as string
+    if (!brandSlug) {
+      return { error: "Brand information is missing." }
+    }
+
+    // Fetch brand
+    const { data: brand, error: brandError } = await supabase.from("brands").select("*").eq("slug", brandSlug).single()
+
+    if (brandError || !brand) {
+      return { error: "Brand not found." }
+    }
+
+    // Fetch locations
+    const { data: deliverTo, error: deliverError } = await supabase
       .from("clinic_locations")
       .select("*")
-      .eq("id", payload.orderInfo.billToId)
+      .eq("id", deliverToId)
       .single()
 
-    const { data: deliverToLocation, error: deliverToError } = await supabase
+    const { data: billTo, error: billError } = await supabase
       .from("clinic_locations")
       .select("*")
-      .eq("id", payload.orderInfo.deliverToId)
+      .eq("id", billToId)
       .single()
 
-    if (billToError || deliverToError || !billToLocation || !deliverToLocation) {
-      return { success: false, message: "Invalid location selection" }
+    if (deliverError || billError || !deliverTo || !billTo) {
+      return { error: "Selected locations not found." }
     }
 
     // Generate order number
     const orderNumber = `ORD-${Date.now()}`
 
-    // Save submission to database
-    const { data: submission, error: submissionError } = await supabase
-      .from("submissions")
-      .insert({
-        brand_id: brand.id,
-        order_number: orderNumber,
-        ordered_by: payload.orderInfo.orderedBy,
-        email: payload.orderInfo.email,
-        bill_to_id: payload.orderInfo.billToId,
-        deliver_to_id: payload.orderInfo.deliverToId,
-        notes: payload.orderInfo.notes,
-        items: payload.items,
-        status: "pending",
-      })
-      .select()
-      .single()
+    // Collect ordered items
+    const items: OrderItem[] = []
+    const allFormData = Array.from(formData.entries())
 
-    if (submissionError || !submission) {
-      console.error("Error saving submission:", submissionError)
-      return { success: false, message: "Failed to save order" }
-    }
+    for (const [key, value] of allFormData) {
+      if (key.startsWith("quantity-") && value && Number(value) > 0) {
+        const itemId = key.replace("quantity-", "")
 
-    // Prepare order info for PDF and email
-    const orderInfo = {
-      orderNumber,
-      orderedBy: payload.orderInfo.orderedBy,
-      email: payload.orderInfo.email,
-      billTo: billToLocation,
-      deliverTo: deliverToLocation,
-      notes: payload.orderInfo.notes,
-    }
-
-    // Get items with details for PDF
-    const itemsWithDetails = []
-    for (const [itemId, quantity] of Object.entries(payload.items)) {
-      if (quantity && quantity !== 0 && quantity !== "") {
-        const { data: item } = await supabase.from("items").select("code, name").eq("id", itemId).single()
+        // Fetch item details
+        const { data: item } = await supabase.from("form_items").select("*").eq("id", itemId).single()
 
         if (item) {
-          itemsWithDetails.push({
-            code: item.code || "",
+          items.push({
+            id: item.id,
             name: item.name,
-            quantity: quantity,
+            code: item.code,
+            quantity: Number(value),
           })
         }
       }
     }
 
+    if (items.length === 0) {
+      return { error: "Please select at least one item with a quantity greater than 0." }
+    }
+
+    // Create order info
+    const orderInfo: OrderInfo = {
+      orderNumber,
+      orderedBy,
+      email,
+      deliverTo,
+      billTo,
+      notes: notes || undefined,
+    }
+
     // Generate PDF
-    const pdfBuffer = await generatePDF(orderInfo, itemsWithDetails)
+    const pdfBuffer = await generateOrderPdf({
+      orderInfo,
+      items,
+      brand,
+    })
 
     // Send email
-    await sendOrderEmail(orderInfo, itemsWithDetails, pdfBuffer, brand.emails)
+    await sendOrderEmail({
+      orderInfo,
+      items,
+      brand,
+      pdfBuffer,
+    })
+
+    // Save submission to database
+    const { data: submission, error: submissionError } = await supabase
+      .from("form_submissions")
+      .insert({
+        brand_id: brand.id,
+        order_number: orderNumber,
+        ordered_by: orderedBy,
+        email,
+        deliver_to_id: deliverToId,
+        bill_to_id: billToId,
+        notes,
+        items: JSON.stringify(items),
+        status: "submitted",
+      })
+      .select()
+      .single()
+
+    if (submissionError) {
+      console.error("Error saving submission:", submissionError)
+      // Don't fail the whole process if we can't save to DB
+    }
 
     return {
       success: true,
-      message: "Order submitted successfully",
-      submissionId: submission.id,
+      message: "Order submitted successfully!",
+      submissionId: submission?.id || orderNumber,
     }
   } catch (error) {
-    console.error("Error in submitOrder:", error)
-    return {
-      success: false,
-      message: "An unexpected error occurred",
-    }
+    console.error("Error submitting order:", error)
+    return { error: "An error occurred while submitting your order. Please try again." }
   }
 }

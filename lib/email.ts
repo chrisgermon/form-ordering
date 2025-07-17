@@ -1,66 +1,101 @@
 import nodemailer from "nodemailer"
-import type { OrderInfoForPdf, OrderItem } from "./types"
+import type { Brand, OrderInfo, OrderItem } from "@/lib/types"
 
-export async function sendOrderEmail(
-  orderInfo: OrderInfoForPdf,
-  items: OrderItem[],
-  pdfBuffer: Buffer,
-  recipientEmails: string[],
-) {
-  try {
-    const transporter = nodemailer.createTransporter({
-      host: "smtp.mailgun.org",
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.MAILGUN_SMTP_USERNAME,
-        pass: process.env.MAILGUN_SMTP_PASSWORD,
-      },
-    })
+interface EmailPayload {
+  orderInfo: OrderInfo
+  items: OrderItem[]
+  brand: Brand
+  pdfBuffer: Buffer
+}
 
-    const itemsList = items
-      .map((item) => `${item.code ? `${item.code} - ` : ""}${item.name}: ${item.quantity}`)
-      .join("\n")
+export async function sendOrderEmail(payload: EmailPayload): Promise<void> {
+  const { orderInfo, items, brand, pdfBuffer } = payload
 
-    const emailContent = `
-New order received:
+  const transporter = nodemailer.createTransporter({
+    host: "smtp.mailgun.org",
+    port: 587,
+    secure: false,
+    auth: {
+      user: process.env.MAILGUN_SMTP_USERNAME,
+      pass: process.env.MAILGUN_SMTP_PASSWORD,
+    },
+  })
 
-Order Number: ${orderInfo.orderNumber}
-Ordered By: ${orderInfo.orderedBy}
-Email: ${orderInfo.email}
-Date: ${new Date().toLocaleDateString()}
+  const itemsList = items
+    .map((item) => `• ${item.name} ${item.code ? `(${item.code})` : ""} - Quantity: ${item.quantity}`)
+    .join("\n")
 
-Bill To:
-${orderInfo.billTo.name}
-${orderInfo.billTo.address}
+  const emailText = `
+New Order Received
 
-Deliver To:
-${orderInfo.deliverTo.name}
-${orderInfo.deliverTo.address}
+Order Details:
+- Order Number: ${orderInfo.orderNumber}
+- Ordered By: ${orderInfo.orderedBy}
+- Email: ${orderInfo.email}
+- Brand: ${brand.name}
 
-Items:
+Delivery Information:
+${orderInfo.deliverTo?.name}
+${orderInfo.deliverTo?.address}
+
+Billing Information:
+${orderInfo.billTo?.name}
+${orderInfo.billTo?.address}
+
+Items Ordered:
 ${itemsList}
 
 ${orderInfo.notes ? `Notes: ${orderInfo.notes}` : ""}
-    `
 
-    await transporter.sendMail({
-      from: process.env.FROM_EMAIL,
-      to: recipientEmails.join(", "),
-      subject: `New Order: ${orderInfo.orderNumber}`,
-      text: emailContent,
-      attachments: [
-        {
-          filename: `order-${orderInfo.orderNumber}.pdf`,
-          content: pdfBuffer,
-          contentType: "application/pdf",
-        },
-      ],
-    })
+Please find the detailed order form attached as a PDF.
+  `
 
-    console.log("Order email sent successfully")
-  } catch (error) {
-    console.error("Error sending order email:", error)
-    throw error
-  }
+  const emailHtml = `
+    <h2>New Order Received</h2>
+    
+    <h3>Order Details:</h3>
+    <ul>
+      <li><strong>Order Number:</strong> ${orderInfo.orderNumber}</li>
+      <li><strong>Ordered By:</strong> ${orderInfo.orderedBy}</li>
+      <li><strong>Email:</strong> ${orderInfo.email}</li>
+      <li><strong>Brand:</strong> ${brand.name}</li>
+    </ul>
+
+    <h3>Delivery Information:</h3>
+    <p>
+      ${orderInfo.deliverTo?.name}<br>
+      ${orderInfo.deliverTo?.address}
+    </p>
+
+    <h3>Billing Information:</h3>
+    <p>
+      ${orderInfo.billTo?.name}<br>
+      ${orderInfo.billTo?.address}
+    </p>
+
+    <h3>Items Ordered:</h3>
+    <ul>
+      ${items.map((item) => `<li>${item.name} ${item.code ? `(${item.code})` : ""} - Quantity: ${item.quantity}</li>`).join("")}
+    </ul>
+
+    ${orderInfo.notes ? `<h3>Notes:</h3><p>${orderInfo.notes}</p>` : ""}
+
+    <p>Please find the detailed order form attached as a PDF.</p>
+  `
+
+  await transporter.sendMail({
+    from: process.env.FROM_EMAIL,
+    to: process.env.FROM_EMAIL,
+    cc: orderInfo.email,
+    subject: `New Order: ${orderInfo.orderNumber} - ${brand.name}`,
+    text: emailText,
+    html: emailHtml,
+    attachments: [
+      {
+        filename: `order-${orderInfo.orderNumber}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  })
 }
