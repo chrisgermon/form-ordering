@@ -1,16 +1,30 @@
-// A placeholder for email sending logic
-// This should be implemented with a service like Resend, Nodemailer, or Mailgun.
+import nodemailer from "nodemailer"
 
-interface EmailData {
-  to: string
-  orderNumber: string
-  pdfAttachment?: Buffer
+type EmailPayload = {
+  to: string | string[]
+  subject: string
+  text: string
+  html?: string
+  attachments?: { filename: string; content: Buffer }[]
 }
 
-export async function sendOrderConfirmationEmail(data: EmailData) {
-  console.log(`Sending order confirmation email to ${data.to} for order ${data.orderNumber}`)
-  // In a real app, you would integrate with an email service here.
-  // e.g., using Nodemailer with your SMTP credentials from environment variables.
-  console.log("Email service not fully implemented.")
-  return { success: true }
+const smtpOptions = {
+  host: process.env.MAILGUN_SMTP_HOST,
+  port: Number.parseInt(process.env.MAILGUN_SMTP_PORT || "587"),
+  secure: false, // true for 465, false for other ports
+  auth: {
+    user: process.env.MAILGUN_SMTP_USERNAME,
+    pass: process.env.MAILGUN_SMTP_PASSWORD,
+  },
+}
+
+export async function sendEmail(data: EmailPayload) {
+  const transporter = nodemailer.createTransport({
+    ...smtpOptions,
+  })
+
+  return await transporter.sendMail({
+    from: process.env.FROM_EMAIL,
+    ...data,
+  })
 }

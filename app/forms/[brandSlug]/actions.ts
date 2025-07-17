@@ -4,67 +4,62 @@ import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 import type { ActionPayload } from "@/lib/types"
 
-export async function submitOrder(payload: ActionPayload) {
+export async function submitOrder(prevState: any, formData: FormData) {
+  console.log("--- SERVER ACTION: PROCESSING SUBMISSION ---")
   const supabase = createClient()
-  const { brandSlug, formData } = payload
-  console.log("Server Action: Received form data:", formData)
 
   try {
-    // 1. Fetch brand and location details on the server for security
+    // 1. Extract and validate data from FormData
+    const items: Record<string, string> = {}
+    for (const [key, value] of formData.entries()) {
+      if (key.startsWith("item-")) {
+        items[key.replace("item-", "")] = value.toString()
+      }
+    }
+
+    const payload: ActionPayload = {
+      brandSlug: formData.get("brandSlug") as string,
+      orderedBy: formData.get("orderedBy") as string,
+      email: formData.get("email") as string,
+      billToId: formData.get("billToId") as string,
+      deliverToId: formData.get("deliverToId") as string,
+      notes: formData.get("notes") as string,
+      items: items,
+    }
+
+    if (!payload.orderedBy || !payload.email || !payload.billToId || !payload.deliverToId) {
+      throw new Error("Required fields are missing.")
+    }
+
+    // 2. Get Brand ID
     const { data: brand, error: brandError } = await supabase
       .from("brands")
-      .select("id, name")
-      .eq("slug", brandSlug)
+      .select("id")
+      .eq("slug", payload.brandSlug)
       .single()
-    if (brandError) throw new Error("Brand not found.")
+    if (brandError) throw new Error("Brand could not be found.")
 
-    const { data: billToLocation, error: billToError } = await supabase
-      .from("clinic_locations")
-      .select("name, address")
-      .eq("id", formData.billToId)
-      .single()
-    if (billToError) throw new Error("Billing location not found.")
-
-    const { data: deliverToLocation, error: deliverToError } = await supabase
-      .from("clinic_locations")
-      .select("name, address")
-      .eq("id", formData.deliverToId)
-      .single()
-    if (deliverToError) throw new Error("Delivery location not found.")
-
-    // 2. Insert the main submission record
-    const { data: submission, error: submissionError } = await supabase
-      .from("submissions")
-      .insert({
-        brand_id: brand.id,
-        ordered_by: formData.orderedBy,
-        email: formData.email,
-        notes: formData.notes,
-        billing_address: `${billToLocation.name} - ${billToLocation.address}`,
-        delivery_address: `${deliverToLocation.name} - ${deliverToLocation.address}`,
-        form_data: formData.items, // Store the raw items object
-      })
-      .select("id, created_at")
-      .single()
+    // 3. Insert submission
+    const { error: submissionError } = await supabase.from("submissions").insert({
+      brand_id: brand.id,
+      ordered_by: payload.orderedBy,
+      email: payload.email,
+      bill_to_id: payload.billToId,
+      deliver_to_id: payload.deliverToId,
+      notes: payload.notes,
+      form_data: payload.items, // Store the raw items object
+    })
 
     if (submissionError) {
-      console.error("Error inserting submission:", submissionError)
-      throw new Error("Could not save your order submission.")
+      console.error("DB Submission Error:", submissionError)
+      throw new Error("Failed to save your order to the database.")
     }
 
-    // 3. Generate PDF and send email (implement these functions)
-    // const pdfBuffer = await generateOrderPdf({ ... });
-    // await sendOrderConfirmationEmail({ ..., pdfAttachment: pdfBuffer });
-
-    revalidatePath(`/forms/${brandSlug}`)
-    revalidatePath("/admin")
-
-    return {
-      success: true,
-      orderNumber: submission.id.toString().substring(0, 8).toUpperCase(),
-    }
+    // 4. Revalidate paths and return success
+    revalidatePath(`/forms/${payload.brandSlug}`)
+    return { success: true, message: "Order submitted successfully!" }
   } catch (error: any) {
-    console.error("Full error in submitOrder:", error)
-    return { success: false, error: error.message }
+    console.error("Full Server Action Error:", error)
+    return { success: false, message: error.message || "An unexpected error occurred." }
   }
 }

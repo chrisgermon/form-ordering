@@ -1,5 +1,5 @@
-// A completely safe, flat structure to pass to the client
-export interface ClientFormProps {
+// Props passed from Server to Client Component. Only primitive types.
+export interface SafeFormProps {
   brand: {
     slug: string
     name: string
@@ -21,34 +21,13 @@ export interface ClientFormProps {
   }[]
 }
 
-// The data structure for the form submission using React Hook Form
-export interface FormValues {
+// The payload for our server action, constructed from FormData
+export interface ActionPayload {
+  brandSlug: string
   orderedBy: string
   email: string
   billToId: string
   deliverToId: string
-  notes?: string
-  items: Record<string, string | number | boolean>
-}
-
-// The payload for our server action
-export interface ActionPayload {
-  brandSlug: string
-  formData: FormValues
-}
-
-// Types for generating the PDF, requires full objects
-export interface OrderInfoForPdf {
-  orderNumber: string
-  orderedBy: string
-  email: string
-  notes?: string
-  billTo: { name: string; address: string }
-  deliverTo: { name: string; address: string }
-}
-
-export interface PdfOrderItem {
-  name: string
-  code: string | null
-  quantity: string | number | boolean
+  notes: string
+  items: Record<string, string> // All item values will be strings from FormData
 }
