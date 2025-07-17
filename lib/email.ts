@@ -1,60 +1,104 @@
 import nodemailer from "nodemailer"
-import type { Brand } from "@/lib/types"
+import type { Brand, OrderInfo, OrderItem } from "@/lib/types"
 
-function generateConfirmationEmailHtml(brandName: string, orderId: string | number): string {
-  const themeColor = "#2a3760"
-  return `
-    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
-      <h2 style="color: ${themeColor}; font-size: 22px;">Order Confirmation</h2>
-      <p>Thank you for your order with <strong>${brandName}</strong>.</p>
-      <p>Your order number is <strong>#${orderId}</strong>.</p>
-      <p>We have received your order and will begin processing it shortly. A PDF copy of your order form is attached to this email for your records.</p>
-      <p>If you have any questions, please contact us.</p>
-      <br>
-      <p>Thank you,</p>
-      <p>The ${brandName} Team</p>
-    </div>
-  `
+interface EmailPayload {
+  orderInfo: OrderInfo
+  items: OrderItem[]
+  brand: Brand
+  pdfBuffer: Buffer
 }
 
-export async function sendOrderConfirmationEmail(payload: {
-  to: string[]
-  brand: Brand
-  orderId: string | number
-  pdfBuffer: Buffer
-}) {
-  const { to, brand, orderId, pdfBuffer } = payload
+export async function sendOrderEmail(payload: EmailPayload): Promise<void> {
+  const { orderInfo, items, brand, pdfBuffer } = payload
 
-  const transporter = nodemailer.createTransport({
+  // Create transporter using Mailgun SMTP
+  const transporter = nodemailer.createTransporter({
     host: "smtp.mailgun.org",
     port: 587,
-    secure: false, // true for 465, false for other ports
+    secure: false,
     auth: {
       user: process.env.MAILGUN_SMTP_USERNAME,
       pass: process.env.MAILGUN_SMTP_PASSWORD,
     },
   })
 
-  const mailOptions = {
-    from: `"${brand.name} Orders" <${process.env.FROM_EMAIL}>`,
-    to: to.join(","),
-    subject: `Order Confirmation for ${brand.name} - #${orderId}`,
-    html: generateConfirmationEmailHtml(brand.name, orderId),
+  // Create email content
+  const itemsList = items
+    .map((item) => `• ${item.name} ${item.code ? `(${item.code})` : ""} - Quantity: ${item.quantity}`)
+    .join("\n")
+
+  const emailText = `
+New Order Received
+
+Order Details:
+- Order Number: ${orderInfo.orderNumber}
+- Ordered By: ${orderInfo.orderedBy}
+- Email: ${orderInfo.email}
+- Brand: ${brand.name}
+
+Delivery Information:
+${orderInfo.deliverTo?.name}
+${orderInfo.deliverTo?.address}
+
+Billing Information:
+${orderInfo.billTo?.name}
+${orderInfo.billTo?.address}
+
+Items Ordered:
+${itemsList}
+
+${orderInfo.notes ? `Notes: ${orderInfo.notes}` : ""}
+
+Please find the detailed order form attached as a PDF.
+  `
+
+  const emailHtml = `
+    <h2>New Order Received</h2>
+    
+    <h3>Order Details:</h3>
+    <ul>
+      <li><strong>Order Number:</strong> ${orderInfo.orderNumber}</li>
+      <li><strong>Ordered By:</strong> ${orderInfo.orderedBy}</li>
+      <li><strong>Email:</strong> ${orderInfo.email}</li>
+      <li><strong>Brand:</strong> ${brand.name}</li>
+    </ul>
+
+    <h3>Delivery Information:</h3>
+    <p>
+      ${orderInfo.deliverTo?.name}<br>
+      ${orderInfo.deliverTo?.address}
+    </p>
+
+    <h3>Billing Information:</h3>
+    <p>
+      ${orderInfo.billTo?.name}<br>
+      ${orderInfo.billTo?.address}
+    </p>
+
+    <h3>Items Ordered:</h3>
+    <ul>
+      ${items.map((item) => `<li>${item.name} ${item.code ? `(${item.code})` : ""} - Quantity: ${item.quantity}</li>`).join("")}
+    </ul>
+
+    ${orderInfo.notes ? `<h3>Notes:</h3><p>${orderInfo.notes}</p>` : ""}
+
+    <p>Please find the detailed order form attached as a PDF.</p>
+  `
+
+  // Send email
+  await transporter.sendMail({
+    from: process.env.FROM_EMAIL,
+    to: process.env.FROM_EMAIL, // Send to yourself
+    cc: orderInfo.email, // CC the customer
+    subject: `New Order: ${orderInfo.orderNumber} - ${brand.name}`,
+    text: emailText,
+    html: emailHtml,
     attachments: [
       {
-        filename: `order-${brand.slug}-${orderId}.pdf`,
+        filename: `order-${orderInfo.orderNumber}.pdf`,
         content: pdfBuffer,
         contentType: "application/pdf",
       },
     ],
-  }
-
-  try {
-    const info = await transporter.sendMail(mailOptions)
-    console.log("Confirmation email sent: " + info.response)
-  } catch (error) {
-    console.error("Error sending confirmation email:", error)
-    // We don't want to fail the whole request if the email fails,
-    // so we just log the error. The order is already saved.
-  }
+  })
 }

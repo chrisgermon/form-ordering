@@ -1,125 +1,135 @@
 "use server"
 
 import { createClient } from "@/utils/supabase/server"
+import { redirect } from "next/navigation"
 import { generateOrderPdf } from "@/lib/pdf"
-import { sendOrderConfirmationEmail } from "@/lib/email"
-import type { ClinicLocation, OrderPayload, Brand } from "@/lib/types"
+import { sendOrderEmail } from "@/lib/email"
+import type { Brand, ClinicLocation, OrderInfo, OrderItem } from "@/lib/types"
 
-export async function submitOrder(payload: OrderPayload) {
-  const { brandSlug, orderInfo, items: submittedItems } = payload
-  const supabase = createClient()
-
+export async function submitOrder(prevState: any, formData: FormData) {
   try {
-    // Step 1: Fetch the brand and all its locations directly.
-    const { data: brand, error: brandError } = await supabase
-      .from("brands")
-      .select("*")
-      .eq("slug", brandSlug)
-      .single<Brand>()
+    const supabase = createClient()
 
-    if (brandError || !brand) {
-      console.error("Submission Error: Brand not found", brandError)
-      return { success: false, message: "Brand not found." }
+    // Extract form data
+    const orderedBy = formData.get("orderedBy") as string
+    const email = formData.get("email") as string
+    const deliverToId = formData.get("deliverTo") as string
+    const billToId = formData.get("billTo") as string
+    const notes = formData.get("notes") as string
+
+    if (!orderedBy || !email || !deliverToId || !billToId) {
+      return { error: "Please fill in all required fields" }
     }
 
-    const { data: allLocations, error: locationsError } = await supabase
+    // Get brand from the current URL (we'll need to pass this somehow)
+    // For now, let's get it from the first location
+    const { data: deliverToLocation } = await supabase
       .from("clinic_locations")
-      .select("*")
-      .eq("brand_id", brand.id)
-
-    if (locationsError) {
-      console.error("Submission Error: Could not fetch locations", locationsError)
-      return { success: false, message: "Could not verify locations." }
-    }
-
-    const billTo = allLocations.find((loc: ClinicLocation) => loc.id === orderInfo.billToId)
-    const deliverTo = allLocations.find((loc: ClinicLocation) => loc.id === orderInfo.deliverToId)
-
-    if (!billTo || !deliverTo) {
-      return { success: false, message: "Invalid billing or delivery location." }
-    }
-
-    // Step 2: Fetch all possible items for the brand to validate against.
-    const { data: allItems, error: itemsError } = await supabase
-      .from("items")
-      .select("id, code, name")
-      .eq("brand_id", brand.id)
-
-    if (itemsError) {
-      console.error("Submission Error: Could not fetch items", itemsError)
-      return { success: false, message: "Could not verify items." }
-    }
-
-    // Step 3: Filter and format submitted items.
-    const orderItems = Object.entries(submittedItems)
-      .map(([itemId, value]) => {
-        if (
-          value === false ||
-          value === null ||
-          value === undefined ||
-          (typeof value === "string" && value.trim() === "")
-        ) {
-          return null
-        }
-        const itemDetails = allItems.find((i) => i.id === itemId)
-        if (!itemDetails) return null
-        return {
-          code: itemDetails.code,
-          name: itemDetails.name,
-          quantity: value === true ? 1 : value,
-        }
-      })
-      .filter(Boolean) as { code: string; name: string; quantity: string | number }[]
-
-    if (orderItems.length === 0) {
-      return { success: false, message: "Your order is empty. Please specify a quantity for at least one item." }
-    }
-
-    // Step 4: Create the submission record.
-    const { data: submission, error: submissionError } = await supabase
-      .from("submissions")
-      .insert({
-        brand_id: brand.id,
-        ordered_by: orderInfo.orderedBy,
-        email: orderInfo.email,
-        bill_to: billTo.id,
-        deliver_to: deliverTo.id,
-        notes: orderInfo.notes,
-        items: orderItems,
-      })
-      .select("id")
+      .select("*, brands(*)")
+      .eq("id", deliverToId)
       .single()
 
-    if (submissionError || !submission) {
-      console.error("Submission Error: Failed to save submission", submissionError)
-      return { success: false, message: `Database error: ${submissionError?.message}` }
+    if (!deliverToLocation) {
+      return { error: "Invalid delivery location" }
     }
 
-    // Step 5: Generate PDF and send email.
-    const pdfBuffer = await generateOrderPdf({
-      orderInfo: {
-        orderNumber: submission.id,
-        orderedBy: orderInfo.orderedBy,
-        email: orderInfo.email,
-        billTo,
-        deliverTo,
-        notes: orderInfo.notes,
-      },
-      items: orderItems,
-      brand,
-    })
+    const brand = deliverToLocation.brands as Brand
 
-    await sendOrderConfirmationEmail({
-      to: [orderInfo.email, ...brand.emails],
-      brand: brand,
-      orderId: submission.id,
-      pdfBuffer,
-    })
+    // Get locations
+    const { data: billToLocation } = await supabase.from("clinic_locations").select("*").eq("id", billToId).single()
 
-    return { success: true, submissionId: submission.id }
+    if (!billToLocation) {
+      return { error: "Invalid billing location" }
+    }
+
+    // Extract quantities and create order items
+    const items: OrderItem[] = []
+
+    // Get all form items for this brand
+    const { data: formItems } = await supabase
+      .from("form_items")
+      .select("*, form_sections!inner(brand_id)")
+      .eq("form_sections.brand_id", brand.id)
+
+    if (formItems) {
+      for (const item of formItems) {
+        const quantityKey = `quantity-${item.id}`
+        const quantity = Number.parseInt(formData.get(quantityKey) as string) || 0
+
+        if (quantity > 0) {
+          items.push({
+            id: item.id,
+            name: item.name,
+            code: item.code,
+            quantity,
+          })
+        }
+      }
+    }
+
+    if (items.length === 0) {
+      return { error: "Please select at least one item with a quantity greater than 0" }
+    }
+
+    // Generate order number
+    const orderNumber = `ORD-${Date.now()}`
+
+    // Create order info
+    const orderInfo: OrderInfo = {
+      orderNumber,
+      orderedBy,
+      email,
+      deliverTo: deliverToLocation as ClinicLocation,
+      billTo: billToLocation as ClinicLocation,
+      notes: notes || undefined,
+    }
+
+    // Save to database
+    const { data: submission, error: saveError } = await supabase
+      .from("form_submissions")
+      .insert({
+        brand_id: brand.id,
+        order_number: orderNumber,
+        ordered_by: orderedBy,
+        email,
+        deliver_to_id: deliverToId,
+        bill_to_id: billToId,
+        notes: notes || null,
+        items: items,
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
+
+    if (saveError) {
+      console.error("Error saving submission:", saveError)
+      return { error: "Failed to save order. Please try again." }
+    }
+
+    // Generate PDF
+    try {
+      const pdfBuffer = await generateOrderPdf({
+        orderInfo,
+        items,
+        brand,
+      })
+
+      // Send email
+      await sendOrderEmail({
+        orderInfo,
+        items,
+        brand,
+        pdfBuffer,
+      })
+    } catch (error) {
+      console.error("Error generating PDF or sending email:", error)
+      // Don't fail the entire submission if PDF/email fails
+    }
+
+    // Redirect to success page
+    redirect(`/forms/${brand.slug}/success?orderNumber=${orderNumber}`)
   } catch (error) {
-    console.error("Unexpected Submission Error:", error)
-    const message = error instanceof Error ? error.message : "An unexpected error occurred."
-    return { success: false, message }
+    console.error("Error submitting order:", error)
+    return { error: "An unexpected error occurred. Please try again." }
   }
 }
