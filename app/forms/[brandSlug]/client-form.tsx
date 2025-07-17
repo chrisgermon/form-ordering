@@ -16,31 +16,36 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 
 import { submitOrder } from "./actions"
 import type { ClientFormParams } from "@/lib/types"
 
+// This is the named export that the build process requires
 export const ClientForm = ({ data }: { data: string }) => {
   const router = useRouter()
-  const [parsedData, setParsedData] = React.useState<ClientFormParams | null>(null)
+  const [formState, setFormState] = React.useState<{
+    isLoading: boolean
+    data: ClientFormParams | null
+  }>({ isLoading: true, data: null })
 
+  // Safely parse data in a useEffect hook to prevent hydration errors
   React.useEffect(() => {
     try {
-      console.log("Client form received serialized data. Parsing...")
-      const parsed = JSON.parse(data)
-      setParsedData(parsed)
-      console.log("Successfully parsed client form data:", parsed)
+      const parsedData = JSON.parse(data)
+      setFormState({ isLoading: false, data: parsedData })
     } catch (error) {
-      console.error("Failed to parse client form data:", error)
-      toast.error("Error: Could not load form data. Please refresh the page.")
+      console.error("Fatal Error: Could not parse form data from server.", error)
+      toast.error("A critical error occurred. Please refresh the page.")
+      setFormState({ isLoading: false, data: null })
     }
   }, [data])
 
   const formSchema = React.useMemo(() => {
-    if (!parsedData) return z.object({})
+    if (!formState.data) return z.object({}) // Return a base schema if data is not ready
 
     const itemSchema = z.object(
-      parsedData.sections
+      formState.data.sections
         .flatMap((section) => section.items)
         .reduce(
           (acc, item) => {
@@ -78,65 +83,41 @@ export const ClientForm = ({ data }: { data: string }) => {
       notes: z.string().optional(),
       items: itemSchema,
     })
-  }, [parsedData])
+  }, [formState.data])
 
   type FormValues = z.infer<typeof formSchema>
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema as any),
-    defaultValues: React.useMemo(() => {
-      if (!parsedData) return {}
-      return {
+    // Default values are set in the useEffect below to ensure they are populated correctly
+  })
+
+  // Reset the form with default values once the data is loaded
+  React.useEffect(() => {
+    if (formState.data) {
+      const defaultValues = {
         orderedBy: "",
         email: "",
         billTo: "",
         deliverTo: "",
         notes: "",
-        items: parsedData.sections
+        items: formState.data.sections
           .flatMap((s) => s.items)
           .reduce((acc, item) => {
             acc[item.id] = item.field_type === "checkbox" ? false : ""
             return acc
           }, {} as any),
       }
-    }, [parsedData]),
-  })
-
-  React.useEffect(() => {
-    if (parsedData) {
-      form.reset({
-        orderedBy: "",
-        email: "",
-        billTo: "",
-        deliverTo: "",
-        notes: "",
-        items: parsedData.sections
-          .flatMap((s) => s.items)
-          .reduce((acc, item) => {
-            acc[item.id] = item.field_type === "checkbox" ? false : ""
-            return acc
-          }, {} as any),
-      })
+      form.reset(defaultValues)
     }
-  }, [parsedData, form])
-
-  if (!parsedData) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <p className="text-lg font-semibold">Loading form...</p>
-          <p className="text-muted-foreground">If this takes too long, please refresh the page.</p>
-        </div>
-      </div>
-    )
-  }
-
-  const { brandSlug, locationOptions, sections } = parsedData
+  }, [formState.data, form])
 
   async function onSubmit(formData: FormValues) {
+    if (!formState.data) return
+
     const toastId = toast.loading("Submitting your order, please wait...")
     const result = await submitOrder({
-      brandSlug: brandSlug,
+      brandSlug: formState.data.brandSlug,
       orderInfo: {
         orderedBy: formData.orderedBy,
         email: formData.email,
@@ -149,12 +130,48 @@ export const ClientForm = ({ data }: { data: string }) => {
     toast.dismiss(toastId)
     if (result.success) {
       toast.success("Order submitted successfully!")
-      router.push(`/forms/${brandSlug}/success?orderId=${result.submissionId}`)
+      router.push(`/forms/${formState.data.brandSlug}/success?orderId=${result.submissionId}`)
     } else {
-      const errorMessage = typeof result.message === "string" ? result.message : "An unknown error occurred."
-      toast.error(errorMessage)
+      toast.error(result.message || "An unknown error occurred.")
     }
   }
+
+  // Display a loading skeleton while parsing data
+  if (formState.isLoading) {
+    return (
+      <div className="space-y-8">
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-8 w-1/3" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+            <Skeleton className="h-24 w-full" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-8 w-1/2" />
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!formState.data) {
+    return <div className="text-center text-red-500">Could not load form. Please try refreshing the page.</div>
+  }
+
+  const { locationOptions, sections } = formState.data
 
   return (
     <Form {...form}>
