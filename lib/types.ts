@@ -52,6 +52,7 @@ export interface Brand {
   logo: string | null
   emails: string[]
   active: boolean
+  description?: string | null
 }
 
 // This new type defines the clean props passed from Server to Client Component
