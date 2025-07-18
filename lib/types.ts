@@ -17,21 +17,29 @@ export type SafeFormProps = {
       id: string
       name: string
       code: string | null
-      fieldType: string
+      fieldType: "text" | "number"
     }[]
   }[]
 }
 
-export type SafeBrand = {
+export type BrandData = {
   id: string
   name: string
   slug: string
   logo: string | null
 }
 
-export type SafeLocation = {
-  value: string
-  label: string
+export type FormItem = {
+  id: string
+  name: string
+  code: string | null
+  fieldType: "text" | "number" | "date"
+}
+
+export type FormSection = {
+  id: string
+  title: string
+  items: FormItem[]
 }
 
 export type SafeItem = {
@@ -66,13 +74,6 @@ export interface Brand {
   primary_color: string | null
   secondary_color: string | null
   created_at: string
-}
-
-export interface ClinicLocation {
-  id: number
-  name: string
-  address: string | null
-  brand_id: number
 }
 
 export interface ProductSection {
@@ -113,5 +114,36 @@ export interface Submission {
 export type ActionState = {
   success: boolean
   message: string
-  submissionId?: string | null
+  submissionId?: string
+}
+
+export type FormState = {
+  message: string
+  errors?: {
+    [key: string]: string[]
+  } | null
+  isSuccess: boolean
+}
+
+export type PdfData = {
+  brandName: string
+  brandLogo: string | null
+  locationName: string
+  locationAddress: string | null
+  orderedBy: string
+  orderedByEmail: string
+  notes: string | null
+  items: {
+    id: string
+    name: string
+    code: string | null
+    quantity: number
+  }[]
+  submissionId: string
+}
+
+export type EmailData = {
+  brandName: string
+  submissionId: string
+  pdfBuffer: Buffer
 }

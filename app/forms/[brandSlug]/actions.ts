@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { sendOrderEmail } from "@/lib/email"
 import { generatePdf } from "@/lib/pdf"
 import type { ActionState } from "@/lib/types"
+import type { FormData } from "formdata-node"
 
 export async function submitOrder(prevState: ActionState, formData: FormData): Promise<ActionState> {
   console.log("[ACTION] submitOrder: Received form submission.")

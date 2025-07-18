@@ -1,15 +1,23 @@
-"use client"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { AlertTriangle } from "lucide-react"
 
-export function ErrorDisplay({ error }: { error: string }) {
+export function ErrorDisplay({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-      <div className="bg-white p-8 rounded-lg shadow-md text-center w-full max-w-2xl">
-        <h1 className="text-2xl font-bold text-red-600 mb-4">Server Error</h1>
-        <p className="text-gray-700 mb-4">An error occurred while trying to load the form data.</p>
-        <pre className="mt-4 p-4 bg-gray-50 text-left text-sm text-red-700 rounded-md overflow-auto whitespace-pre-wrap break-words">
-          <code>{error}</code>
-        </pre>
-      </div>
-    </div>
+    <main className="container mx-auto max-w-2xl px-4 py-8">
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle />
+            An Error Occurred
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p>Could not load the form.</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            <strong>Details:</strong> {message}
+          </p>
+        </CardContent>
+      </Card>
+    </main>
   )
 }

@@ -1,47 +1,42 @@
 import { createClient } from "@/utils/supabase/server"
+import { notFound } from "next/navigation"
 import { ClientForm } from "./client-form"
 import { ErrorDisplay } from "./error-display"
 import type { SafeFormProps } from "@/lib/types"
 
-export const dynamic = "force-dynamic"
-export const revalidate = 0
-
-async function getFormData(brandSlug: string): Promise<(SafeFormProps & { error?: null }) | { error: string }> {
-  console.log(`[SERVER] getFormData: Fetching data for slug: ${brandSlug}`)
+async function getFormData(slug: string) {
   const supabase = createClient()
 
   const { data: brand, error: brandError } = await supabase
     .from("brands")
     .select("id, name, slug, logo")
-    .eq("slug", brandSlug)
+    .eq("slug", slug)
     .single()
 
   if (brandError || !brand) {
-    console.error(`[SERVER] getFormData: Brand fetch error for slug "${brandSlug}".`, brandError)
-    return { error: JSON.stringify(brandError || "Brand not found.") }
+    console.error(`[SERVER] getFormData: Brand not found for slug: ${slug}`, brandError)
+    return { error: "Brand not found." }
   }
-  console.log(`[SERVER] getFormData: Found brand "${brand.name}" (ID: ${brand.id})`)
 
   const [locationsRes, sectionsRes] = await Promise.all([
-    supabase.from("clinic_locations").select("id, name, address").eq("brand_id", brand.id).order("name"),
+    supabase.from("clinic_locations").select("id, name, address").eq("brand_id", brand.id),
     supabase
       .from("product_sections")
-      .select("id, title, sort_order, items:product_items(id, name, code, sort_order)") // Removed field_type to prevent crash
+      .select("id, title, items:product_items(id, name, code, field_type)")
       .eq("brand_id", brand.id)
-      .order("sort_order", { ascending: true })
-      .order("sort_order", { foreignTable: "product_items", ascending: true }),
+      .order("position", { ascending: true })
+      .order("position", { foreignTable: "product_items", ascending: true }),
   ])
 
   if (locationsRes.error || sectionsRes.error) {
-    console.error(`[SERVER] getFormData: Data fetch error for brand "${brand.name}".`, {
+    console.error(`[SERVER] getFormData: Data fetching error for slug: ${slug}`, {
       locationsError: locationsRes.error,
       sectionsError: sectionsRes.error,
     })
-    return { error: JSON.stringify({ locationsError: locationsRes.error, sectionsError: sectionsRes.error }) }
+    return { error: "Could not load form data." }
   }
-  console.log(`[SERVER] getFormData: Found ${locationsRes.data?.length ?? 0} locations.`)
-  console.log(`[SERVER] getFormData: Found ${sectionsRes.data?.length ?? 0} sections.`)
 
+  // Sanitize data to ensure no complex objects or nulls are passed to the client
   const props: SafeFormProps = {
     brand: {
       id: String(brand.id),
@@ -60,20 +55,27 @@ async function getFormData(brandSlug: string): Promise<(SafeFormProps & { error?
         id: String(item.id),
         name: String(item.name),
         code: item.code ? String(item.code) : null,
-        fieldType: item.field_type ? String(item.field_type) : "text", // Safely default
+        fieldType: item.field_type ? String(item.field_type) : "text",
       })),
     })),
   }
 
-  return { ...props, error: null }
+  return { data: props }
 }
 
 export default async function FormPage({ params }: { params: { brandSlug: string } }) {
-  const formData = await getFormData(params.brandSlug)
+  const { data, error } = await getFormData(params.brandSlug)
 
-  if (formData.error) {
-    return <ErrorDisplay error={formData.error} />
+  if (error) {
+    return <ErrorDisplay message={error} />
+  }
+  if (!data) {
+    notFound()
   }
 
-  return <ClientForm {...formData} />
+  return (
+    <main className="container mx-auto max-w-2xl px-4 py-8">
+      <ClientForm {...data} />
+    </main>
+  )
 }
