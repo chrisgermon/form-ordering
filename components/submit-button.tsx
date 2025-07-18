@@ -1,21 +1,22 @@
-"use client"
+'use client';
 
-import { useFormStatus } from "react-dom"
-import { Button, type ButtonProps } from "@/components/ui/button"
-import { Loader2 } from "lucide-react"
+import { useFormStatus } from 'react-dom';
+import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
 
-interface SubmitButtonProps extends ButtonProps {
-  isPending?: boolean
-}
-
-export function SubmitButton({ children, isPending, ...props }: SubmitButtonProps) {
-  const { pending } = useFormStatus()
-  const showPending = isPending !== undefined ? isPending : pending
+export function SubmitButton() {
+  const { pending } = useFormStatus();
 
   return (
-    <Button type="submit" disabled={showPending} {...props}>
-      {showPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-      {children}
+    <Button type="submit" disabled={pending} className="w-full sm:w-auto">
+      {pending ? (
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Submitting...
+        </>
+      ) : (
+        'Submit Order'
+      )}
     </Button>
-  )
+  );
 }

@@ -1,53 +1,52 @@
 import { createClient } from "@/utils/supabase/server"
-import { notFound } from "next/navigation"
 import { ClientForm } from "./client-form"
+import { ErrorDisplay } from "./error-display"
 import type { SafeFormProps } from "@/lib/types"
 
-// Force the page to be dynamic and not use any cache
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
-export default async function FormPage({ params }: { params: { brandSlug: string } }) {
-  console.log("--- SERVER: STARTING DATA FETCH ---")
+async function getFormData(brandSlug: string): Promise<(SafeFormProps & { error?: null }) | { error: string }> {
+  console.log(`[SERVER] getFormData: Fetching data for slug: ${brandSlug}`)
   const supabase = createClient()
 
-  // 1. Fetch Brand
   const { data: brand, error: brandError } = await supabase
     .from("brands")
     .select("id, name, slug, logo")
-    .eq("slug", params.brandSlug)
+    .eq("slug", brandSlug)
     .single()
 
   if (brandError || !brand) {
-    console.error("SERVER ERROR: Brand not found.", brandError)
-    notFound()
+    console.error(`[SERVER] getFormData: Brand fetch error for slug "${brandSlug}".`, brandError)
+    return { error: JSON.stringify(brandError || "Brand not found.") }
   }
+  console.log(`[SERVER] getFormData: Found brand "${brand.name}" (ID: ${brand.id})`)
 
-  // 2. Fetch Locations, Sections, and Items in parallel
-  const [locationsRes, sectionsRes, itemsRes] = await Promise.all([
+  const [locationsRes, sectionsRes] = await Promise.all([
     supabase.from("clinic_locations").select("id, name, address").eq("brand_id", brand.id).order("name"),
-    supabase.from("product_sections").select("id, title, sort_order").eq("brand_id", brand.id).order("sort_order"),
     supabase
-      .from("product_items")
-      .select("id, section_id, name, code, field_type")
+      .from("product_sections")
+      .select("id, title, sort_order, items:product_items(id, name, code, sort_order)") // Removed field_type to prevent crash
       .eq("brand_id", brand.id)
-      .order("sort_order"),
+      .order("sort_order", { ascending: true })
+      .order("sort_order", { foreignTable: "product_items", ascending: true }),
   ])
 
-  if (locationsRes.error || sectionsRes.error || itemsRes.error) {
-    console.error("SERVER ERROR: Failed to fetch form data.", {
+  if (locationsRes.error || sectionsRes.error) {
+    console.error(`[SERVER] getFormData: Data fetch error for brand "${brand.name}".`, {
       locationsError: locationsRes.error,
       sectionsError: sectionsRes.error,
-      itemsError: itemsRes.error,
     })
-    throw new Error("Could not load form data.")
+    return { error: JSON.stringify({ locationsError: locationsRes.error, sectionsError: sectionsRes.error }) }
   }
+  console.log(`[SERVER] getFormData: Found ${locationsRes.data?.length ?? 0} locations.`)
+  console.log(`[SERVER] getFormData: Found ${sectionsRes.data?.length ?? 0} sections.`)
 
-  // 3. Build the completely safe props for the client component
-  const safeProps: SafeFormProps = {
+  const props: SafeFormProps = {
     brand: {
-      slug: String(brand.slug),
+      id: String(brand.id),
       name: String(brand.name),
+      slug: String(brand.slug),
       logo: brand.logo ? String(brand.logo) : null,
     },
     locations: (locationsRes.data || []).map((loc) => ({
@@ -57,17 +56,24 @@ export default async function FormPage({ params }: { params: { brandSlug: string
     sections: (sectionsRes.data || []).map((sec) => ({
       id: String(sec.id),
       title: String(sec.title),
-      items: (itemsRes.data || [])
-        .filter((item) => String(item.section_id) === String(sec.id))
-        .map((item) => ({
-          id: String(item.id),
-          name: String(item.name),
-          code: item.code ? String(item.code) : null,
-          fieldType: String(item.field_type || "text"),
-        })),
+      items: (sec.items || []).map((item: any) => ({
+        id: String(item.id),
+        name: String(item.name),
+        code: item.code ? String(item.code) : null,
+        fieldType: item.field_type ? String(item.field_type) : "text", // Safely default
+      })),
     })),
   }
 
-  console.log("--- SERVER: DATA PREPARED FOR CLIENT ---")
-  return <ClientForm {...safeProps} />
+  return { ...props, error: null }
+}
+
+export default async function FormPage({ params }: { params: { brandSlug: string } }) {
+  const formData = await getFormData(params.brandSlug)
+
+  if (formData.error) {
+    return <ErrorDisplay error={formData.error} />
+  }
+
+  return <ClientForm {...formData} />
 }

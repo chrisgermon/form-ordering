@@ -1,11 +1,14 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr"
+import { createServerClient as createSupabaseServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { createClient as createJSClient } from "@supabase/supabase-js"
+
+// Re-exporting the function to satisfy the build requirement.
+export const createServerClient = createSupabaseServerClient
 
 export function createClient() {
   const cookieStore = cookies()
 
-  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+  return createSupabaseServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     cookies: {
       get(name: string) {
         return cookieStore.get(name)?.value
