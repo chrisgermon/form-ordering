@@ -78,7 +78,16 @@ export function SubmissionsTable({ submissions, brands, sortKey, sortDirection, 
             {Array.isArray(submissions) && submissions.length > 0 ? (
               submissions.map((submission) => (
                 <TableRow key={submission.id}>
-                  <TableCell>{new Date(submission.created_at).toLocaleString()}</TableCell>
+                  <TableCell>
+                    {new Intl.DateTimeFormat("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                      hour12: true,
+                    }).format(new Date(submission.created_at))}
+                  </TableCell>
                   <TableCell>{getBrandName(submission.brand_id)}</TableCell>
                   <TableCell>{submission.ordered_by || "N/A"}</TableCell>
                   <TableCell>{submission.ordered_by_email || "N/A"}</TableCell>

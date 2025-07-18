@@ -1,128 +1,78 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useState } from "react"
-import { useForm, useFieldArray } from "react-hook-form"
-import { useFormState } from "react-dom"
-import { zodResolver } from "@hookform/resolvers/zod"
-import * as z from "zod"
-import Image from "next/image"
-import { toast } from "sonner"
-import { createBrand, updateBrand } from "./actions"
-import { resolveAssetUrl } from "@/lib/utils"
-import type { Brand } from "@/lib/types"
 
+import { useEffect, useState } from "react"
+import { useActionState } from "react"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { toast } from "sonner"
+import { createBrand, updateBrand } from "./actions"
+import type { Brand, ClinicLocation } from "@/lib/types"
 import { Trash2, PlusCircle } from "lucide-react"
-import { SubmitButton } from "@/components/submit-button"
 
-const formSchema = z.object({
-  name: z.string().min(2, "Brand name must be at least 2 characters."),
-  slug: z.string().min(2, "Slug must be at least 2 characters."),
-  active: z.boolean().default(true),
-  emails: z.array(z.string().email("Invalid email address.")).min(1, "At least one email is required."),
-  clinic_locations: z
-    .array(
-      z.object({
-        name: z.string().min(1, "Location name is required."),
-        address: z.string().min(1, "Address is required."),
-        phone: z.string().optional(),
-        email: z.string().email("Invalid email address.").optional().or(z.literal("")),
-      }),
-    )
-    .optional(),
-  logo: z.any().optional(),
-})
-
-type BrandFormProps = {
-  isOpen: boolean
-  onOpenChange: (isOpen: boolean) => void
-  brand?: Brand | null
-  onFormSuccess: () => void
+interface BrandFormProps {
+  brand?: Brand & { clinic_locations: ClinicLocation[] }
+  children: React.ReactNode
 }
 
-export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandFormProps) {
-  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+const initialState = {
+  message: "",
+  errors: null,
+  success: false,
+}
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: "",
-      slug: "",
-      active: true,
-      emails: [],
-      clinic_locations: [],
-    },
-  })
-
-  const {
-    fields: emailFields,
-    append: appendEmail,
-    remove: removeEmail,
-  } = useFieldArray({
-    control: form.control,
-    name: "emails",
-  })
-
-  const {
-    fields: locationFields,
-    append: appendLocation,
-    remove: removeLocation,
-  } = useFieldArray({
-    control: form.control,
-    name: "clinic_locations",
-  })
-
-  useEffect(() => {
-    if (brand) {
-      form.reset({
-        name: brand.name,
-        slug: brand.slug,
-        active: brand.active,
-        emails: brand.emails || [],
-        clinic_locations: brand.clinic_locations || [],
-      })
-      if (brand.logo) {
-        setLogoPreview(resolveAssetUrl(brand.logo))
-      } else {
-        setLogoPreview(null)
-      }
-    } else {
-      form.reset({
-        name: "",
-        slug: "",
-        active: true,
-        emails: [""],
-        clinic_locations: [],
-      })
-      setLogoPreview(null)
-    }
-  }, [brand, form])
+export function BrandForm({ brand, children }: BrandFormProps) {
+  const [open, setOpen] = useState(false)
+  const [emails, setEmails] = useState<string[]>(brand?.emails || [""])
+  const [locations, setLocations] = useState<Partial<ClinicLocation>[]>(brand?.clinic_locations || [])
+  const [logoPreview, setLogoPreview] = useState<string | null>(brand?.logo || null)
 
   const action = brand ? updateBrand.bind(null, brand.id) : createBrand
-  const [state, formAction] = useFormState(action, { message: "", success: false, errors: null })
+  const [state, formAction] = useActionState(action, initialState)
 
   useEffect(() => {
-    if (state.message) {
-      if (state.success) {
-        toast.success(state.message)
-        onFormSuccess()
-      } else {
-        toast.error(state.message)
-      }
+    if (state.success) {
+      toast.success(state.message)
+      setOpen(false)
+    } else if (state.message) {
+      toast.error(state.message)
     }
-  }, [state, onFormSuccess])
+  }, [state])
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+  const handleEmailChange = (index: number, value: string) => {
+    const newEmails = [...emails]
+    newEmails[index] = value
+    setEmails(newEmails)
+  }
+
+  const addEmailField = () => setEmails([...emails, ""])
+  const removeEmailField = (index: number) => setEmails(emails.filter((_, i) => i !== index))
+
+  const handleLocationChange = (index: number, field: keyof ClinicLocation, value: string) => {
+    const newLocations = [...locations]
+    const locationToUpdate = { ...newLocations[index], [field]: value }
+    newLocations[index] = locationToUpdate
+    setLocations(newLocations)
+  }
+
+  const addLocationField = () => setLocations([...locations, { name: "", address: "" }])
+  const removeLocationField = (index: number) => setLocations(locations.filter((_, i) => i !== index))
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
     if (file) {
-      form.setValue("logo", event.target.files)
       const reader = new FileReader()
       reader.onloadend = () => {
         setLogoPreview(reader.result as string)
@@ -131,224 +81,136 @@ export function BrandForm({ isOpen, onOpenChange, brand, onFormSuccess }: BrandF
     }
   }
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
-    const formData = new FormData()
-    formData.append("name", values.name)
-    formData.append("slug", values.slug)
-    formData.append("active", String(values.active))
-    formData.append("emails", JSON.stringify(values.emails))
-    formData.append("clinic_locations", JSON.stringify(values.clinic_locations || []))
-
-    const logoFiles = form.getValues("logo")
-    if (logoFiles && logoFiles.length > 0) {
-      formData.append("logo", logoFiles[0])
-    }
-
-    formAction(formData)
-  }
-
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent className="sm:max-w-[625px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{brand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
+          <DialogDescription>
+            {brand
+              ? "Update the details for this brand and its locations."
+              : "Fill out the form to create a new brand."}
+          </DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-1">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Brand Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. Focus Radiology" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="slug"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Slug</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. focus-radiology" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+        <form action={formAction}>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="text-right">
+                Name
+              </Label>
+              <Input id="name" name="name" defaultValue={brand?.name} className="col-span-3" />
             </div>
-
-            <FormField
-              control={form.control}
-              name="logo"
-              render={() => (
-                <FormItem>
-                  <FormLabel>Logo</FormLabel>
-                  <FormControl>
-                    <Input type="file" accept="image/*" onChange={handleFileChange} />
-                  </FormControl>
-                  {logoPreview && (
-                    <div className="mt-2">
-                      <Image
-                        src={logoPreview || "/placeholder.svg"}
-                        alt="Logo Preview"
-                        width={100}
-                        height={100}
-                        className="rounded-md border object-contain"
-                      />
-                    </div>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="active"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                  <div className="space-y-0.5">
-                    <FormLabel>Active</FormLabel>
-                  </div>
-                  <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-
-            <div>
-              <Label>Recipient Emails</Label>
-              <div className="space-y-2 mt-2">
-                {emailFields.map((field, index) => (
-                  <FormField
-                    key={field.id}
-                    control={form.control}
-                    name={`emails.${index}`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <div className="flex items-center gap-2">
-                          <FormControl>
-                            <Input {...field} placeholder={`email@domain.com`} />
-                          </FormControl>
-                          <Button type="button" variant="ghost" size="icon" onClick={() => removeEmail(index)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="slug" className="text-right">
+                Slug
+              </Label>
+              <Input id="slug" name="slug" defaultValue={brand?.slug} className="col-span-3" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="logo" className="text-right">
+                Logo
+              </Label>
+              <div className="col-span-3 flex items-center gap-4">
+                <Input id="logo" name="logo" type="file" className="flex-grow" onChange={handleFileChange} />
+                {logoPreview && (
+                  <img
+                    src={logoPreview || "/placeholder.svg"}
+                    alt="Logo Preview"
+                    className="h-10 w-10 object-contain"
                   />
-                ))}
+                )}
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-2 bg-transparent"
-                onClick={() => appendEmail("")}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Add Email
-              </Button>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="active" className="text-right">
+                Active
+              </Label>
+              <Switch id="active" name="active" defaultChecked={brand?.active ?? true} />
             </div>
 
-            <div>
-              <Label>Clinic Locations</Label>
-              <div className="space-y-4 mt-2">
-                {locationFields.map((field, index) => (
-                  <div key={field.id} className="p-4 border rounded-md space-y-2 relative">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-2 right-2"
-                      onClick={() => removeLocation(index)}
-                    >
+            {/* Emails */}
+            <div className="grid grid-cols-4 items-start gap-4">
+              <Label className="text-right pt-2">Notification Emails</Label>
+              <div className="col-span-3 space-y-2">
+                {emails.map((email, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(e) => handleEmailChange(index, e.target.value)}
+                      placeholder="email@example.com"
+                    />
+                    <Button type="button" variant="ghost" size="icon" onClick={() => removeEmailField(index)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
-                    <FormField
-                      control={form.control}
-                      name={`clinic_locations.${index}.name`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Location Name</FormLabel>
-                          <FormControl>
-                            <Input {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`clinic_locations.${index}.address`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Address</FormLabel>
-                          <FormControl>
-                            <Textarea {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`clinic_locations.${index}.phone`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Phone</FormLabel>
-                          <FormControl>
-                            <Input {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name={`clinic_locations.${index}.email`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Email</FormLabel>
-                          <FormControl>
-                            <Input {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
                   </div>
                 ))}
+                <Button type="button" variant="outline" size="sm" onClick={addEmailField}>
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add Email
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-2 bg-transparent"
-                onClick={() => appendLocation({ name: "", address: "", phone: "", email: "" })}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Add Location
-              </Button>
             </div>
+            <input type="hidden" name="emails" value={JSON.stringify(emails.filter(Boolean))} />
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <SubmitButton>{brand ? "Save Changes" : "Create Brand"}</SubmitButton>
-            </DialogFooter>
-          </form>
-        </Form>
+            {/* Clinic Locations */}
+            <div className="grid grid-cols-4 items-start gap-4">
+              <Label className="text-right pt-2">Clinic Locations</Label>
+              <div className="col-span-3 space-y-4">
+                {locations.map((loc, index) => (
+                  <div key={loc.id || index} className="space-y-2 rounded-md border p-4">
+                    <div className="flex justify-end">
+                      <Button type="button" variant="ghost" size="icon" onClick={() => removeLocationField(index)}>
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
+                    <Input type="hidden" name={`locations[${index}][id]`} value={loc.id || ""} />
+                    <div>
+                      <Label>Location Name</Label>
+                      <Input
+                        value={loc.name}
+                        onChange={(e) => handleLocationChange(index, "name", e.target.value)}
+                        placeholder="Main Clinic"
+                      />
+                    </div>
+                    <div>
+                      <Label>Address</Label>
+                      <Input
+                        value={loc.address || ""}
+                        onChange={(e) => handleLocationChange(index, "address", e.target.value)}
+                        placeholder="123 Health St, Suburb"
+                      />
+                    </div>
+                    <div>
+                      <Label>Phone</Label>
+                      <Input
+                        value={loc.phone || ""}
+                        onChange={(e) => handleLocationChange(index, "phone", e.target.value)}
+                        placeholder="02 1234 5678"
+                      />
+                    </div>
+                    <div>
+                      <Label>Email</Label>
+                      <Input
+                        type="email"
+                        value={loc.email || ""}
+                        onChange={(e) => handleLocationChange(index, "email", e.target.value)}
+                        placeholder="location@example.com"
+                      />
+                    </div>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={addLocationField}>
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add Location
+                </Button>
+              </div>
+            </div>
+            <input type="hidden" name="clinic_locations" value={JSON.stringify(locations)} />
+          </div>
+          <DialogFooter>
+            <Button type="submit">Save changes</Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
