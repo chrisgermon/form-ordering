@@ -67,47 +67,57 @@ export interface ActionPayload {
 }
 
 export interface Brand {
-  id: number
+  id: string
   name: string
   slug: string
-  logo_url: string | null
-  primary_color: string | null
-  secondary_color: string | null
-  created_at: string
+  logo: string | null
+  emails?: string[]
+  active?: boolean
+}
+
+export interface ClinicLocation {
+  id: string
+  name: string
+  address: string | null
+  phone?: string | null
+  email?: string | null
+  brand_id: string
 }
 
 export interface ProductSection {
-  id: number
+  id: string
   name: string
   description: string | null
   sort_order: number
-  brand_id: number
+  brand_id: string
 }
 
 export interface ProductItem {
-  id: number
+  id: string
   name: string
   sort_order: number
-  product_section_id: number
-  brand_id: number
+  product_section_id: string
+  brand_id: string
   field_type: string // e.g., 'text', 'number', 'checkbox', 'select'
   options?: ItemOption[]
 }
 
 export interface ItemOption {
-  id: number
+  id: string
   name: string
   sort_order: number
-  product_item_id: number
+  product_item_id: string
 }
 
 export interface Submission {
-  id: number
-  brand_id: number
-  clinic_location_id: number
-  ordered_by: string
-  email_to: string
-  form_data: any // JSONB
+  id: string
+  brand_id: string | null
+  location_id: string | null
+  ordered_by: string | null
+  ordered_by_email: string | null
+  notes: string | null
+  items: any // JSONB
+  status: string | null
   created_at: string
 }
 
