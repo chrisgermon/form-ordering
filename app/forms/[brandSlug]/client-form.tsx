@@ -1,27 +1,25 @@
 "use client"
 
-import React from "react"
+import { useActionState, useEffect } from "react"
 import Image from "next/image"
-import { useFormState } from "react-dom"
-import { toast } from "sonner"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
+import { submitOrder } from "./actions"
+import type { SafeFormProps } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { SubmitButton } from "@/components/submit-button"
 
-import { submitOrder } from "./actions"
-import type { SafeFormProps } from "@/lib/types"
-
 export function ClientForm({ brand, locations, sections }: SafeFormProps) {
   const router = useRouter()
   const initialState = { success: false, message: "", submissionId: null }
-  const [state, formAction] = useFormState(submitOrder, initialState)
+  const [state, formAction] = useActionState(submitOrder, initialState)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (state.message) {
       if (state.success) {
         toast.success(state.message)

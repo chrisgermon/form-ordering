@@ -22,6 +22,31 @@ export type SafeFormProps = {
   }[]
 }
 
+export type SafeBrand = {
+  id: string
+  name: string
+  slug: string
+  logo: string | null
+}
+
+export type SafeLocation = {
+  value: string
+  label: string
+}
+
+export type SafeItem = {
+  id: string
+  name: string
+  code: string | null
+  fieldType?: "text" | "number" | "checkbox"
+}
+
+export type SafeSection = {
+  id: string
+  title: string
+  items: SafeItem[]
+}
+
 // The payload for our server action, constructed from FormData
 export interface ActionPayload {
   brandSlug: string

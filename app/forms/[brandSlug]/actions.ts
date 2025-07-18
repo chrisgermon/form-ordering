@@ -1,16 +1,13 @@
 "use server"
 
 import { createClient } from "@/utils/supabase/server"
+import { revalidatePath } from "next/cache"
 import { sendOrderEmail } from "@/lib/email"
+import { generatePdf } from "@/lib/pdf"
+import type { ActionState } from "@/lib/types"
 
-type FormState = {
-  success: boolean
-  message: string
-  submissionId?: string | null
-}
-
-export async function submitOrder(prevState: FormState, formData: FormData): Promise<FormState> {
-  console.log("[ACTION] submitOrder: Received form data.")
+export async function submitOrder(prevState: ActionState, formData: FormData): Promise<ActionState> {
+  console.log("[ACTION] submitOrder: Received form submission.")
 
   const supabase = createClient()
 
@@ -21,87 +18,101 @@ export async function submitOrder(prevState: FormState, formData: FormData): Pro
   const orderedByEmail = formData.get("ordered_by_email") as string
   const notes = formData.get("notes") as string
 
-  // Basic validation
-  if (!brandId || !locationId || !orderedBy || !orderedByEmail) {
-    return { success: false, message: "Missing required fields." }
+  const items: { id: string; name: string; code: string | null; quantity: number }[] = []
+
+  // 1. Fetch all items for the brand to get their names and codes
+  const { data: allBrandItems, error: itemsError } = await supabase
+    .from("product_items")
+    .select("id, name, code")
+    .eq("brand_id", brandId)
+
+  if (itemsError) {
+    console.error("[ACTION] submitOrder: Error fetching product items.", itemsError)
+    return { success: false, message: "Database error: Could not verify items." }
   }
 
-  const items: { id: string; quantity: number }[] = []
+  // 2. Process form data to build the items list
   for (const [key, value] of formData.entries()) {
     if (key.startsWith("item_")) {
-      const itemId = key.replace("item_", "")
+      const itemId = key.substring(5)
       const quantity = Number(value)
       if (quantity > 0) {
-        items.push({ id: itemId, quantity })
+        const brandItem = allBrandItems.find((i) => String(i.id) === itemId)
+        if (brandItem) {
+          items.push({
+            id: itemId,
+            name: brandItem.name,
+            code: brandItem.code,
+            quantity,
+          })
+        }
       }
     }
   }
 
   if (items.length === 0) {
-    return { success: false, message: "You must order at least one item." }
+    return { success: false, message: "Please order at least one item." }
   }
 
+  // 3. Insert into the database
+  const { data: submission, error: submissionError } = await supabase
+    .from("submissions")
+    .insert({
+      brand_id: brandId,
+      location_id: locationId,
+      ordered_by: orderedBy,
+      ordered_by_email: orderedByEmail,
+      notes: notes,
+      items: items, // Assuming 'items' is a JSONB column
+    })
+    .select("id")
+    .single()
+
+  if (submissionError || !submission) {
+    console.error("[ACTION] submitOrder: Error inserting submission.", submissionError)
+    return { success: false, message: `Database error: ${submissionError?.message || "Failed to save order."}` }
+  }
+
+  console.log(`[ACTION] submitOrder: Successfully saved submission with ID: ${submission.id}`)
+
+  // 4. Generate PDF and send email (asynchronously)
   try {
-    // 1. Insert into submissions table
-    const { data: submissionData, error: submissionError } = await supabase
-      .from("submissions")
-      .insert({
-        brand_id: brandId,
-        location_id: locationId,
-        ordered_by: orderedBy,
-        ordered_by_email: orderedByEmail,
-        notes: notes,
+    const { data: brandData } = await supabase.from("brands").select("name, logo").eq("id", brandId).single()
+    const { data: locationData } = await supabase
+      .from("clinic_locations")
+      .select("name, address")
+      .eq("id", locationId)
+      .single()
+
+    if (brandData && locationData) {
+      const pdfBuffer = await generatePdf({
+        brandName: brandData.name,
+        brandLogo: brandData.logo,
+        locationName: locationData.name,
+        locationAddress: locationData.address,
+        orderedBy,
+        orderedByEmail,
+        notes,
+        items,
+        submissionId: submission.id,
       })
-      .select("id")
-      .single()
 
-    if (submissionError) throw submissionError
-    const submissionId = submissionData.id
-    console.log(`[ACTION] submitOrder: Created submission with ID: ${submissionId}`)
-
-    // 2. Insert into submission_items table
-    const submissionItems = items.map((item) => ({
-      submission_id: submissionId,
-      item_id: item.id,
-      quantity: item.quantity,
-    }))
-
-    const { error: itemsError } = await supabase.from("submission_items").insert(submissionItems)
-
-    if (itemsError) throw itemsError
-    console.log(`[ACTION] submitOrder: Inserted ${submissionItems.length} items for submission ${submissionId}`)
-
-    // 3. Fetch all data needed for the email
-    const { data: fullSubmissionData, error: fetchError } = await supabase
-      .from("submissions")
-      .select(`
-        *,
-        brand:brands(name),
-        location:clinic_locations(name, address),
-        submission_items:submission_items(
-          quantity,
-          item:product_items(name, code)
-        )
-      `)
-      .eq("id", submissionId)
-      .single()
-
-    if (fetchError) throw fetchError
-
-    // 4. Send email
-    await sendOrderEmail(fullSubmissionData)
-    console.log(`[ACTION] submitOrder: Email sent for submission ${submissionId}`)
-
-    return {
-      success: true,
-      message: "Order submitted successfully!",
-      submissionId: submissionId,
+      await sendOrderEmail({
+        brandName: brandData.name,
+        submissionId: submission.id,
+        pdfBuffer,
+      })
+      console.log(`[ACTION] submitOrder: Email sent for submission ID: ${submission.id}`)
     }
-  } catch (error: any) {
-    console.error("[ACTION] submitOrder: An error occurred:", error)
-    return {
-      success: false,
-      message: `Failed to submit order: ${error.message}`,
-    }
+  } catch (err) {
+    console.error("[ACTION] submitOrder: Failed to generate PDF or send email.", err)
+    // Don't fail the whole request if this part fails, just log it.
+  }
+
+  revalidatePath(`/forms/${brandSlug}`)
+  return {
+    success: true,
+    message: "Order submitted successfully!",
+    submissionId: submission.id,
   }
 }
