@@ -1,66 +1,46 @@
-import { AdminDashboard } from "./AdminDashboard"
-import { getBrands, getSubmissions, getFiles } from "./data-access"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
-import type { Brand, FileRecord, Submission } from "@/lib/types"
 import { createClient } from "@/utils/supabase/server"
+import AdminDashboard from "./AdminDashboard"
+import type { Brand, Submission, File } from "@/lib/types"
 
-export const revalidate = 0
-
-async function getDashboardData() {
+async function getBrands(): Promise<Brand[]> {
   const supabase = createClient()
-  let brands: Brand[] = []
-  let files: FileRecord[] = []
-  let submissions: Submission[] = []
-  let error: string | null = null
-
-  try {
-    const { data: brandsData, error: brandsError } = await supabase
-      .from("brands")
-      .select("id, name, slug, logo, active, emails, clinic_locations")
-      .order("name", { ascending: true })
-
-    if (brandsError) throw brandsError
-    brands = brandsData || []
-
-    const { data: filesData, error: filesError } = await supabase
-      .from("files")
-      .select("*")
-      .order("uploaded_at", { ascending: false })
-
-    if (filesError) throw filesError
-    files = filesData || []
-
-    const { data: submissionsData, error: submissionsError } = await supabase
-      .from("submissions")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100)
-
-    if (submissionsError) throw submissionsError
-    submissions = submissionsData || []
-  } catch (e: any) {
-    console.error("Failed to load dashboard data:", e)
-    error = `Failed to load dashboard data: ${e.message}`
+  const { data, error } = await supabase.from("brands").select("*").order("name")
+  if (error) {
+    console.error("Error fetching brands:", error)
+    return []
   }
+  return (data as Brand[]) || []
+}
 
-  return { brands, files, submissions, error }
+async function getSubmissions(): Promise<Submission[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from("submissions")
+    .select("*, brands(name, slug)")
+    .order("created_at", { ascending: false })
+  if (error) {
+    console.error("Error fetching submissions:", error)
+    return []
+  }
+  // The type assertion is necessary because Supabase's auto-generated types
+  // might not perfectly match the nested structure we're selecting.
+  return (data as unknown as Submission[]) || []
+}
+
+async function getFiles(): Promise<File[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase.from("files").select("*").order("created_at", { ascending: false })
+  if (error) {
+    console.error("Error fetching files:", error)
+    return []
+  }
+  return (data as File[]) || []
 }
 
 export default async function AdminPage() {
-  const [brands, submissions, files] = await Promise.all([getBrands(), getSubmissions(), getFiles()])
+  const brands = await getBrands()
+  const submissions = await getSubmissions()
+  const files = await getFiles()
 
-  if (brands.error || submissions.error || files.error) {
-    return (
-      <div className="container mx-auto p-4 md:p-8">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{brands.error || submissions.error || files.error}</AlertDescription>
-        </Alert>
-      </div>
-    )
-  }
-
-  return <AdminDashboard brands={brands} submissions={submissions} files={files} />
+  return <AdminDashboard initialBrands={brands} initialSubmissions={submissions} initialFiles={files} />
 }
