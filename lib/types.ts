@@ -135,6 +135,7 @@ export interface Database {
           id: string
           name: string
           section_id: string | null
+          field_type: string
         }
         Insert: {
           code?: string | null
@@ -143,6 +144,7 @@ export interface Database {
           id?: string
           name: string
           section_id?: string | null
+          field_type?: string
         }
         Update: {
           code?: string | null
@@ -151,6 +153,7 @@ export interface Database {
           id?: string
           name?: string
           section_id?: string | null
+          field_type?: string
         }
         Relationships: [
           {
@@ -341,12 +344,6 @@ export type ActionState = {
   success: boolean
   message: string
   submissionId?: string
-}
-
-export type FormState = {
-  message: string
-  errors?: { [key: string]: string[] } | null
-  isSuccess: boolean
 }
 
 // Data for PDF generation
