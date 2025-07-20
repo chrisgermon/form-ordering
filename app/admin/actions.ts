@@ -6,6 +6,7 @@ import { del, put } from "@vercel/blob"
 import { z } from "zod"
 import { sendCompletionEmail } from "@/lib/email"
 
+// --- Existing actions from your file ---
 const BrandSchema = z.object({
   name: z.string().min(1, "Brand name is required"),
   slug: z.string().min(1, "Slug is required"),
@@ -224,46 +225,31 @@ export async function fetchBrandData(slug: string) {
 
 export async function completeSubmission(submissionId: string) {
   const supabase = createClient()
+  try {
+    const { error } = await supabase
+      .from("submissions")
+      .update({ status: "Completed" })
+      .eq("id", submissionId)
 
-  // 1. Fetch submission data to get user email and brand name
-  const { data: submission, error: fetchError } = await supabase
-    .from("submissions")
-    .select(
-      `
-      id,
-      ordered_by_email,
-      brands ( name )
-    `,
-    )
-    .eq("id", submissionId)
-    .single()
+    if (error) throw error
 
-  if (fetchError || !submission) {
-    return { success: false, message: "Failed to find submission." }
+    revalidatePath("/admin")
+    return { success: true, message: "Submission marked as complete." }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return { success: false, message: `Failed to complete submission: ${errorMessage}` }
+  }
+}
+
+export async function clearAllSubmissions() {
+  const supabase = createClient()
+  const { error } = await supabase.rpc("truncate_submissions_and_related")
+
+  if (error) {
+    console.error("Error clearing submissions:", error)
+    return { success: false, message: `Failed to clear submissions: ${error.message}` }
   }
 
-  // 2. Update submission status
-  const { error: updateError } = await supabase
-    .from("submissions")
-    .update({ status: "Completed" })
-    .eq("id", submissionId)
-
-  if (updateError) {
-    return { success: false, message: `Database Error: ${updateError.message}` }
-  }
-
-  // 3. Send completion email
-  if (submission.ordered_by_email && submission.brands) {
-    try {
-      const brandName = Array.isArray(submission.brands) ? submission.brands[0]?.name : submission.brands.name
-      await sendCompletionEmail(submission.ordered_by_email, brandName || "Your Brand", submission.id)
-    } catch (emailError) {
-      console.error("Failed to send completion email:", emailError)
-      // Don't fail the whole operation if email fails, but log it.
-    }
-  }
-
-  // 4. Revalidate path to refresh the admin dashboard
   revalidatePath("/admin")
-  return { success: true, message: "Submission marked as complete." }
+  return { success: true, message: "All submissions have been cleared." }
 }
