@@ -7,27 +7,36 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { toast } from "sonner"
-import type { Submission, Brand } from "@/lib/types"
+import type { Submission } from "@/lib/types"
 import { completeSubmission } from "./actions"
 
 type SortKey = keyof Submission | "brand_name"
 type SortDirection = "asc" | "desc"
 
+// The submission type from the API will now include brand_name directly
+type SubmissionWithBrandName = Submission & {
+  brand_name: string
+}
+
 interface SubmissionsTableProps {
-  submissions: Submission[]
-  brands: Brand[]
+  submissions: SubmissionWithBrandName[]
   sortKey: SortKey
   sortDirection: SortDirection
   onSort: (key: SortKey) => void
 }
 
-export function SubmissionsTable({ submissions, brands, sortKey, sortDirection, onSort }: SubmissionsTableProps) {
-  const [isPending, startTransition] = useTransition()
+// Move options outside the component for clarity and to reduce JSX complexity
+const dateTimeFormatOptions: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+}
 
-  const getBrandName = (brandId: string | null) => {
-    if (!brandId || !Array.isArray(brands)) return "N/A"
-    return brands.find((b) => b.id === brandId)?.name || "Unknown Brand"
-  }
+export function SubmissionsTable({ submissions, sortKey, sortDirection, onSort }: SubmissionsTableProps) {
+  const [isPending, startTransition] = useTransition()
 
   const handleComplete = (submissionId: string) => {
     startTransition(async () => {
@@ -79,16 +88,9 @@ export function SubmissionsTable({ submissions, brands, sortKey, sortDirection, 
               submissions.map((submission) => (
                 <TableRow key={submission.id}>
                   <TableCell>
-                    {new Intl.DateTimeFormat("en-US", {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                      hour12: true,
-                    }).format(new Date(submission.created_at))}
+                    {new Intl.DateTimeFormat("en-US", dateTimeFormatOptions).format(new Date(submission.created_at))}
                   </TableCell>
-                  <TableCell>{getBrandName(submission.brand_id)}</TableCell>
+                  <TableCell>{submission.brand_name}</TableCell>
                   <TableCell>{submission.ordered_by || "N/A"}</TableCell>
                   <TableCell>{submission.ordered_by_email || "N/A"}</TableCell>
                   <TableCell>

@@ -13,14 +13,13 @@ export async function GET() {
         id,
         created_at,
         ordered_by,
-        email,
+        ordered_by_email,
         status,
-        pdf_url,
-        ip_address,
+        brand_id,
         brands (
           name
         )
-      `,
+        `,
       )
       .order("created_at", { ascending: false })
 
@@ -29,7 +28,14 @@ export async function GET() {
       throw new Error(error.message)
     }
 
-    return NextResponse.json(data)
+    // The data from the query has brands as an object, e.g., { name: 'Brand Name' }
+    // We need to flatten this for easier use in the client component.
+    const formattedData = data?.map((s) => ({
+      ...s,
+      brand_name: s.brands?.name || "Unknown Brand",
+    }))
+
+    return NextResponse.json(formattedData)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
     return NextResponse.json({ error: "Failed to fetch submissions", details: errorMessage }, { status: 500 })
