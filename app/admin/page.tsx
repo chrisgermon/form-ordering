@@ -4,18 +4,27 @@ import { redirect } from "next/navigation"
 
 export default async function AdminPage() {
   const supabase = createClient()
-  const { data, error } = await supabase.auth.getUser()
 
-  if (error || !data?.user) {
-    redirect("/login")
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return redirect("/login")
   }
 
-  const { data: orders } = await supabase
-    .from("orders")
-    .select(`*, brands(name)`)
-    .order("submitted_at", { ascending: false })
+  const { data: brands, error: brandsError } = await supabase.from("brands").select("*")
 
-  const { data: brands } = await supabase.from("brands").select("*")
+  const { data: submissions, error: submissionsError } = await supabase
+    .from("submissions")
+    .select("*, brand:brands(*)")
+    .order("created_at", { ascending: false })
 
-  return <AdminDashboard orders={orders ?? []} brands={brands ?? []} user={data.user} />
+  if (brandsError || submissionsError) {
+    console.error(brandsError || submissionsError)
+    // Handle error appropriately
+    return <div>Error loading data.</div>
+  }
+
+  return <AdminDashboard user={user} brands={brands || []} submissions={submissions || []} />
 }
