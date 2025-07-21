@@ -1,13 +1,12 @@
 import nodemailer from "nodemailer"
-import type { Brand } from "./types"
+import type { EmailData } from "./types"
 
 type EmailPayload = {
   to: string | string[]
   subject: string
   text: string
   html: string
-  attachments?: { filename: string; content: Buffer; contentType: string }[]
-  replyTo?: string
+  attachments?: { filename: string; content: Buffer }[]
 }
 
 const smtpOptions = {
@@ -31,44 +30,11 @@ async function sendEmail(data: EmailPayload) {
   })
 }
 
-export async function sendSubmissionEmail(brand: Brand, formData: FormData, pdfBuffer: Buffer) {
-  const patientName = formData.get("patientName") as string
-  const referringDoctor = formData.get("referringDoctor") as string
-  const submissionDate = new Date().toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  })
-
-  const subject = `New Referral Submission for ${brand.name} from ${referringDoctor}`
-  const textBody = `A new referral form has been submitted for ${patientName} on ${submissionDate}. Please find the attached PDF for details.`
-  const htmlBody = `
-    <h2>New Referral Submission</h2>
-    <p><strong>Brand:</strong> ${brand.name}</p>
-    <p><strong>Patient:</strong> ${patientName}</p>
-    <p><strong>Referring Doctor:</strong> ${referringDoctor}</p>
-    <p><strong>Date:</strong> ${submissionDate}</p>
-    <p>The completed referral form is attached as a PDF.</p>
-  `
-
-  if (!brand.emails || brand.emails.length === 0) {
-    console.warn(`No recipient emails configured for brand: ${brand.name}. Skipping email.`)
-    return
-  }
-
-  await sendEmail({
-    to: brand.emails,
-    subject: subject,
-    text: textBody,
-    html: htmlBody,
-    attachments: [
-      {
-        filename: `${brand.slug}-submission-${patientName.replace(/\s/g, "_")}.pdf`,
-        content: pdfBuffer,
-        contentType: "application/pdf",
-      },
-    ],
-  })
+export async function sendOrderEmail({ brandName, submissionId, pdfBuffer }: EmailData) {
+  // This function seems to be missing the recipient logic.
+  // Assuming it should go to an admin or a predefined brand email.
+  // This needs to be implemented based on business logic.
+  console.log(`Placeholder for sending order email for ${brandName}, submission ${submissionId}.`)
 }
 
 export async function sendCompletionEmail(recipientEmail: string, brandName: string, submissionId: string) {

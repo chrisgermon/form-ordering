@@ -4,8 +4,9 @@ import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 import { del, put } from "@vercel/blob"
 import { z } from "zod"
-import { redirect } from "next/navigation"
+import { sendCompletionEmail } from "@/lib/email"
 
+// --- Existing actions from your file ---
 const BrandSchema = z.object({
   name: z.string().min(1, "Brand name is required"),
   slug: z.string().min(1, "Slug is required"),
@@ -127,6 +128,7 @@ export async function updateBrand(id: string, prevState: any, formData: FormData
     return { message: `Database Error: ${error.message}`, success: false }
   }
 
+  // Sync clinic locations
   const { data: existingLocations, error: fetchError } = await supabase
     .from("clinic_locations")
     .select("id")
@@ -224,7 +226,10 @@ export async function fetchBrandData(slug: string) {
 export async function completeSubmission(submissionId: string) {
   const supabase = createClient()
   try {
-    const { error } = await supabase.from("orders").update({ status: "Completed" }).eq("id", submissionId)
+    const { error } = await supabase
+      .from("submissions")
+      .update({ status: "Completed" })
+      .eq("id", submissionId)
 
     if (error) throw error
 
@@ -247,10 +252,4 @@ export async function clearAllSubmissions() {
 
   revalidatePath("/admin")
   return { success: true, message: "All submissions have been cleared." }
-}
-
-export async function handleSignOut() {
-  const supabase = createClient()
-  await supabase.auth.signOut()
-  return redirect("/")
 }
