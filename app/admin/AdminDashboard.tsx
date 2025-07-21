@@ -1,74 +1,56 @@
 "use client"
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { PlusCircle } from "lucide-react"
 import { BrandGrid } from "./BrandGrid"
-import { BrandForm } from "./BrandForm"
-import { SubmissionsTable } from "./SubmissionsTable"
 import { FileManager } from "./FileManager"
-import type { Brand, Submission, FileRecord } from "@/lib/types"
+import { OrdersTable } from "./OrdersTable"
+import type { Brand, OrderWithBrand } from "@/lib/types"
+import type { User } from "@supabase/supabase-js"
+import { Button } from "@/components/ui/button"
+import { LogOut } from "lucide-react"
+import { handleSignOut } from "./actions"
 
-interface AdminDashboardProps {
+export default function AdminDashboard({
+  orders,
+  brands,
+  user,
+}: {
+  orders: OrderWithBrand[]
   brands: Brand[]
-  submissions: Submission[]
-  files: FileRecord[]
-}
-
-export function AdminDashboard({ brands, submissions, files }: AdminDashboardProps) {
-  const [isFormOpen, setIsFormOpen] = useState(false)
-  const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
-
-  const handleAddNewBrand = () => {
-    setSelectedBrand(null)
-    setIsFormOpen(true)
-  }
-
-  const handleEditBrand = (brand: Brand) => {
-    setSelectedBrand(brand)
-    setIsFormOpen(true)
-  }
-
-  const handleCloseForm = () => {
-    setIsFormOpen(false)
-    setSelectedBrand(null)
-  }
-
+  user: User
+}) {
   return (
-    <div className="space-y-6">
-      <Tabs defaultValue="brands">
-        <div className="flex justify-between items-center">
-          <TabsList>
+    <div className="flex min-h-screen w-full flex-col">
+      <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 justify-between">
+        <h1 className="text-xl font-bold">Admin Dashboard</h1>
+        <div className="flex items-center gap-4">
+          <span>{user.email}</span>
+          <form action={handleSignOut}>
+            <Button variant="outline" size="icon">
+              <LogOut className="h-5 w-5" />
+              <span className="sr-only">Sign Out</span>
+            </Button>
+          </form>
+        </div>
+      </header>
+      <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
+        <Tabs defaultValue="brands">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="brands">Brands</TabsTrigger>
-            <TabsTrigger value="submissions">Submissions</TabsTrigger>
+            <TabsTrigger value="orders">Orders</TabsTrigger>
             <TabsTrigger value="files">File Manager</TabsTrigger>
           </TabsList>
-          <Button onClick={handleAddNewBrand}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Add New Brand
-          </Button>
-        </div>
-        <TabsContent value="brands">
-          <BrandGrid brands={brands} onEditBrand={handleEditBrand} />
-        </TabsContent>
-        <TabsContent value="submissions">
-          <SubmissionsTable submissions={submissions} />
-        </TabsContent>
-        <TabsContent value="files">
-          <FileManager files={files} brands={brands} />
-        </TabsContent>
-      </Tabs>
-
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{selectedBrand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
-          </DialogHeader>
-          <BrandForm brand={selectedBrand} onClose={handleCloseForm} />
-        </DialogContent>
-      </Dialog>
+          <TabsContent value="brands">
+            <BrandGrid brands={brands} />
+          </TabsContent>
+          <TabsContent value="orders">
+            <OrdersTable orders={orders} />
+          </TabsContent>
+          <TabsContent value="files">
+            <FileManager />
+          </TabsContent>
+        </Tabs>
+      </main>
     </div>
   )
 }

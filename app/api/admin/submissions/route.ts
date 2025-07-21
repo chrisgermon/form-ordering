@@ -7,7 +7,7 @@ export async function GET() {
   const supabase = createAdminClient()
   try {
     const { data, error } = await supabase
-      .from("submissions")
+      .from("orders")
       .select(
         `
         id,
@@ -28,8 +28,6 @@ export async function GET() {
       throw new Error(error.message)
     }
 
-    // The data from the query has brands as an object, e.g., { name: 'Brand Name' }
-    // We need to flatten this for easier use in the client component.
     const formattedData = data?.map((s) => ({
       ...s,
       brand_name: s.brands?.name || "Unknown Brand",

@@ -2,10 +2,11 @@
 
 import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
-import { z } from "zod"
+import { redirect } from "next/navigation"
 import { generatePdf } from "@/lib/pdf"
 import { sendOrderEmail } from "@/lib/email"
 import type { ActionState, PdfData } from "@/lib/types"
+import { z } from "zod"
 
 const formSchema = z.object({
   brandId: z.string().uuid(),
@@ -30,12 +31,7 @@ export async function submitOrder(prevState: ActionState, formData: FormData): P
     }
   }
 
-  const brandId = parsed.data.brandId
-  const brandSlug = parsed.data.brandSlug
-  const ordered_by = parsed.data.ordered_by
-  const ordered_by_email = parsed.data.ordered_by_email
-  const location_id = parsed.data.location_id
-  const notes = parsed.data.notes
+  const { brandId, brandSlug, ordered_by, ordered_by_email, location_id, notes } = parsed.data
 
   const items: Record<string, number> = {}
   for (const [key, value] of formData.entries()) {
@@ -53,40 +49,31 @@ export async function submitOrder(prevState: ActionState, formData: FormData): P
   }
 
   try {
-    const submissionInsert = {
-      brand_id: brandId,
-      location_id: location_id,
-      ordered_by: ordered_by,
-      ordered_by_email: ordered_by_email,
-      notes: notes,
-      status: "New",
-    }
-
     const { data: submission, error: submissionError } = await supabase
-      .from("submissions")
-      .insert(submissionInsert)
+      .from("orders")
+      .insert({
+        brand_id: brandId,
+        location_id: location_id,
+        ordered_by: ordered_by,
+        ordered_by_email: ordered_by_email,
+        notes: notes,
+        status: "New",
+      })
       .select()
       .single()
 
-    if (submissionError) {
-      throw submissionError
-    }
+    if (submissionError) throw submissionError
 
-    const submissionItems = Object.entries(items).map(([product_item_id, quantity]) => {
-      return {
-        submission_id: submission.id,
-        product_item_id: product_item_id,
-        quantity: quantity,
-      }
-    })
+    const submissionItems = Object.entries(items).map(([product_item_id, quantity]) => ({
+      submission_id: submission.id,
+      product_item_id,
+      quantity,
+    }))
 
-    const { error: itemsError } = await supabase.from("submission_items").insert(submissionItems)
+    const { error: itemsError } = await supabase.from("order_items").insert(submissionItems)
 
-    if (itemsError) {
-      throw itemsError
-    }
+    if (itemsError) throw itemsError
 
-    // Fetch data for PDF and Email
     const { data: brandData } = await supabase.from("brands").select("name, logo, emails").eq("id", brandId).single()
     const { data: locationData } = await supabase
       .from("clinic_locations")
@@ -120,23 +107,17 @@ export async function submitOrder(prevState: ActionState, formData: FormData): P
 
     const pdfBuffer = await generatePdf(pdfData)
 
-    const emailPayload = {
+    await sendOrderEmail({
       brandName: brandData.name,
       submissionId: submission.id,
-      pdfBuffer: pdfBuffer,
+      pdfBuffer,
       to: brandData.emails || [],
       replyTo: ordered_by_email,
-    }
-    await sendOrderEmail(emailPayload)
+    })
 
     revalidatePath("/admin")
     revalidatePath(`/forms/${brandSlug}`)
-
-    return {
-      success: true,
-      message: "Your order has been submitted successfully.",
-      submissionId: submission.id,
-    }
+    redirect(`/forms/${brandSlug}/success?submissionId=${submission.id}`)
   } catch (error) {
     console.error("Error submitting order:", error)
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
