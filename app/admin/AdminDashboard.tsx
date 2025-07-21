@@ -9,6 +9,7 @@ import { AdminDashboardHeader } from "./AdminDashboardHeader"
 import { BrandForm } from "./BrandForm"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import type { Brand, Submission, FileRecord } from "@/lib/types"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type SubmissionWithBrandName = Submission & {
   brand_name: string
@@ -91,8 +92,26 @@ export function AdminDashboard() {
     fetchData() // Refetch data when form is closed
   }
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+          <div className="flex gap-2">
+            <Skeleton className="h-10 w-36" />
+            <Skeleton className="h-10 w-48" />
+          </div>
+        </div>
+        <Skeleton className="h-10 w-96" />
+        <div className="border rounded-lg p-4">
+          <Skeleton className="h-96 w-full" />
+        </div>
+      </div>
+    )
+  }
+
   if (error) {
-    return <div className="text-red-500">Error: {error}</div>
+    return <div className="text-red-500 text-center p-4">Error: {error}</div>
   }
 
   return (
