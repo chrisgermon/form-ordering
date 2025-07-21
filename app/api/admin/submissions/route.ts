@@ -1,10 +1,10 @@
-import { createAdminClient } from "@/utils/supabase/server"
+import { createClient } from "@/utils/supabase/server"
 import { NextResponse } from "next/server"
 
 export const revalidate = 0
 
 export async function GET() {
-  const supabase = createAdminClient()
+  const supabase = createClient()
   try {
     const { data, error } = await supabase
       .from("submissions")
@@ -15,11 +15,10 @@ export async function GET() {
         ordered_by,
         ordered_by_email,
         status,
-        brand_id,
         brands (
           name
         )
-        `,
+      `,
       )
       .order("created_at", { ascending: false })
 
@@ -28,14 +27,20 @@ export async function GET() {
       throw new Error(error.message)
     }
 
-    // The data from the query has brands as an object, e.g., { name: 'Brand Name' }
-    // We need to flatten this for easier use in the client component.
     const formattedData = data?.map((s) => ({
       ...s,
       brand_name: s.brands?.name || "Unknown Brand",
     }))
 
-    return NextResponse.json(formattedData)
+    return new NextResponse(JSON.stringify(formattedData || []), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
     return NextResponse.json({ error: "Failed to fetch submissions", details: errorMessage }, { status: 500 })
