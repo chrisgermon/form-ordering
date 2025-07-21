@@ -23,19 +23,20 @@ interface SubmissionsTableProps {
   sortKey: SortKey
   sortDirection: SortDirection
   onSort: (key: SortKey) => void
+  isLoading: boolean
 }
 
-// Move options outside the component for clarity and to reduce JSX complexity
+// Simplified and corrected date formatting options
 const dateTimeFormatOptions: Intl.DateTimeFormatOptions = {
   year: "numeric",
   month: "short",
   day: "numeric",
-  hour: "numeric",
+  hour: "2-digit",
   minute: "2-digit",
   hour12: true,
 }
 
-export function SubmissionsTable({ submissions, sortKey, sortDirection, onSort }: SubmissionsTableProps) {
+export function SubmissionsTable({ submissions, sortKey, sortDirection, onSort, isLoading }: SubmissionsTableProps) {
   const [isPending, startTransition] = useTransition()
 
   const handleComplete = (submissionId: string) => {
@@ -43,6 +44,7 @@ export function SubmissionsTable({ submissions, sortKey, sortDirection, onSort }
       const result = await completeSubmission(submissionId)
       if (result.success) {
         toast.success(result.message)
+        // Here you might want to trigger a refetch as well
       } else {
         toast.error(result.message)
       }
@@ -84,7 +86,13 @@ export function SubmissionsTable({ submissions, sortKey, sortDirection, onSort }
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Array.isArray(submissions) && submissions.length > 0 ? (
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center">
+                  Loading submissions...
+                </TableCell>
+              </TableRow>
+            ) : Array.isArray(submissions) && submissions.length > 0 ? (
               submissions.map((submission) => (
                 <TableRow key={submission.id}>
                   <TableCell>
