@@ -1,80 +1,27 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import type { User } from "@supabase/supabase-js"
+import type { Brand, Submission } from "@/lib/types"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { handleSignOut } from "./actions"
 import { BrandGrid } from "./BrandGrid"
 import { SubmissionsTable } from "./SubmissionsTable"
-import { FileManager } from "./FileManager"
-import { AdminDashboardHeader } from "./AdminDashboardHeader"
 import { BrandForm } from "./BrandForm"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import type { Brand, Submission, FileRecord } from "@/lib/types"
-import { Skeleton } from "@/components/ui/skeleton"
+import { PlusCircle } from "lucide-react"
 
-type SubmissionWithBrandName = Submission & {
-  brand_name: string
+interface AdminDashboardProps {
+  user: User
+  brands: Brand[]
+  submissions: Submission[]
 }
 
-export function AdminDashboard() {
-  const [brands, setBrands] = useState<Brand[]>([])
-  const [submissions, setSubmissions] = useState<SubmissionWithBrandName[]>([])
-  const [files, setFiles] = useState<FileRecord[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const [sortKey, setSortKey] = useState<keyof SubmissionWithBrandName | "brand_name">("created_at")
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
-
+export default function AdminDashboard({ user, brands, submissions }: AdminDashboardProps) {
+  const router = useRouter()
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
-
-  const fetchData = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const [brandsRes, submissionsRes, filesRes] = await Promise.all([
-        fetch("/api/admin/brands"),
-        fetch("/api/admin/submissions"),
-        fetch("/api/admin/files"),
-      ])
-
-      if (!brandsRes.ok || !submissionsRes.ok || !filesRes.ok) {
-        throw new Error("Failed to fetch dashboard data")
-      }
-
-      const brandsData = await brandsRes.json()
-      const submissionsData = await submissionsRes.json()
-      const filesData = await filesRes.json()
-
-      setBrands(brandsData)
-      setSubmissions(submissionsData)
-      setFiles(filesData)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An unknown error occurred")
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
-
-  const handleSort = (key: keyof SubmissionWithBrandName | "brand_name") => {
-    const direction = sortKey === key && sortDirection === "desc" ? "asc" : "desc"
-    setSortKey(key)
-    setSortDirection(direction)
-
-    const sortedSubmissions = [...submissions].sort((a, b) => {
-      const aValue = a[key]
-      const bValue = b[key]
-
-      if (aValue < bValue) return direction === "asc" ? -1 : 1
-      if (aValue > bValue) return direction === "asc" ? 1 : -1
-      return 0
-    })
-    setSubmissions(sortedSubmissions)
-  }
 
   const handleAddNewBrand = () => {
     setSelectedBrand(null)
@@ -89,65 +36,49 @@ export function AdminDashboard() {
   const handleCloseForm = () => {
     setIsFormOpen(false)
     setSelectedBrand(null)
-    fetchData() // Refetch data when form is closed
-  }
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <div className="flex gap-2">
-            <Skeleton className="h-10 w-36" />
-            <Skeleton className="h-10 w-48" />
-          </div>
-        </div>
-        <Skeleton className="h-10 w-96" />
-        <div className="border rounded-lg p-4">
-          <Skeleton className="h-96 w-full" />
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return <div className="text-red-500 text-center p-4">Error: {error}</div>
+    router.refresh() // Refresh data when form is closed
   }
 
   return (
-    <div className="space-y-6">
-      <AdminDashboardHeader onSubmissionsCleared={fetchData} onAddNewBrand={handleAddNewBrand} />
-      <Tabs defaultValue="brands">
-        <TabsList>
-          <TabsTrigger value="brands">Brands</TabsTrigger>
-          <TabsTrigger value="submissions">Submissions</TabsTrigger>
-          <TabsTrigger value="files">File Manager</TabsTrigger>
-        </TabsList>
-        <TabsContent value="brands">
-          <BrandGrid brands={brands} onEditBrand={handleEditBrand} />
-        </TabsContent>
-        <TabsContent value="submissions">
-          <SubmissionsTable
-            submissions={submissions}
-            sortKey={sortKey}
-            sortDirection={sortDirection}
-            onSort={handleSort}
-            isLoading={isLoading}
-          />
-        </TabsContent>
-        <TabsContent value="files">
-          <FileManager files={files} brands={brands} />
-        </TabsContent>
-      </Tabs>
+    <>
+      <div className="flex flex-col min-h-screen">
+        <header className="bg-gray-900 text-white py-4 px-6 flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+          <div className="flex items-center gap-4">
+            <span>{user.email}</span>
+            <form action={handleSignOut}>
+              <Button variant="outline" size="sm">
+                Sign Out
+              </Button>
+            </form>
+          </div>
+        </header>
+        <main className="flex-1 p-6 grid gap-6">
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Brands</h2>
+              <Button onClick={handleAddNewBrand}>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add New Brand
+              </Button>
+            </div>
+            <BrandGrid brands={brands} onEditBrand={handleEditBrand} onBrandChange={() => router.refresh()} />
+          </section>
+          <section>
+            <h2 className="text-xl font-bold mb-4">Recent Submissions</h2>
+            <SubmissionsTable submissions={submissions} />
+          </section>
+        </main>
+      </div>
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>{selectedBrand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
           </DialogHeader>
           <BrandForm brand={selectedBrand} onClose={handleCloseForm} />
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   )
 }

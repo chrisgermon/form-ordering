@@ -4,35 +4,36 @@ import type { SafeFormProps } from "@/lib/types"
 import ErrorDisplay from "./error-display"
 
 async function getFormData(slug: string) {
-  const supabase = createClient();
+  const supabase = createClient()
 
   const { data: brand, error: brandError } = await supabase
     .from("brands")
     .select("id, name, slug, logo")
     .eq("slug", slug)
-    .single();
+    .single()
 
   if (brandError || !brand) {
-    console.error(`[SERVER] getFormData: Brand not found for slug: ${slug}`, brandError);
-    return { error: "Brand not found" };
+    console.error(`[SERVER] getFormData: Brand not found for slug: ${slug}`, brandError)
+    return { error: "Brand not found" }
   }
 
   const [locationsRes, sectionsRes] = await Promise.all([
     supabase.from("clinic_locations").select("id, name, address").eq("brand_id", brand.id),
     supabase
       .from("product_sections")
-      .select("id, title, items:product_items(id, name, code)") // Removed field_type
+      .select("id, title, items:product_items(id, name, code, field_type)")
       .eq("brand_id", brand.id)
-      .order("display_order", { ascending: true })
-      .order("display_order", { foreignTable: "product_items", ascending: true }),
-  ]);
+      .order("sort_order", { ascending: true })
+      .order("sort_order", { foreignTable: "product_items", ascending: true }),
+  ])
 
   if (locationsRes.error || sectionsRes.error) {
     console.error(`[SERVER] getFormData: Data fetching error for slug: ${slug}`, {
       locationsError: locationsRes.error,
       sectionsError: sectionsRes.error,
-    });
-    return { error: "Could not load form data." };
+    })
+    // Return the specific database error for easier debugging
+    return { error: sectionsRes.error?.message || locationsRes.error?.message || "Could not load form data." }
   }
 
   const props: SafeFormProps = {
@@ -53,19 +54,19 @@ async function getFormData(slug: string) {
         id: String(item.id),
         name: String(item.name),
         code: item.code ? String(item.code) : null,
-        fieldType: "number", // Set default value here
+        fieldType: item.field_type ? String(item.field_type) : "number", // Use fetched field_type
       })),
     })),
-  };
+  }
 
-  return { data: props };
+  return { data: props }
 }
 
 export default async function FormPage({ params }: { params: { brandSlug: string } }) {
-  const { data, error } = await getFormData(params.brandSlug);
+  const { data, error } = await getFormData(params.brandSlug)
 
   if (error || !data) {
-    return <ErrorDisplay message={error || "An unknown error occurred."} />;
+    return <ErrorDisplay message={error || "An unknown error occurred."} />
   }
 
   return (
@@ -74,5 +75,5 @@ export default async function FormPage({ params }: { params: { brandSlug: string
         <ClientForm {...data} />
       </div>
     </div>
-  );
+  )
 }

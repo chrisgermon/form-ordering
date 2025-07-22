@@ -4,6 +4,7 @@ import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 import { del, put } from "@vercel/blob"
 import { z } from "zod"
+import { redirect } from "next/navigation"
 
 const BrandSchema = z.object({
   name: z.string().min(1, "Brand name is required"),
@@ -126,7 +127,6 @@ export async function updateBrand(id: string, prevState: any, formData: FormData
     return { message: `Database Error: ${error.message}`, success: false }
   }
 
-  // Sync clinic locations
   const { data: existingLocations, error: fetchError } = await supabase
     .from("clinic_locations")
     .select("id")
@@ -189,10 +189,42 @@ export async function deleteFile(fileUrl: string) {
   }
 }
 
+export async function importForm(brandId: number, sections: any[]) {
+  const supabase = createClient()
+  console.log(`Importing form for brand ${brandId}`, sections)
+  return { success: true, message: "Form imported successfully (placeholder)." }
+}
+
+export async function clearFormForBrand(brandId: number) {
+  const supabase = createClient()
+  console.log(`Clearing form for brand ${brandId}`)
+  return { success: true, message: "Form cleared successfully (placeholder)." }
+}
+
+export async function revalidateAllData() {
+  revalidatePath("/", "layout")
+  return { success: true }
+}
+
+export async function fetchBrandData(slug: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from("brands")
+    .select(`*, clinic_locations(*), sections(*, items(*, options(*)))`)
+    .eq("slug", slug)
+    .single()
+
+  if (error) {
+    console.error(`Error fetching brand data for slug ${slug}:`, error)
+    return null
+  }
+  return data
+}
+
 export async function completeSubmission(submissionId: string) {
   const supabase = createClient()
   try {
-    const { error } = await supabase.from("submissions").update({ status: "Completed" }).eq("id", submissionId)
+    const { error } = await supabase.from("orders").update({ status: "Completed" }).eq("id", submissionId)
 
     if (error) throw error
 
@@ -206,7 +238,7 @@ export async function completeSubmission(submissionId: string) {
 
 export async function clearAllSubmissions() {
   const supabase = createClient()
-  const { error } = await supabase.from("submissions").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+  const { error } = await supabase.rpc("truncate_submissions_and_related")
 
   if (error) {
     console.error("Error clearing submissions:", error)
@@ -215,4 +247,10 @@ export async function clearAllSubmissions() {
 
   revalidatePath("/admin")
   return { success: true, message: "All submissions have been cleared." }
+}
+
+export async function handleSignOut() {
+  const supabase = createClient()
+  await supabase.auth.signOut()
+  return redirect("/")
 }

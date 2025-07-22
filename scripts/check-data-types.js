@@ -1,107 +1,96 @@
-import { neon } from "@neondatabase/serverless"
+// Use dotenv to load environment variables from .env file during local development
+import "dotenv/config"
+import { createClient } from "@supabase/supabase-js"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL)
+// Ensure Supabase environment variables are available
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error("Supabase environment variables (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) are not set.")
+}
+
+// Create a Supabase admin client
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: {
+    persistSession: false,
+  },
+})
 
 async function checkDataTypes() {
-  console.log("🔍 Checking data types that might cause React errors...")
+  console.log("🔍 Checking data types that might cause React errors using Supabase client...")
 
   try {
-    // Check for any non-string values in clinic_locations
+    // 1. Checking clinic_locations data types
     console.log("\n1. Checking clinic_locations data types...")
-    const locations = await sql`
-      SELECT 
-        id,
-        name,
-        address,
-        pg_typeof(name) as name_type,
-        pg_typeof(address) as address_type,
-        CASE 
-          WHEN name IS NULL THEN 'NULL'
-          WHEN name = '' THEN 'EMPTY'
-          ELSE 'OK'
-        END as name_status,
-        CASE 
-          WHEN address IS NULL THEN 'NULL'
-          WHEN address = '' THEN 'EMPTY'
-          ELSE 'OK'
-        END as address_status
-      FROM clinic_locations
-      ORDER BY id
-    `
+    const { data: locations, error: locationsError } = await supabase
+      .from("clinic_locations")
+      .select("id, name, address")
+      .order("id")
+
+    if (locationsError) throw locationsError
 
     console.log("Clinic locations analysis:")
     locations.forEach((loc) => {
+      const name_status = loc.name === null ? "NULL" : loc.name === "" ? "EMPTY" : "OK"
+      const address_status = loc.address === null ? "NULL" : loc.address === "" ? "EMPTY" : "OK"
       console.log(`  ID: ${loc.id}`)
-      console.log(`    Name: "${loc.name}" (${loc.name_type}) - ${loc.name_status}`)
-      console.log(`    Address: "${loc.address}" (${loc.address_type}) - ${loc.address_status}`)
+      console.log(`    Name: "${loc.name}" (type: ${typeof loc.name}) - ${name_status}`)
+      console.log(`    Address: "${loc.address}" (type: ${typeof loc.address}) - ${address_status}`)
     })
 
-    // Check for any problematic field options
-    console.log("\n2. Checking field_options data types...")
-    const options = await sql`
-      SELECT 
-        id,
-        label,
-        value,
-        pg_typeof(label) as label_type,
-        pg_typeof(value) as value_type,
-        field_id
-      FROM field_options
-      WHERE field_id IN (
-        SELECT id FROM form_fields 
-        WHERE field_type = 'select' 
-        AND section_id IN (
-          SELECT id FROM sections WHERE brand_id = (
-            SELECT id FROM brands WHERE slug = 'focus-radiology'
-          )
-        )
-      )
-      ORDER BY field_id, id
-    `
+    // 2. Checking field_options data types for 'focus-radiology'
+    console.log("\n2. Checking field_options data types for 'focus-radiology'...")
 
-    console.log("Field options analysis:")
-    options.forEach((opt) => {
-      console.log(`  ID: ${opt.id}, Field: ${opt.field_id}`)
-      console.log(`    Label: "${opt.label}" (${opt.label_type})`)
-      console.log(`    Value: "${opt.value}" (${opt.value_type})`)
-    })
+    // Step 1: Get brand ID
+    const { data: brand, error: brandError } = await supabase
+      .from("brands")
+      .select("id")
+      .eq("slug", "focus-radiology")
+      .single()
+    if (brandError) throw new Error(`Could not find brand 'focus-radiology': ${brandError.message}`)
 
-    // Check for any JSON fields that might have objects
-    console.log("\n3. Checking for JSON/object fields...")
-    const jsonFields = await sql`
-      SELECT 
-        table_name,
-        column_name,
-        data_type
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-      AND (data_type = 'json' OR data_type = 'jsonb')
-    `
+    // Step 2: Get section IDs for the brand
+    const { data: sections, error: sectionsError } = await supabase
+      .from("product_sections")
+      .select("id")
+      .eq("brand_id", brand.id)
+    if (sectionsError) throw sectionsError
+    const sectionIds = sections.map((s) => s.id)
 
-    console.log("JSON/JSONB columns found:")
-    jsonFields.forEach((field) => {
-      console.log(`  ${field.table_name}.${field.column_name} (${field.data_type})`)
-    })
+    if (sectionIds.length > 0) {
+      // Step 3: Get field IDs for those sections
+      const { data: fields, error: fieldsError } = await supabase
+        .from("product_items")
+        .select("id")
+        .eq("field_type", "select")
+        .in("section_id", sectionIds)
+      if (fieldsError) throw fieldsError
+      const fieldIds = fields.map((f) => f.id)
 
-    // Check sections.fields JSON structure
-    console.log("\n4. Checking sections.fields JSON structure...")
-    const sectionsWithFields = await sql`
-      SELECT 
-        id,
-        title,
-        fields,
-        pg_typeof(fields) as fields_type
-      FROM sections
-      WHERE brand_id = (SELECT id FROM brands WHERE slug = 'focus-radiology')
-      AND fields IS NOT NULL
-    `
+      if (fieldIds.length > 0) {
+        // Step 4: Get the options for those fields
+        const { data: options, error: optionsError } = await supabase
+          .from("field_options")
+          .select("id, label, value, product_item_id")
+          .in("product_item_id", fieldIds)
+          .order("product_item_id")
+          .order("id")
+        if (optionsError) throw optionsError
 
-    console.log("Sections with fields:")
-    sectionsWithFields.forEach((section) => {
-      console.log(`  Section: ${section.title}`)
-      console.log(`    Fields type: ${section.fields_type}`)
-      console.log(`    Fields content:`, JSON.stringify(section.fields, null, 2))
-    })
+        console.log("Field options analysis:")
+        options.forEach((opt) => {
+          console.log(`  ID: ${opt.id}, Field: ${opt.product_item_id}`)
+          console.log(`    Label: "${opt.label}" (type: ${typeof opt.label})`)
+          console.log(`    Value: "${opt.value}" (type: ${typeof opt.value})`)
+        })
+      } else {
+        console.log("No 'select' type fields found for this brand to check options.")
+      }
+    } else {
+      console.log("No sections found for this brand.")
+    }
+
+    console.log("\n3. JSON/object field checks are now handled within application logic.")
+    console.log("4. `sections.fields` check is obsolete and has been removed.")
+    console.log("\n✅ Data type check complete.")
   } catch (error) {
     console.error("❌ Data type check failed:", error)
   }

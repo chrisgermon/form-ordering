@@ -21,8 +21,8 @@ interface BrandGridProps {
 }
 
 export function BrandGrid({ brands, onEditBrand, onBrandChange }: BrandGridProps) {
-  const handleDelete = async (brandId: string) => {
-    if (window.confirm("Are you sure you want to delete this brand and all its data? This action cannot be undone.")) {
+  const handleDelete = async (brandId: number) => {
+    if (window.confirm("Are you sure you want to delete this brand and all its data?")) {
       const result = await deleteBrand(brandId)
       if (result.success) {
         toast.success(result.message)
@@ -35,7 +35,7 @@ export function BrandGrid({ brands, onEditBrand, onBrandChange }: BrandGridProps
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {(brands || []).map((brand) => (
+      {brands.map((brand) => (
         <Card key={brand.id}>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg font-semibold">{brand.name}</CardTitle>
