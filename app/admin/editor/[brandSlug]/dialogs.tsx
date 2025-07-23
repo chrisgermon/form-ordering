@@ -72,6 +72,11 @@ interface AddItemDialogProps extends DialogProps {
 interface ManageOptionsDialogProps extends DialogProps {
   item: Item
 }
+interface UnsavedChangesDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onConfirm: () => void
+}
 
 // Reusable Form Component
 function FormField({ name, label, children, error }: any) {
@@ -462,6 +467,25 @@ export function ConfirmDeleteDialog({ isOpen, onClose, onConfirm, itemName }: Co
           >
             Continue
           </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+export function UnsavedChangesDialog({ open, onOpenChange, onConfirm }: UnsavedChangesDialogProps) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>You have unsaved changes</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to leave? Any unsaved changes will be lost.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>Leave</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

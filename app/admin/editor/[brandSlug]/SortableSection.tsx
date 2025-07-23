@@ -1,79 +1,68 @@
 "use client"
 
-import type { Section, Item } from "@/lib/types"
-import { useSortable } from "@dnd-kit/sortable"
+import { useSortable, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { GripVertical, Plus, Trash2, Pencil } from "lucide-react"
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
-import { SortableItem } from "./SortableItem"
+import { GripVertical, PlusCircle, Trash2 } from "lucide-react"
+import { SectionItem } from "./SectionItem"
+import type { Section, Item } from "@/lib/types"
 
 interface SortableSectionProps {
   section: Section
-  onEditSection: () => void
-  onDeleteSection: () => void
-  onAddItem: () => void
-  onEditItem: (item: Item) => void
-  onDeleteItem: (item: Item) => void
+  onSectionChange: (id: string, value: string) => void
+  onSectionRemove: (id: string) => void
+  onItemAdd: (sectionId: string) => void
+  onItemChange: (itemId: string, field: keyof Item, value: string | number) => void
+  onItemRemove: (itemId: string) => void
 }
 
 export function SortableSection({
   section,
-  onEditSection,
-  onDeleteSection,
-  onAddItem,
-  onEditItem,
-  onDeleteItem,
+  onSectionChange,
+  onSectionRemove,
+  onItemAdd,
+  onItemChange,
+  onItemRemove,
 }: SortableSectionProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: section.id,
-    data: { type: "section" },
-  })
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: section.id })
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
   }
 
   return (
-    <Card ref={setNodeRef} style={style} className="mb-4">
-      <CardHeader className="flex flex-row items-center justify-between p-4 bg-gray-100 border-b">
-        <div className="flex items-center gap-2">
-          <button {...attributes} {...listeners} className="cursor-grab p-1">
-            <GripVertical className="h-5 w-5 text-gray-500" />
-          </button>
-          <CardTitle className="text-lg">{section.title}</CardTitle>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={onEditSection}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onDeleteSection}>
-            <Trash2 className="h-4 w-4 text-red-500" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="p-4">
-        <SortableContext items={section.items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-3">
-            {section.items.map((item) => (
-              <SortableItem
-                key={item.id}
-                item={item}
-                sectionId={section.id}
-                onEdit={() => onEditItem(item)}
-                onDelete={() => onDeleteItem(item)}
-              />
-            ))}
+    <div ref={setNodeRef} style={style} className="mb-4">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between bg-gray-50 p-4">
+          <div className="flex items-center gap-2 flex-grow">
+            <button {...attributes} {...listeners} className="cursor-grab p-1">
+              <GripVertical className="h-5 w-5 text-gray-500" />
+            </button>
+            <Input
+              value={section.title}
+              onChange={(e) => onSectionChange(section.id, e.target.value)}
+              className="text-lg font-semibold border-none shadow-none focus-visible:ring-0"
+            />
           </div>
-        </SortableContext>
-        <Button variant="outline" className="mt-4 w-full bg-transparent" onClick={onAddItem}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Item
-        </Button>
-      </CardContent>
-    </Card>
+          <Button variant="ghost" size="icon" onClick={() => onSectionRemove(section.id)}>
+            <Trash2 className="h-5 w-5 text-red-500" />
+          </Button>
+        </CardHeader>
+        <CardContent className="p-4 space-y-2">
+          <SortableContext items={section.items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+            {section.items.map((item) => (
+              <SectionItem key={item.id} item={item} onItemChange={onItemChange} onItemRemove={onItemRemove} />
+            ))}
+          </SortableContext>
+          <Button variant="outline" size="sm" onClick={() => onItemAdd(section.id)}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Add Item
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

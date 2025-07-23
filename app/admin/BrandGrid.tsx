@@ -2,76 +2,44 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { toast } from "sonner"
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
-
-import type { Brand } from "@/lib/types"
-import { resolveAssetUrl } from "@/lib/utils"
-import { deleteBrand } from "./actions"
-
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import type { Brand } from "@/lib/types"
+import { BrandForm } from "./BrandForm"
+import { Pencil } from "lucide-react"
 
 interface BrandGridProps {
   brands: Brand[]
-  onEditBrand: (brand: Brand) => void
-  onBrandChange: () => void
 }
 
-export function BrandGrid({ brands, onEditBrand, onBrandChange }: BrandGridProps) {
-  const handleDelete = async (brandId: number) => {
-    if (window.confirm("Are you sure you want to delete this brand and all its data?")) {
-      const result = await deleteBrand(brandId)
-      if (result.success) {
-        toast.success(result.message)
-        onBrandChange()
-      } else {
-        toast.error(result.message)
-      }
-    }
-  }
-
+export function BrandGrid({ brands }: BrandGridProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
       {brands.map((brand) => (
-        <Card key={brand.id}>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg font-semibold">{brand.name}</CardTitle>
-            <Badge variant={brand.active ? "default" : "outline"}>{brand.active ? "Active" : "Inactive"}</Badge>
+        <Card key={brand.id} className="flex flex-col">
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">{brand.name}</CardTitle>
+            <Badge variant={brand.active ? "default" : "destructive"}>{brand.active ? "Active" : "Inactive"}</Badge>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-center mb-4 h-20">
+          <CardContent className="flex-grow flex flex-col items-center justify-center">
+            <div className="relative w-32 h-32 mb-4">
               <Image
-                src={resolveAssetUrl(brand.logo) || "/placeholder.svg"}
-                alt={`${brand.name} logo`}
-                width={150}
-                height={75}
-                className="object-contain h-full w-auto"
+                src={brand.logo || "/placeholder-logo.svg"}
+                alt={`${brand.name} Logo`}
+                layout="fill"
+                objectFit="contain"
               />
             </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" size="sm" asChild>
+            <div className="flex w-full gap-2 mt-auto">
+              <Button asChild variant="outline" className="flex-1 bg-transparent">
                 <Link href={`/admin/editor/${brand.slug}`}>Edit Form</Link>
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => onEditBrand(brand)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit Brand
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleDelete(brand.id)} className="text-red-600">
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <BrandForm brand={brand}>
+                <Button variant="ghost" size="icon">
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              </BrandForm>
             </div>
           </CardContent>
         </Card>

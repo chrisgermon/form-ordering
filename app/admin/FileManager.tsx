@@ -1,67 +1,46 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useTransition } from "react"
-import { Upload, Trash2, Copy, Download, FileIcon, ImageIcon } from "lucide-react"
+
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import type { Brand, FileRecord } from "@/lib/types"
-import { deleteFile } from "@/app/admin/actions"
+import Image from "next/image"
+import { Copy, Trash2 } from "lucide-react"
 
-async function fetchFiles(brandId: string | null): Promise<FileRecord[]> {
-  const query = brandId ? `?brandId=${brandId}` : ""
-  const response = await fetch(`/api/admin/files${query}`)
-  if (!response.ok) {
-    throw new Error("Failed to fetch files")
-  }
-  return response.json()
+interface FileObject {
+  name: string
+  url: string
 }
 
-export function FileManager({ brands, files }: { brands: Brand[]; files: FileRecord[] }) {
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null)
-  const [fileList, setFileList] = useState<FileRecord[]>(files || [])
-  const [isPending, startTransition] = useTransition()
-  const [isLoading, setIsLoading] = useState(false)
+export default function FileManager() {
+  const [files, setFiles] = useState<FileObject[]>([])
+  const [uploading, setUploading] = useState(false)
+
+  const fetchFiles = async () => {
+    try {
+      const response = await fetch("/api/admin/files")
+      if (!response.ok) throw new Error("Failed to fetch files")
+      const data = await response.json()
+      setFiles(data)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "An unknown error occurred")
+    }
+  }
 
   useEffect(() => {
-    setFileList(files || [])
-  }, [files])
-
-  const handleBrandChange = (brandId: string) => {
-    const newBrandId = brandId === "all" ? null : brandId
-    setSelectedBrandId(newBrandId)
-    setIsLoading(true)
-    startTransition(async () => {
-      try {
-        const fetchedFiles = await fetchFiles(newBrandId)
-        setFileList(fetchedFiles)
-      } catch (error) {
-        toast.error("Failed to load files for the selected brand.")
-        console.error(error)
-      } finally {
-        setIsLoading(false)
-      }
-    })
-  }
+    fetchFiles()
+  }, [])
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-    if (!selectedBrandId) {
-      toast.error("Please select a brand before uploading a file.")
-      return
-    }
 
+    setUploading(true)
     const formData = new FormData()
     formData.append("file", file)
-    formData.append("brandId", selectedBrandId)
-
-    setIsLoading(true)
-    const toastId = toast.loading("Uploading file...")
 
     try {
       const response = await fetch("/api/admin/upload", {
@@ -74,127 +53,53 @@ export function FileManager({ brands, files }: { brands: Brand[]; files: FileRec
         throw new Error(errorData.error || "Upload failed")
       }
 
-      const newFile = await response.json()
-      setFileList((prevFiles) => [newFile, ...prevFiles])
-      toast.success("File uploaded successfully!", { id: toastId })
+      toast.success("File uploaded successfully")
+      fetchFiles() // Refresh file list
     } catch (error) {
-      const message = error instanceof Error ? error.message : "An unknown error occurred."
-      toast.error(`Upload failed: ${message}`, { id: toastId })
+      toast.error(error instanceof Error ? error.message : "An unknown error occurred")
     } finally {
-      setIsLoading(false)
-      event.target.value = "" // Reset file input
+      setUploading(false)
     }
   }
 
-  const handleDeleteFile = async (fileUrl: string) => {
-    if (!confirm("Are you sure you want to delete this file? This action cannot be undone.")) {
-      return
-    }
-    const toastId = toast.loading("Deleting file...")
-    startTransition(async () => {
-      const result = await deleteFile(fileUrl)
-      if (result.success) {
-        setFileList((prevFiles) => prevFiles.filter((f) => f.url !== fileUrl))
-        toast.success("File deleted successfully.", { id: toastId })
-      } else {
-        toast.error(`Failed to delete file: ${result.error}`, { id: toastId })
-      }
-    })
-  }
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    toast.success("URL copied to clipboard!")
-  }
-
-  const getFileIcon = (contentType: string | null) => {
-    if (contentType?.startsWith("image/")) {
-      return <ImageIcon className="h-5 w-5 text-gray-500" />
-    }
-    return <FileIcon className="h-5 w-5 text-gray-500" />
+  const copyToClipboard = (url: string) => {
+    navigator.clipboard.writeText(url)
+    toast.success("URL copied to clipboard")
   }
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader>
         <CardTitle>File Manager</CardTitle>
-        <div className="flex items-center gap-4">
-          <Select onValueChange={handleBrandChange} defaultValue={selectedBrandId || "all"}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Filter by brand" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Brands</SelectItem>
-              {brands.map((brand) => (
-                <SelectItem key={brand.id} value={brand.id}>
-                  {brand.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button asChild variant="outline" disabled={!selectedBrandId || isLoading}>
-            <Label htmlFor="file-upload" className="cursor-pointer">
-              <Upload className="mr-2 h-4 w-4" />
-              Upload File
-            </Label>
-          </Button>
-          <Input
-            id="file-upload"
-            type="file"
-            className="hidden"
-            onChange={handleFileUpload}
-            disabled={!selectedBrandId || isLoading}
-          />
-        </div>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border">
-          <div className="grid grid-cols-[40px_1fr_1fr_150px_180px] items-center border-b bg-gray-50 px-4 py-2 text-sm font-medium text-gray-600">
-            <div></div>
-            <div>Filename</div>
-            <div>Brand</div>
-            <div>Uploaded At</div>
-            <div>Actions</div>
-          </div>
-          <div className="divide-y">
-            {isLoading || isPending ? (
-              <div className="p-4 text-center text-gray-500">Loading files...</div>
-            ) : Array.isArray(fileList) && fileList.length > 0 ? (
-              fileList.map((file) => (
-                <div key={file.id} className="grid grid-cols-[40px_1fr_1fr_150px_180px] items-center px-4 py-2 text-sm">
-                  <div className="flex items-center justify-center">{getFileIcon(file.content_type)}</div>
-                  <a
-                    href={file.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="truncate font-medium text-blue-600 hover:underline"
-                    title={file.pathname}
-                  >
-                    {file.pathname.split("/").pop()}
-                  </a>
-                  <div className="truncate text-gray-600">
-                    {brands.find((b) => b.id === file.brand_id)?.name || "N/A"}
-                  </div>
-                  <div className="text-gray-600">{new Date(file.uploaded_at).toLocaleDateString()}</div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => copyToClipboard(file.url)} title="Copy URL">
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    <a href={file.url} download target="_blank" rel="noopener noreferrer">
-                      <Button variant="ghost" size="icon" title="Download">
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    </a>
-                    <Button variant="ghost" size="icon" onClick={() => handleDeleteFile(file.url)} title="Delete">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="p-4 text-center text-gray-500">No files found.</div>
-            )}
-          </div>
+        <div className="mb-4">
+          <Input type="file" onChange={handleFileUpload} disabled={uploading} />
+          {uploading && <p className="text-sm text-muted-foreground mt-2">Uploading...</p>}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {files.map((file) => (
+            <div key={file.name} className="border rounded-lg p-2 flex flex-col items-center">
+              <Image
+                src={file.url || "/placeholder.svg"}
+                alt={file.name}
+                width={100}
+                height={100}
+                className="object-contain h-24 w-24"
+              />
+              <p className="text-xs truncate w-full text-center mt-2" title={file.name}>
+                {file.name}
+              </p>
+              <div className="flex gap-2 mt-2">
+                <Button variant="ghost" size="icon" onClick={() => copyToClipboard(file.url)}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" disabled>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>

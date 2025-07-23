@@ -1,25 +1,28 @@
--- Drop the function if it already exists to ensure a clean setup
-DROP FUNCTION IF EXISTS slugify(text);
-
-CREATE OR REPLACE FUNCTION slugify(
-  v_text text
-)
-RETURNS text
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  -- 1. Replace apostrophes with nothing
-  v_text := replace(v_text, '''', '');
-
-  -- 2. Replace non-alphanumeric characters with a hyphen
-  v_text := regexp_replace(v_text, '[^a-zA-Z0-9]+', '-', 'g');
-
-  -- 3. Trim leading and trailing hyphens
-  v_text := trim(both '-' from v_text);
-
-  -- 4. Convert to lowercase
-  v_text := lower(v_text);
-
-  RETURN v_text;
-END;
-$$;
+CREATE OR REPLACE FUNCTION slugify(text)
+RETURNS text AS $$
+    -- removes accents (diacritic signs) from a given string --
+    WITH "unaccented" AS (
+      SELECT unaccent("text") AS "text"
+    ),
+    -- lowercases the string
+    "lowercase" AS (
+      SELECT lower("text") AS "text"
+      FROM "unaccented"
+    ),
+    -- remove single and double quotes
+    "removed_quotes" AS (
+      SELECT regexp_replace("text", '[''"]+', '', 'gi') AS "text"
+      FROM "lowercase"
+    ),
+    -- replaces anything that's not a letter, number, hyphen, or underscore with a hyphen
+    "hyphenated" AS (
+      SELECT regexp_replace("text", '[^a-z0-9\\-_]+', '-', 'gi') AS "text"
+      FROM "removed_quotes"
+    ),
+    -- trims hyphens from the beginning and end of the string
+    "trimmed" AS (
+      SELECT regexp_replace(regexp_replace("text", '^-+', ''), '-+$', '') AS "text"
+      FROM "hyphenated"
+    )
+    SELECT "text" FROM "trimmed";
+$$ LANGUAGE SQL IMMUTABLE;

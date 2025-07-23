@@ -3,6 +3,9 @@
 -- errors when inserting new rows for sections, items, or options.
 -- This is the definitive fix for the "Save Changes" functionality in the editor.
 
+-- Set default UUID for the 'brands' table
+ALTER TABLE public.brands ALTER COLUMN id SET DEFAULT gen_random_uuid();
+
 -- Set default UUID for the 'sections' table
 -- This command will succeed if the column is of type UUID and has no default,
 -- or it will replace an existing incorrect default.
@@ -10,6 +13,12 @@ ALTER TABLE public.sections ALTER COLUMN id SET DEFAULT gen_random_uuid();
 
 -- Set default UUID for the 'items' table
 ALTER TABLE public.items ALTER COLUMN id SET DEFAULT gen_random_uuid();
+
+-- Set default UUID for the 'submissions' table
+ALTER TABLE public.submissions ALTER COLUMN id SET DEFAULT gen_random_uuid();
+
+-- Set default UUID for the 'submission_items' table
+ALTER TABLE public.submission_items ALTER COLUMN id SET DEFAULT gen_random_uuid();
 
 -- Set default UUID for the 'options' table
 ALTER TABLE public.options ALTER COLUMN id SET DEFAULT gen_random_uuid();

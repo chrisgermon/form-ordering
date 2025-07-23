@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/utils/supabase/server"
+import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 
 const slugify = (text: string) => {
@@ -14,20 +14,19 @@ const slugify = (text: string) => {
 }
 
 export async function GET() {
-  try {
-    const supabase = createAdminClient()
-    const { data: brands, error } = await supabase.from("brands").select("*, clinic_locations(*)").order("name")
-    if (error) throw error
-    return NextResponse.json(brands)
-  } catch (error) {
-    console.error("Error fetching brands:", error)
-    return NextResponse.json({ error: "Failed to fetch brands" }, { status: 500 })
+  const supabase = createClient()
+  const { data, error } = await supabase.from("brands").select("*").order("name", { ascending: true })
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  return NextResponse.json(data)
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createClient()
     const body = await request.json()
 
     if (!body.name) {
@@ -75,7 +74,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createClient()
     const body = await request.json()
 
     if (!body.id || !body.name) {
@@ -144,7 +143,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 

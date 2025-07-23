@@ -3,6 +3,7 @@
 import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import type { Section } from "@/lib/types"
 
 const revalidate = (slug: string) => {
   revalidatePath(`/admin/editor/${slug}`, "layout")
@@ -139,4 +140,31 @@ export async function deleteOption(id: string) {
   const { error } = await supabase.from("options").delete().eq("id", id)
   if (error) return { success: false, message: error.message }
   return { success: true }
+}
+
+// Form Actions
+export async function saveForm(brandId: string, sections: Section[]) {
+  const supabase = createClient()
+
+  try {
+    // Use a transaction to ensure all or nothing
+    const { error: transactionError } = await supabase.rpc("update_form_layout", {
+      p_brand_id: brandId,
+      p_sections: sections,
+    })
+
+    if (transactionError) {
+      console.error("Transaction error:", transactionError)
+      throw new Error(`Failed to save form layout: ${transactionError.message}`)
+    }
+
+    revalidatePath(`/admin/editor/[brandSlug]`, "page")
+    revalidatePath(`/forms/[brandSlug]`, "page")
+
+    return { success: true, message: "Form saved successfully!" }
+  } catch (error) {
+    console.error("Error in saveForm:", error)
+    const message = error instanceof Error ? error.message : "An unknown error occurred."
+    return { success: false, message }
+  }
 }

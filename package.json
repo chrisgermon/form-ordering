@@ -11,7 +11,6 @@
   "dependencies": {
     "@ai-sdk/openai": "latest",
     "@dnd-kit/core": "latest",
-    "@dnd-kit/modifiers": "latest",
     "@dnd-kit/sortable": "latest",
     "@dnd-kit/utilities": "latest",
     "@hookform/resolvers": "latest",
@@ -46,14 +45,17 @@
     "@supabase/supabase-js": "latest",
     "@vercel/blob": "latest",
     "ai": "latest",
-    "autoprefixer": "^10.4.20",
     "cheerio": "latest",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "latest",
     "date-fns": "latest",
+    "dotenv": "latest",
     "embla-carousel-react": "latest",
     "input-otp": "latest",
+    "js-cookie": "^3.0.5",
+    "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.8.2",
     "lucide-react": "^0.454.0",
     "next": "14.2.16",
     "next-themes": "latest",
@@ -68,16 +70,20 @@
     "sonner": "latest",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
+    "uuid": "latest",
     "vaul": "latest",
-    "zod": "^3.24.1"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/js-cookie": "^3.0.6",
     "@types/node": "^22",
+    "@types/nodemailer": "^6.4.15",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "dotenv": "^16.4.5",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.16",
     "postcss": "^8.5",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }
 }

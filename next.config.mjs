@@ -8,8 +8,21 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "public.blob.vercel-storage.com",
+        port: "",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "**.supabase.co",
+        port: "",
+        pathname: "/**",
+      },
+    ],
   },
-  // Force cache invalidation: 2025-07-13 14:09:37
 }
 
 export default nextConfig

@@ -34,3 +34,12 @@ ADD CONSTRAINT options_item_id_fkey
 FOREIGN KEY (item_id)
 REFERENCES public.items (id)
 ON DELETE CASCADE;
+
+-- Define the relationship between submission_items and items.
+-- This relationship needs to be updated to ON DELETE SET NULL.
+ALTER TABLE submission_items
+DROP CONSTRAINT IF EXISTS submission_items_item_id_fkey; -- Drop if it exists
+
+ALTER TABLE submission_items
+ADD CONSTRAINT submission_items_item_id_fkey
+FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE SET NULL;

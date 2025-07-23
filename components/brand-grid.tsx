@@ -1,42 +1,31 @@
+import Image from "next/image"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { resolveAssetUrl } from "@/lib/utils"
-
-interface Brand {
-  id: string
-  name: string
-  slug: string
-  logo: string
-  active: boolean
-}
+import { Card, CardContent } from "@/components/ui/card"
+import type { Brand } from "@/lib/types"
 
 interface BrandGridProps {
   brands: Brand[]
 }
 
-export function BrandGrid({ brands }: BrandGridProps) {
+export default function BrandGrid({ brands }: BrandGridProps) {
   return (
-    <div className="flex justify-center">
-      <div className="flex flex-wrap justify-center gap-6">
+    <div className="w-full max-w-4xl">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
         {brands.map((brand) => (
-          <Card key={brand.id} className="w-full max-w-sm text-center transition-all hover:shadow-xl">
-            <CardHeader className="pb-4">
-              <CardTitle>{brand.name}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center gap-4">
-              <div className="flex justify-center items-center h-24 w-full bg-gray-100 rounded-md p-2 mb-2">
-                <img
-                  src={resolveAssetUrl(brand.logo) || "/placeholder.svg"}
-                  alt={`${brand.name} Logo`}
-                  className="h-16 w-auto object-contain"
-                />
-              </div>
-              <Button asChild className="w-full">
-                <Link href={`/forms/${brand.slug}`}>View Form</Link>
-              </Button>
-            </CardContent>
-          </Card>
+          <Link key={brand.id} href={`/forms/${brand.slug}`} passHref>
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 h-full">
+              <CardContent className="flex flex-col items-center justify-center p-6 h-full">
+                <div className="relative w-32 h-32">
+                  <Image
+                    src={brand.logo || "/placeholder-logo.svg"}
+                    alt={`${brand.name} Logo`}
+                    layout="fill"
+                    objectFit="contain"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
     </div>

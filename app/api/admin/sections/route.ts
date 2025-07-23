@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/utils/supabase/server"
+import { createAdminClient, createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 
 // Helper function to revalidate paths associated with a brand
@@ -42,45 +42,29 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createClient()
     const body = await request.json()
-    const { title, brandId } = body
+    const { brand_id, sections } = body
 
-    if (!title || !brandId) {
-      return NextResponse.json({ error: "Title and brandId are required" }, { status: 400 })
+    if (!brand_id || !Array.isArray(sections)) {
+      return NextResponse.json({ error: "Invalid input" }, { status: 400 })
     }
 
-    const { data: maxPositionData, error: maxPosError } = await supabase
-      .from("sections")
-      .select("position")
-      .eq("brand_id", brandId)
-      .order("position", { ascending: false })
-      .limit(1)
-      .single()
+    // This is a simplified version. A real implementation should handle updates and deletions.
+    const { data, error } = await supabase.from("sections").upsert(
+      sections.map((section, index) => ({
+        id: section.id, // Assuming IDs are passed for existing sections
+        brand_id,
+        title: section.title,
+        sort_order: index,
+      })),
+    )
 
-    if (maxPosError && maxPosError.code !== "PGRST116") {
-      // Ignore 'No rows found' error, which is expected for the first section
-      throw maxPosError
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const newPosition = (maxPositionData?.position ?? -1) + 1
-
-    const { data: section, error } = await supabase
-      .from("sections")
-      .insert({
-        title: title,
-        brand_id: brandId,
-        position: newPosition,
-      })
-      .select()
-      .single()
-
-    if (error) throw error
-
-    // Revalidate paths to ensure the UI updates
-    await revalidateBrandPaths(supabase, brandId)
-
-    return NextResponse.json(section)
+    return NextResponse.json(data)
   } catch (error) {
     console.error("Error creating section:", error)
     const errorMessage = error instanceof Error ? error.message : "Failed to create section"

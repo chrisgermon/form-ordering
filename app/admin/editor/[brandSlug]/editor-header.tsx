@@ -1,39 +1,45 @@
 "use client"
-
 import { Button } from "@/components/ui/button"
-import { Save, Plus, Trash2, Upload } from "lucide-react"
-import type { Brand } from "@/lib/types"
+import { ChevronLeft, PlusCircle, Save } from "lucide-react"
 
 interface EditorHeaderProps {
-  brand: Brand
-  onAddSection: () => void
+  brandName: string
   onSave: () => void
-  onClear: () => void
-  onImport: () => void
-  isDirty: boolean
+  onAddSection: () => void
   isSaving: boolean
+  hasChanges: boolean
+  onNavigate: (path: string) => void
 }
 
-export function EditorHeader({ brand, onAddSection, onSave, onClear, onImport, isDirty, isSaving }: EditorHeaderProps) {
+export function EditorHeader({ brandName, onSave, onAddSection, isSaving, hasChanges, onNavigate }: EditorHeaderProps) {
   return (
-    <header className="sticky top-0 z-10 flex h-[57px] items-center gap-4 border-b bg-background px-4">
-      <h1 className="flex-1 text-xl font-semibold">{brand.name} - Form Editor</h1>
-      <Button variant="outline" size="sm" onClick={onImport}>
-        <Upload className="mr-2 h-4 w-4" />
-        Import from HTML
-      </Button>
-      <Button variant="outline" size="sm" onClick={onAddSection}>
-        <Plus className="mr-2 h-4 w-4" />
-        Add Section
-      </Button>
-      <Button variant="destructive" size="sm" onClick={onClear}>
-        <Trash2 className="mr-2 h-4 w-4" />
-        Clear Form
-      </Button>
-      <Button onClick={onSave} disabled={!isDirty || isSaving} size="sm">
-        <Save className="mr-2 h-4 w-4" />
-        {isSaving ? "Saving..." : "Save Changes"}
-      </Button>
+    <header className="bg-white shadow-sm sticky top-0 z-10">
+      <div className="container mx-auto px-4">
+        <div className="flex justify-between items-center h-16">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => onNavigate("/admin")}>
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <h1 className="text-xl font-semibold">Editing: {brandName}</h1>
+            {hasChanges && <span className="text-sm text-yellow-600">(Unsaved changes)</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={onAddSection}>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Add Section
+            </Button>
+            <Button onClick={onSave} disabled={isSaving || !hasChanges}>
+              {isSaving ? (
+                "Saving..."
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" /> Save Form
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
     </header>
   )
 }

@@ -1,33 +1,39 @@
 import { createClient } from "@/utils/supabase/server"
 import { revalidatePath } from "next/cache"
 import { NextResponse } from "next/server"
-import { del } from "@vercel/blob"
+import { del, list } from "@vercel/blob"
 
 export async function GET(request: Request) {
   const supabase = createClient()
   const { searchParams } = new URL(request.url)
   const brandId = searchParams.get("brandId")
 
-  if (!brandId) {
-    return NextResponse.json({ error: "Brand ID is required" }, { status: 400 })
-  }
+  if (brandId) {
+    try {
+      const { data, error } = await supabase
+        .from("files")
+        .select("*")
+        .eq("brand_id", brandId)
+        .order("uploaded_at", { ascending: false })
 
-  try {
-    const { data, error } = await supabase
-      .from("files")
-      .select("*")
-      .eq("brand_id", brandId)
-      .order("uploaded_at", { ascending: false })
+      if (error) {
+        console.error("Error fetching files:", error)
+        throw new Error(error.message)
+      }
 
-    if (error) {
-      console.error("Error fetching files:", error)
-      throw new Error(error.message)
+      return NextResponse.json(data)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+      return NextResponse.json({ error: `Failed to fetch files: ${errorMessage}` }, { status: 500 })
     }
-
-    return NextResponse.json(data)
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return NextResponse.json({ error: `Failed to fetch files: ${errorMessage}` }, { status: 500 })
+  } else {
+    try {
+      const { blobs } = await list()
+      const files = blobs.map((blob) => ({ name: blob.pathname, url: blob.url }))
+      return NextResponse.json(files)
+    } catch (error) {
+      return NextResponse.json({ error: "Failed to list files" }, { status: 500 })
+    }
   }
 }
 

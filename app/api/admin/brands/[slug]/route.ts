@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/utils/supabase/server"
+import { createClient } from "@/utils/supabase/server"
 import type { Item, Section } from "@/lib/types"
 
 export async function GET(request: NextRequest, { params }: { params: { slug: string } }) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createClient()
 
     // Step 1: Fetch the core brand data.
     const { data: brand, error: brandError } = await supabase
