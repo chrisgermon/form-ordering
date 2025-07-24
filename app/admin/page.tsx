@@ -7,7 +7,6 @@ import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, CalendarIcon } from "lucide-react"
@@ -17,52 +16,44 @@ import { Textarea } from "@/components/ui/textarea"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
+import AdminDashboard from "./AdminDashboard"
 import { createServerSupabaseClient } from "@/lib/supabase"
-import BrandGrid from "@/components/brand-grid"
-import SubmissionsTable from "./SubmissionsTable"
 
-// This is the key change to fix caching on the live site.
-// It forces the page to be re-rendered on every request.
+// This forces the page to be re-rendered on every request, ensuring fresh data.
 export const dynamic = "force-dynamic"
 
 export default async function AdminPage() {
   const supabase = createServerSupabaseClient()
 
+  // Fetch initial data on the server
   const { data: brands, error: brandsError } = await supabase.from("brands").select("*").order("name")
+
   const { data: submissions, error: submissionsError } = await supabase
     .from("submissions")
     .select("*, brands(name)")
     .order("created_at", { ascending: false })
 
+  // Handle errors gracefully
   if (brandsError) {
-    return <p className="text-red-500">Error loading brands: {brandsError.message}</p>
+    return <p className="text-red-500 p-8">Error loading brands: {brandsError.message}</p>
   }
   if (submissionsError) {
-    return <p className="text-red-500">Error loading submissions: {submissionsError.message}</p>
+    return <p className="text-red-500 p-8">Error loading submissions: {submissionsError.message}</p>
   }
 
+  // Format submissions data on the server
   const formattedSubmissions =
     submissions?.map((s: any) => ({
       ...s,
       brand_name: s.brands?.name || "Unknown Brand",
     })) || []
 
+  // Pass server-fetched data to the client component
   return (
-    <div className="container mx-auto p-4 md:p-8">
-      <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
-      <Tabs defaultValue="submissions">
-        <TabsList>
-          <TabsTrigger value="submissions">Submissions</TabsTrigger>
-          <TabsTrigger value="brands">Brands</TabsTrigger>
-        </TabsList>
-        <TabsContent value="submissions">
-          <SubmissionsTable submissions={formattedSubmissions} />
-        </TabsContent>
-        <TabsContent value="brands">
-          <BrandGrid brands={brands || []} />
-        </TabsContent>
-      </Tabs>
-    </div>
+    <AdminDashboard
+      initialBrands={brands as Brand[]}
+      initialSubmissions={formattedSubmissions as (Submission & { brand_name: string })[]}
+    />
   )
 }
 

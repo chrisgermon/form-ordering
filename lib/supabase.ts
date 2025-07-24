@@ -1,17 +1,31 @@
 import { createClient as _createClient } from "@supabase/supabase-js"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// This function creates the public client.
+// It's safe to call anywhere.
+const createPublicClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
-  throw new Error("Supabase environment variables are not fully configured.")
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Public Supabase environment variables are not configured.")
+  }
+
+  return _createClient(supabaseUrl, supabaseAnonKey)
 }
 
-// Public, client-side safe client for use in client components
-export const supabase = _createClient(supabaseUrl, supabaseAnonKey)
+// Export a singleton instance of the public client.
+// This is for use in client components.
+export const supabase = createPublicClient()
 
-// Admin client for server-side operations (Server Components, API Routes, Server Actions)
+// This function creates the admin client.
+// It should only be called on the server.
 export const createServerSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Server-side Supabase environment variables are not configured.")
+  }
+
   return _createClient(supabaseUrl, supabaseServiceKey)
 }
