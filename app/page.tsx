@@ -1,14 +1,20 @@
 import { BrandGrid } from "@/components/brand-grid"
 import { createServerSupabaseClient } from "@/lib/supabase"
 import type { Brand } from "@/lib/types"
+import Link from "next/link"
+
+export const revalidate = 3600 // revalidate at most every hour
 
 export default async function HomePage() {
   const supabase = createServerSupabaseClient()
-  const { data: brands, error } = await supabase.from("brands").select("*").order("name", { ascending: true })
+  const { data: brands, error } = await supabase
+    .from("brands")
+    .select("id, name, slug, logo")
+    .eq("active", true)
+    .order("name", { ascending: true })
 
   if (error) {
     console.error("Error fetching brands:", error.message)
-    // Return a friendly error message for the user
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-red-500">Could not load brands. Please try again later.</p>
@@ -37,8 +43,16 @@ export default async function HomePage() {
           </div>
         </section>
       </main>
-      <footer className="flex items-center justify-center w-full h-24 border-t">
-        <p className="text-gray-500 dark:text-gray-400">© 2024 Printing Services Inc.</p>
+      <footer className="flex items-center justify-center w-full h-24 border-t bg-white dark:bg-gray-950">
+        <div className="container flex justify-between items-center px-4 md:px-6">
+          <p className="text-gray-500 dark:text-gray-400">© 2024 Printing Services Inc.</p>
+          <Link
+            href="/admin"
+            className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-50"
+          >
+            Admin Panel
+          </Link>
+        </div>
       </footer>
     </div>
   )
