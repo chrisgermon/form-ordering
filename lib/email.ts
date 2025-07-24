@@ -1,13 +1,4 @@
-import nodemailer from "nodemailer"
 import FormData from "form-data"
-
-// Helper to extract domain from an email address
-function getDomainFromEmail(email: string): string | null {
-  if (!email || !email.includes("@")) {
-    return null
-  }
-  return email.split("@")[1]
-}
 
 export interface EmailOptions {
   to: string
@@ -21,32 +12,14 @@ export interface EmailOptions {
   }>
 }
 
-// Create transporter with correct method name
-const transporter = nodemailer.createTransport({
-  host: "smtp.mailgun.org",
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.MAILGUN_SMTP_USERNAME!,
-    pass: process.env.MAILGUN_SMTP_PASSWORD!,
-  },
-})
-
 export async function sendEmail(options: EmailOptions) {
   const fromEmail = process.env.FROM_EMAIL
-  // The Mailgun API key is typically used as the SMTP password
-  const mailgunApiKey = process.env.MAILGUN_SMTP_PASSWORD
+  const mailgunApiKey = process.env.MAILGUN_SMTP_PASSWORD // Mailgun API key is often stored here
+  const mailgunDomain = process.env.MAILGUN_DOMAIN // **NEW: Using a dedicated domain variable**
 
-  if (!fromEmail || !mailgunApiKey) {
-    const errorMessage = "Email service is not configured. Missing FROM_EMAIL or MAILGUN_SMTP_PASSWORD."
-    console.error(errorMessage)
-    return { success: false, error: errorMessage }
-  }
-
-  const mailgunDomain = getDomainFromEmail(fromEmail)
-
-  if (!mailgunDomain) {
-    const errorMessage = `Could not determine Mailgun domain from FROM_EMAIL: ${fromEmail}`
+  if (!fromEmail || !mailgunApiKey || !mailgunDomain) {
+    const errorMessage =
+      "Email service is not configured. Missing FROM_EMAIL, MAILGUN_SMTP_PASSWORD, or MAILGUN_DOMAIN."
     console.error(errorMessage)
     return { success: false, error: errorMessage }
   }

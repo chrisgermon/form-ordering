@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from "@/lib/supabase"
 import { put } from "@vercel/blob"
 import { jsPDF } from "jspdf"
 import { sendEmail, generateOrderEmailTemplate } from "@/lib/email"
+import { revalidatePath } from "next/cache"
 
 async function sendOrderEmail(
   to: string,
@@ -133,6 +134,10 @@ export async function POST(request: NextRequest) {
       console.error("Database error:", dbError)
       throw new Error("Failed to save submission to database")
     }
+
+    // This is the key change to fix the submissions list not updating.
+    revalidatePath("/admin")
+    console.log("Revalidated /admin path.")
 
     const emailResult = await sendOrderEmail(
       brandEmail,
