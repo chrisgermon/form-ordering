@@ -1,32 +1,17 @@
-import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js"
-import { cookies } from "next/headers"
+import { createClient as _createClient } from "@supabase/supabase-js"
 
-let supabase: SupabaseClient | undefined
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-function getSupabaseClient() {
-  if (supabase) {
-    return supabase
-  }
-
-  supabase = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-
-  return supabase
+if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+  throw new Error("Supabase environment variables are not fully configured.")
 }
 
-// This is the new standard way to get a client instance
-export const supabaseClient = getSupabaseClient()
+// Public, client-side safe client for use in client components
+export const supabase = _createClient(supabaseUrl, supabaseAnonKey)
 
-// This function is for server components/actions that need an authenticated client
-export function createServerSupabaseClient() {
-  const cookieStore = cookies()
-  return createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-    cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value
-      },
-    },
-  })
+// Admin client for server-side operations (Server Components, API Routes, Server Actions)
+export const createServerSupabaseClient = () => {
+  return _createClient(supabaseUrl, supabaseServiceKey)
 }
-
-// This is kept for backwards compatibility to prevent deployment errors
-export const createClient = createServerSupabaseClient

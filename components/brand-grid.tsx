@@ -1,10 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { Card, CardContent } from "@/components/ui/card"
 import Image from "next/image"
-import type { Brand } from "@/lib/types"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import type { Brand } from "@/lib/types"
 
 interface BrandGridProps {
   brands: Brand[]
@@ -23,8 +23,11 @@ export function BrandGrid({ brands }: BrandGridProps) {
   return (
     <>
       {brands.map((brand) => (
-        <Card key={brand.id} className="overflow-hidden transition-all hover:shadow-xl h-full flex flex-col">
-          <Link href={`/forms/${brand.slug}`} className="group block flex-grow">
+        <Card
+          key={brand.id}
+          className="overflow-hidden transition-all hover:shadow-xl hover:scale-105 h-full flex flex-col group"
+        >
+          <Link href={`/forms/${brand.slug}`} className="block flex-grow">
             <CardContent className="flex flex-col items-center justify-between p-6 space-y-4 h-full text-center">
               <div className="relative w-48 h-24 flex-shrink-0">
                 <Image
@@ -39,7 +42,7 @@ export function BrandGrid({ brands }: BrandGridProps) {
             </CardContent>
           </Link>
           <div className="p-4 pt-0">
-            <Link href={`/forms/${brand.slug}`} className="w-full">
+            <Link href={`/forms/${brand.slug}`} className="w-full" tabIndex={-1}>
               <Button className="w-full">Create Order</Button>
             </Link>
           </div>
