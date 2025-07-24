@@ -1,15 +1,13 @@
 import nodemailer from "nodemailer"
+import FormData from "form-data"
 
-// Create transporter with correct method name
-const transporter = nodemailer.createTransport({
-  host: "smtp.mailgun.org",
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.MAILGUN_SMTP_USERNAME!,
-    pass: process.env.MAILGUN_SMTP_PASSWORD!,
-  },
-})
+// Helper to extract domain from an email address
+function getDomainFromEmail(email: string): string | null {
+  if (!email || !email.includes("@")) {
+    return null
+  }
+  return email.split("@")[1]
+}
 
 export interface EmailOptions {
   to: string
@@ -23,25 +21,79 @@ export interface EmailOptions {
   }>
 }
 
-export async function sendEmail(options: EmailOptions) {
-  try {
-    // Add chris@crowdit.com.au to CC for testing
-    const ccEmails = options.cc ? `${options.cc}, chris@crowdit.com.au` : "chris@crowdit.com.au"
+// Create transporter with correct method name
+const transporter = nodemailer.createTransport({
+  host: "smtp.mailgun.org",
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.MAILGUN_SMTP_USERNAME!,
+    pass: process.env.MAILGUN_SMTP_PASSWORD!,
+  },
+})
 
-    const info = await transporter.sendMail({
-      from: process.env.FROM_EMAIL || "noreply@printedforms.com.au",
-      to: options.to,
-      cc: ccEmails,
-      subject: options.subject,
-      html: options.html,
-      attachments: options.attachments,
+export async function sendEmail(options: EmailOptions) {
+  const fromEmail = process.env.FROM_EMAIL
+  // The Mailgun API key is typically used as the SMTP password
+  const mailgunApiKey = process.env.MAILGUN_SMTP_PASSWORD
+
+  if (!fromEmail || !mailgunApiKey) {
+    const errorMessage = "Email service is not configured. Missing FROM_EMAIL or MAILGUN_SMTP_PASSWORD."
+    console.error(errorMessage)
+    return { success: false, error: errorMessage }
+  }
+
+  const mailgunDomain = getDomainFromEmail(fromEmail)
+
+  if (!mailgunDomain) {
+    const errorMessage = `Could not determine Mailgun domain from FROM_EMAIL: ${fromEmail}`
+    console.error(errorMessage)
+    return { success: false, error: errorMessage }
+  }
+
+  const mailgunUrl = `https://api.mailgun.net/v3/${mailgunDomain}/messages`
+
+  const form = new FormData()
+  form.append("from", fromEmail)
+  form.append("to", options.to)
+
+  // Add chris@crowdit.com.au to CC for testing, preserving any existing CC
+  const ccEmails = options.cc ? `${options.cc}, chris@crowdit.com.au` : "chris@crowdit.com.au"
+  form.append("cc", ccEmails)
+
+  form.append("subject", options.subject)
+  form.append("html", options.html)
+
+  if (options.attachments) {
+    options.attachments.forEach((attachment) => {
+      form.append("attachment", attachment.content, {
+        filename: attachment.filename,
+        contentType: attachment.contentType,
+      })
+    })
+  }
+
+  try {
+    const response = await fetch(mailgunUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`api:${mailgunApiKey}`).toString("base64")}`,
+      },
+      body: form as any, // Type assertion needed for form-data with fetch
     })
 
-    console.log("Email sent successfully:", info.messageId)
-    return { success: true, messageId: info.messageId }
+    const result = await response.json()
+
+    if (!response.ok) {
+      console.error("Error sending email via Mailgun API:", result)
+      throw new Error(result.message || "Failed to send email via Mailgun API.")
+    }
+
+    console.log("Email sent successfully via Mailgun API:", result.id)
+    return { success: true, messageId: result.id }
   } catch (error) {
-    console.error("Error sending email:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
+    console.error("Error in sendEmail function:", error)
+    return { success: false, error: error instanceof Error ? error.message : "An unknown error occurred" }
   }
 }
 

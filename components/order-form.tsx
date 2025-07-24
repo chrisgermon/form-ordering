@@ -329,8 +329,8 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                         </SelectTrigger>
                         <SelectContent>
                           {clinicLocations.map((location) => (
-                            <SelectItem key={location.name} value={location.name}>
-                              {location.name}
+                            <SelectItem key={location} value={location}>
+                              {location}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -347,8 +347,8 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                         </SelectTrigger>
                         <SelectContent>
                           {clinicLocations.map((location) => (
-                            <SelectItem key={location.name} value={location.name}>
-                              {location.name}
+                            <SelectItem key={location} value={location}>
+                              {location}
                             </SelectItem>
                           ))}
                         </SelectContent>
