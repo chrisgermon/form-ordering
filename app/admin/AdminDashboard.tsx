@@ -3,6 +3,8 @@
 import type React from "react"
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { useForm, Controller } from "react-hook-form"
+import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,6 +13,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { Loader2, CalendarIcon } from "lucide-react"
+import { Alert } from "@/components/ui/alert"
+import { cn } from "@/lib/utils"
 import type { Brand, UploadedFile, Submission } from "@/lib/types"
 import BrandGrid from "@/components/brand-grid"
 import SubmissionsTable from "./SubmissionsTable"
@@ -29,11 +36,18 @@ export default function AdminDashboard({ initialBrands, initialSubmissions }: Ad
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [isBrandFormOpen, setIsBrandFormOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
+  const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
+  const [selectedSubmission, setSelectedSubmission] = useState<FormattedSubmission | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   const refreshData = useCallback(() => {
     router.refresh()
   }, [router])
+
+  useEffect(() => {
+    setBrands(initialBrands)
+    setSubmissions(initialSubmissions)
+  }, [initialBrands, initialSubmissions])
 
   useEffect(() => {
     const fetchFiles = async () => {
@@ -98,6 +112,20 @@ export default function AdminDashboard({ initialBrands, initialSubmissions }: Ad
     }
   }
 
+  const handleMarkComplete = (submission: FormattedSubmission) => {
+    setSelectedSubmission(submission)
+    setIsCompleteDialogOpen(true)
+  }
+
+  const onCompleted = () => {
+    setIsCompleteDialogOpen(false)
+    toast({
+      title: "Success",
+      description: "Order marked as complete.",
+    })
+    refreshData()
+  }
+
   return (
     <div className="container mx-auto p-4 md:p-8">
       <div className="flex justify-between items-center mb-6">
@@ -110,7 +138,11 @@ export default function AdminDashboard({ initialBrands, initialSubmissions }: Ad
           <TabsTrigger value="brands">Brands</TabsTrigger>
         </TabsList>
         <TabsContent value="submissions">
-          <SubmissionsTable submissions={submissions} refreshSubmissions={refreshData} />
+          <SubmissionsTable
+            submissions={submissions}
+            refreshSubmissions={refreshData}
+            onMarkComplete={handleMarkComplete}
+          />
         </TabsContent>
         <TabsContent value="brands">
           <BrandGrid brands={brands} onEdit={handleEditBrand} />
@@ -131,6 +163,13 @@ export default function AdminDashboard({ initialBrands, initialSubmissions }: Ad
           />
         </DialogContent>
       </Dialog>
+
+      <CompleteSubmissionDialog
+        open={isCompleteDialogOpen}
+        onOpenChange={setIsCompleteDialogOpen}
+        submission={selectedSubmission}
+        onCompleted={onCompleted}
+      />
     </div>
   )
 }
@@ -275,9 +314,148 @@ function BrandForm({
           Cancel
         </Button>
         <Button type="submit" disabled={isLoading}>
-          {isLoading ? "Saving..." : "Save"}
+          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Save"}
         </Button>
       </div>
     </form>
+  )
+}
+
+function CompleteSubmissionDialog({
+  open,
+  onOpenChange,
+  submission,
+  onCompleted,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  submission: FormattedSubmission | null
+  onCompleted: () => void
+}) {
+  const {
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm({
+    defaultValues: {
+      delivery_details: "",
+      expected_delivery_date: new Date(),
+    },
+  })
+  const [isSaving, setIsSaving] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
+
+  useEffect(() => {
+    if (open) {
+      reset({
+        delivery_details: submission?.delivery_details || "",
+        expected_delivery_date: submission?.expected_delivery_date
+          ? new Date(submission.expected_delivery_date)
+          : new Date(),
+      })
+      setErrorMessage("")
+    }
+  }, [open, reset, submission])
+
+  const onSubmit = async (data: any) => {
+    if (!submission) return
+    setIsSaving(true)
+    setErrorMessage("")
+    try {
+      const response = await fetch(`/api/admin/submissions/${submission.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "completed",
+          delivery_details: data.delivery_details,
+          expected_delivery_date: data.expected_delivery_date
+            ? format(data.expected_delivery_date, "yyyy-MM-dd")
+            : null,
+        }),
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to update submission.")
+      }
+      onCompleted()
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred.")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Mark Order as Complete</DialogTitle>
+        </DialogHeader>
+        {submission && (
+          <div className="text-sm text-muted-foreground border-b pb-4">
+            <p>
+              <strong>Order ID:</strong> {submission.id.substring(0, 8)}...
+            </p>
+            <p>
+              <strong>Brand:</strong> {submission.brand_name}
+            </p>
+            <p>
+              <strong>Ordered By:</strong> {submission.ordered_by} ({submission.email})
+            </p>
+          </div>
+        )}
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
+          <div>
+            <Label htmlFor="delivery_details">Delivery Details (Courier, Tracking #, etc.)</Label>
+            <Controller
+              name="delivery_details"
+              control={control}
+              render={({ field }) => <Textarea id="delivery_details" {...field} />}
+            />
+          </div>
+          <div>
+            <Label htmlFor="expected_delivery_date">Expected Delivery Date</Label>
+            <Controller
+              name="expected_delivery_date"
+              control={control}
+              rules={{ required: "Delivery date is required." }}
+              render={({ field }) => (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !field.value && "text-muted-foreground",
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                  </PopoverContent>
+                </Popover>
+              )}
+            />
+            {errors.expected_delivery_date && (
+              <p className="text-xs text-red-500 mt-1">{errors.expected_delivery_date.message}</p>
+            )}
+          </div>
+          {errorMessage && <Alert variant="destructive">{errorMessage}</Alert>}
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Save and Complete
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

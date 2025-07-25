@@ -1,8 +1,9 @@
 import { createClient as _createClient } from "@supabase/supabase-js"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 // This function creates the public client.
 // It's safe to call anywhere.
-const createPublicClient = () => {
+const createPublicClient = (): SupabaseClient => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -19,7 +20,7 @@ export const supabase = createPublicClient()
 
 // This function creates the admin client.
 // It should only be called on the server.
-export const createServerSupabaseClient = () => {
+export const createServerSupabaseClient = (): SupabaseClient => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 

@@ -24,9 +24,10 @@ type FormattedSubmission = Submission & { brand_name: string }
 interface SubmissionsTableProps {
   submissions: FormattedSubmission[]
   refreshSubmissions: () => void
+  onMarkComplete: (submission: FormattedSubmission) => void
 }
 
-export default function SubmissionsTable({ submissions, refreshSubmissions }: SubmissionsTableProps) {
+export default function SubmissionsTable({ submissions, refreshSubmissions, onMarkComplete }: SubmissionsTableProps) {
   const [isClearing, setIsClearing] = useState(false)
 
   const handleClearAll = async () => {
@@ -53,13 +54,26 @@ export default function SubmissionsTable({ submissions, refreshSubmissions }: Su
     }
   }
 
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+      case "completed":
+        return "default"
+      case "sent":
+        return "secondary"
+      case "failed":
+        return "destructive"
+      default:
+        return "outline"
+    }
+  }
+
   return (
-    <div className="border rounded-lg">
-      <div className="p-4 flex justify-end">
+    <div className="space-y-4">
+      <div className="flex justify-end">
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="destructive" disabled={submissions.length === 0 || isClearing}>
-              {isClearing ? "Clearing..." : "Clear All"}
+            <Button variant="destructive" disabled={isClearing || submissions.length === 0}>
+              {isClearing ? "Clearing..." : "Clear All Submissions"}
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
@@ -76,47 +90,60 @@ export default function SubmissionsTable({ submissions, refreshSubmissions }: Su
           </AlertDialogContent>
         </AlertDialog>
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Brand</TableHead>
-            <TableHead>Ordered By</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {submissions.length > 0 ? (
-            submissions.map((submission) => (
-              <TableRow key={submission.id}>
-                <TableCell>{format(new Date(submission.created_at), "dd MMM yyyy, h:mm a")}</TableCell>
-                <TableCell>{submission.brand_name}</TableCell>
-                <TableCell>{submission.ordered_by}</TableCell>
-                <TableCell>
-                  <Badge variant={submission.status === "sent" ? "default" : "secondary"}>{submission.status}</Badge>
-                </TableCell>
-                <TableCell className="space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.open(submission.pdf_url || "", "_blank")}
-                    disabled={!submission.pdf_url}
-                  >
-                    View PDF
-                  </Button>
+      <div className="border rounded-lg">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>Brand</TableHead>
+              <TableHead>Ordered By</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {submissions.length > 0 ? (
+              submissions.map((submission) => (
+                <TableRow key={submission.id}>
+                  <TableCell>{format(new Date(submission.created_at), "dd MMM yyyy, h:mm a")}</TableCell>
+                  <TableCell>{submission.brand_name}</TableCell>
+                  <TableCell>
+                    <div className="font-medium">{submission.ordered_by}</div>
+                    <div className="text-sm text-muted-foreground">{submission.email}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={getStatusVariant(submission.status)}>{submission.status}</Badge>
+                  </TableCell>
+                  <TableCell className="space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(submission.pdf_url || "", "_blank")}
+                      disabled={!submission.pdf_url}
+                    >
+                      View PDF
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onMarkComplete(submission)}
+                      disabled={submission.status === "completed"}
+                    >
+                      {submission.status === "completed" ? "Completed" : "Mark Complete"}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center h-24">
+                  No submissions yet.
                 </TableCell>
               </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={5} className="text-center h-24">
-                No submissions yet.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }

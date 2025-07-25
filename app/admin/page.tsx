@@ -22,6 +22,7 @@ import { createServerSupabaseClient } from "@/lib/supabase"
 // This forces the page to be re-rendered on every request, ensuring fresh data.
 export const dynamic = "force-dynamic"
 
+// This is now a pure Server Component. It fetches data and passes it to the client.
 export default async function AdminPage() {
   const supabase = createServerSupabaseClient()
 
