@@ -8,8 +8,8 @@ export const formSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1, "Brand name is required"),
   slug: z.string().min(1, "Slug is required"),
-  logo: z.string().nullable(),
-  primary_color: z.string().nullable(),
+  logo: z.string().nullable().optional(),
+  primary_color: z.string().nullable().optional(),
   email: z.string().email("Invalid email address"),
   active: z.boolean(),
   clinics: z.array(z.string()).optional(),
@@ -17,13 +17,13 @@ export const formSchema = z.object({
     z.object({
       id: z.string(),
       name: z.string().min(1, "Section name is required"),
-      description: z.string().nullable(),
+      description: z.string().nullable().optional(),
       sort_order: z.number(),
       product_items: z.array(
         z.object({
           id: z.string(),
           name: z.string().min(1, "Item name is required"),
-          description: z.string().nullable(),
+          description: z.string().nullable().optional(),
           sort_order: z.number(),
           requires_scan: z.boolean(),
         }),
@@ -34,15 +34,19 @@ export const formSchema = z.object({
 
 export type FormData = z.infer<typeof formSchema>
 
-export async function saveForm(data: FormData, brandId: string | null) {
-  const supabase = createServerSupabaseClient()
-  const validatedData = formSchema.safeParse(data)
+export async function saveForm(
+  prevState: any,
+  formData: FormData,
+): Promise<{ success: boolean; error: string | null; brand: { slug: string } | null }> {
+  const validatedData = formSchema.safeParse(formData)
 
   if (!validatedData.success) {
-    return { success: false, error: "Invalid data provided." }
+    console.error("Zod validation failed:", validatedData.error.flatten())
+    return { success: false, error: "Invalid data provided.", brand: null }
   }
 
-  const { id, sections, ...brandData } = validatedData.data
+  const supabase = createServerSupabaseClient()
+  const { id: brandId, sections, ...brandData } = validatedData.data
 
   // 1. Upsert Brand
   const { data: savedBrand, error: brandError } = await supabase
@@ -51,12 +55,11 @@ export async function saveForm(data: FormData, brandId: string | null) {
     .select()
     .single()
 
-  if (brandError) return { success: false, error: `Brand Error: ${brandError.message}` }
-  if (!savedBrand) return { success: false, error: "Failed to save brand." }
+  if (brandError) return { success: false, error: `Brand Error: ${brandError.message}`, brand: null }
+  if (!savedBrand) return { success: false, error: "Failed to save brand.", brand: null }
 
   // 2. Handle Sections and Items
   const incomingSectionIds = sections.map((s) => s.id)
-  const incomingItemIds = sections.flatMap((s) => s.product_items.map((i) => i.id))
 
   // Delete sections that are no longer present
   const { data: existingSections } = await supabase.from("product_sections").select("id").eq("brand_id", savedBrand.id)
@@ -69,7 +72,7 @@ export async function saveForm(data: FormData, brandId: string | null) {
 
   // Upsert sections
   const sectionsToUpsert = sections.map((section, index) => ({
-    id: section.id.includes("new-") || section.id.length < 36 ? undefined : section.id, // Handle temp IDs
+    id: section.id.startsWith("new-") ? undefined : section.id,
     brand_id: savedBrand.id,
     name: section.name,
     description: section.description,
@@ -79,36 +82,39 @@ export async function saveForm(data: FormData, brandId: string | null) {
   const { data: upsertedSections, error: sectionsError } = await supabase
     .from("product_sections")
     .upsert(sectionsToUpsert)
-    .select()
-  if (sectionsError) return { success: false, error: `Section Error: ${sectionsError.message}` }
+    .select("id, name")
 
-  // Create a map from temp/old ID to new DB ID for items
+  if (sectionsError) return { success: false, error: `Section Error: ${sectionsError.message}`, brand: null }
+  if (!upsertedSections) return { success: false, error: "Failed to retrieve updated sections.", brand: null }
+
   const sectionIdMap = new Map<string, string>()
-  sections.forEach((formSection, index) => {
-    const dbSection = upsertedSections.find((s) => s.name === formSection.name && s.brand_id === savedBrand.id)
+  sections.forEach((formSection) => {
+    const dbSection = upsertedSections.find((s) => s.name === formSection.name)
     if (dbSection) {
       sectionIdMap.set(formSection.id, dbSection.id)
     }
   })
 
+  const allDbSectionIds = upsertedSections.map((s) => s.id)
+  const incomingItemIds = sections.flatMap((s) => s.product_items.map((i) => i.id))
+
   // Delete items that are no longer present
-  const { data: existingItems } = await supabase
-    .from("product_items")
-    .select("id")
-    .in("section_id", [...sectionIdMap.values()])
-  if (existingItems) {
-    const itemsToDelete = existingItems.filter((i) => !incomingItemIds.includes(i.id)).map((i) => i.id)
-    if (itemsToDelete.length > 0) {
-      await supabase.from("product_items").delete().in("id", itemsToDelete)
+  if (allDbSectionIds.length > 0) {
+    const { data: existingItems } = await supabase.from("product_items").select("id").in("section_id", allDbSectionIds)
+    if (existingItems) {
+      const itemsToDelete = existingItems.filter((i) => !incomingItemIds.includes(i.id)).map((i) => i.id)
+      if (itemsToDelete.length > 0) {
+        await supabase.from("product_items").delete().in("id", itemsToDelete)
+      }
     }
   }
 
   // Upsert items
-  const itemsToUpsert = sections.flatMap((section, sectionIndex) => {
+  const itemsToUpsert = sections.flatMap((section) => {
     const dbSectionId = sectionIdMap.get(section.id)
     if (!dbSectionId) return []
     return section.product_items.map((item, itemIndex) => ({
-      id: item.id.includes("new-") || item.id.length < 36 ? undefined : item.id,
+      id: item.id.startsWith("new-") ? undefined : item.id,
       section_id: dbSectionId,
       name: item.name,
       description: item.description,
@@ -119,11 +125,12 @@ export async function saveForm(data: FormData, brandId: string | null) {
 
   if (itemsToUpsert.length > 0) {
     const { error: itemsError } = await supabase.from("product_items").upsert(itemsToUpsert)
-    if (itemsError) return { success: false, error: `Item Error: ${itemsError.message}` }
+    if (itemsError) return { success: false, error: `Item Error: ${itemsError.message}`, brand: null }
   }
 
   revalidatePath("/admin")
   revalidatePath(`/admin/editor/${savedBrand.slug}`)
+  revalidatePath(`/forms/${savedBrand.slug}`)
 
-  return { success: true, brand: savedBrand }
+  return { success: true, error: null, brand: { slug: savedBrand.slug } }
 }

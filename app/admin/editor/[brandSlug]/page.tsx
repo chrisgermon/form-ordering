@@ -1,62 +1,66 @@
 import { createServerSupabaseClient } from "@/lib/supabase"
 import { notFound } from "next/navigation"
 import { FormEditor } from "./form-editor"
-import type { Brand, ProductSection, ProductItem, UploadedFile } from "@/lib/types"
+import type { Brand, ProductSection, ProductItem } from "@/lib/types"
 
-export type SectionWithItems = ProductSection & {
-  product_items: ProductItem[]
+type EditorPageProps = {
+  params: { brandSlug: string }
 }
 
-async function getBrandData(slug: string): Promise<{ brand: Brand | null; sections: SectionWithItems[] }> {
-  const supabase = createServerSupabaseClient()
+export type BrandForEditor = Brand & {
+  product_sections: (ProductSection & {
+    product_items: ProductItem[]
+  })[]
+}
 
+async function getBrandForEditor(slug: string): Promise<BrandForEditor | null> {
   if (slug === "new") {
-    return { brand: null, sections: [] }
+    return {
+      id: "",
+      name: "",
+      slug: "",
+      logo: null,
+      primary_color: null,
+      submission_recipients: [],
+      active: true,
+      clinics: [],
+      product_sections: [],
+    }
   }
 
-  const { data: brand, error: brandError } = await supabase.from("brands").select("*").eq("slug", slug).single()
-
-  if (brandError || !brand) {
-    console.error(`Error fetching brand '${slug}':`, brandError)
-    return { brand: null, sections: [] }
-  }
-
-  const { data: sections, error: sectionsError } = await supabase
-    .from("product_sections")
-    .select("*, product_items(*)")
-    .eq("brand_id", brand.id)
-    .order("sort_order", { ascending: true })
-    .order("sort_order", { foreignTable: "product_items", ascending: true })
-
-  if (sectionsError) {
-    console.error(`Error fetching sections for brand '${slug}':`, sectionsError)
-  }
-
-  return { brand, sections: (sections as SectionWithItems[]) || [] }
-}
-
-async function getUploadedFiles(): Promise<UploadedFile[]> {
   const supabase = createServerSupabaseClient()
-  const { data, error } = await supabase.from("uploaded_files").select("*").order("created_at", { ascending: false })
+  const { data, error } = await supabase
+    .from("brands")
+    .select(
+      `
+      *,
+      product_sections (
+        *,
+        product_items (
+          *
+        )
+      )
+    `,
+    )
+    .eq("slug", slug)
+    .order("sort_order", { foreignTable: "product_sections" })
+    .order("sort_order", { foreignTable: "product_sections.product_items" })
+    .single()
 
   if (error) {
-    console.error("Error fetching uploaded files:", error)
-    return []
+    console.error(`Error fetching brand '${slug}':`, error)
+    return null
   }
-  return data as UploadedFile[]
+
+  return data
 }
 
-export default async function FormEditorPage({ params }: { params: { brandSlug: string } }) {
-  const { brand, sections } = await getBrandData(params.brandSlug)
-  const uploadedFiles = await getUploadedFiles()
+export default async function BrandEditorPage({ params }: EditorPageProps) {
+  const brand = await getBrandForEditor(params.brandSlug)
 
-  if (!brand && params.brandSlug !== "new") {
+  if (!brand) {
     notFound()
   }
 
-  return (
-    <main className="container mx-auto p-4 md:p-8">
-      <FormEditor initialBrand={brand} initialSections={sections} uploadedFiles={uploadedFiles} />
-    </main>
-  )
+  return <FormEditor initialData={brand} />
 }
