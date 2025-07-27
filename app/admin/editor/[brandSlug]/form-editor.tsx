@@ -109,7 +109,7 @@ export default function FormEditor({
     setBrandData({ ...brandData, product_sections: [] }) // Optimistic update
     setMessage("Clearing form...")
 
-    const result = await clearForm(brandData.id)
+    const result = await clearForm(brandData.id, brandData.slug)
 
     if (result.success) {
       setMessage(result.message || "Form cleared successfully.")
@@ -135,7 +135,10 @@ export default function FormEditor({
       setBrandData((brand) => ({ ...brand, product_sections: reorderedSections }))
 
       try {
-        const result = await updateSectionOrder(reorderedSections.map((s) => s.id))
+        const result = await updateSectionOrder(
+          brandData.slug,
+          reorderedSections.map((s) => s.id),
+        )
         if (!result.success) throw new Error(result.error)
         setMessage("Section order saved.")
         setTimeout(() => setMessage(""), 3000)
@@ -163,7 +166,10 @@ export default function FormEditor({
       })
 
       try {
-        const result = await updateItemOrder(reorderedItems.map((i) => i.id))
+        const result = await updateItemOrder(
+          brandData.slug,
+          reorderedItems.map((i) => i.id),
+        )
         if (!result.success) throw new Error(result.error)
         setMessage("Item order saved.")
         setTimeout(() => setMessage(""), 3000)
@@ -268,6 +274,7 @@ export default function FormEditor({
         open={isImportDialogOpen}
         onOpenChange={setIsImportDialogOpen}
         brandId={brandData.id}
+        brandSlug={brandData.slug}
         onDataChange={onDataChange}
         setMessage={setMessage}
       />
@@ -687,12 +694,14 @@ function JotformImportDialog({
   open,
   onOpenChange,
   brandId,
+  brandSlug,
   onDataChange,
   setMessage,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   brandId: string
+  brandSlug: string
   onDataChange: () => void
   setMessage: (message: string) => void
 }) {
@@ -713,7 +722,7 @@ function JotformImportDialog({
     setIsImporting(true)
     setMessage("Importing from JotForm... This may take a moment.")
 
-    const result = await importFromJotform(brandId, jotformId)
+    const result = await importFromJotform(brandId, brandSlug, jotformId)
 
     if (result.success) {
       setMessage(result.message || "Import successful!")
