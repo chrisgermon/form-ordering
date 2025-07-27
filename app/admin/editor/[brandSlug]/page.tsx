@@ -21,10 +21,11 @@ async function getBrandForEditor(slug: string): Promise<BrandForEditor | null> {
       slug: "",
       logo: null,
       primary_color: null,
-      submission_recipients: [],
-      active: true,
-      clinics: [],
       email: "",
+      active: true,
+      created_at: "",
+      updated_at: "",
+      clinics: [],
       product_sections: [],
     }
   }

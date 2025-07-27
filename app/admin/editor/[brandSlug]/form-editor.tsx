@@ -31,18 +31,17 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
   const form = useForm<FormData>({
     defaultValues: {
       ...initialData,
-      // Convert clinics array to a newline-separated string for the textarea
-      clinics: Array.isArray(initialData.clinics) ? initialData.clinics.join("\n") : "",
-      sections: initialData.product_sections.map((s) => ({
-        ...s,
-        name: s.title, // map title to name for the form
-        product_items:
-          s.product_items?.map((p) => ({
-            ...p,
-            // Convert quantities array to a comma-separated string for the textarea
-            quantities: Array.isArray(p.quantities) ? p.quantities.join(", ") : "",
-          })) || [],
-      })),
+      clinics: initialData.clinics || [],
+      sections:
+        initialData.product_sections?.map((s) => ({
+          ...s,
+          name: s.title,
+          product_items:
+            s.product_items?.map((p) => ({
+              ...p,
+              quantities: Array.isArray(p.quantities) ? p.quantities.join(", ") : "",
+            })) || [],
+        })) || [],
     },
   })
 
@@ -56,12 +55,19 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
     name: "sections",
   })
 
+  const {
+    fields: clinics,
+    append: appendClinic,
+    remove: removeClinic,
+  } = useFieldArray({
+    control: form.control,
+    name: "clinics",
+  })
+
   useEffect(() => {
     if (state.success) {
       toast.success("Form saved successfully!")
       if (state.brand) {
-        // If it was a new brand, the slug might have changed.
-        // Redirect to the new slug to ensure the URL is correct.
         if (initialData.id === "" || initialData.slug !== state.brand.slug) {
           router.push(`/admin/editor/${state.brand.slug}`)
         }
@@ -214,15 +220,6 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
             </div>
             <Input {...form.register("logo")} placeholder="Logo URL" />
             <Input {...form.register("email")} placeholder="Submission Email" />
-            <div>
-              <Label htmlFor="clinics">Clinics</Label>
-              <Textarea
-                id="clinics"
-                {...form.register("clinics")}
-                placeholder="Enter one clinic location per line"
-                rows={5}
-              />
-            </div>
             <div className="flex items-center gap-2">
               <Controller
                 control={form.control}
@@ -231,6 +228,40 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
               />
               <Label htmlFor="active">Active</Label>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Clinics</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {clinics.map((clinic, index) => (
+              <div key={clinic.id} className="p-4 border rounded-lg space-y-2 relative">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input {...form.register(`clinics.${index}.name`)} placeholder="Clinic Name" />
+                  <Input {...form.register(`clinics.${index}.email`)} placeholder="Clinic Email" />
+                </div>
+                <Textarea {...form.register(`clinics.${index}.address`)} placeholder="Full Address" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2"
+                  onClick={() => removeClinic(index)}
+                >
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => appendClinic({ name: "", address: "", email: "" })}
+              className="flex items-center gap-2"
+            >
+              <PlusCircle className="h-4 w-4" /> Add Clinic
+            </Button>
           </CardContent>
         </Card>
 

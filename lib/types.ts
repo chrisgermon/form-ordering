@@ -2,6 +2,12 @@
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
+export type Clinic = {
+  name: string
+  address: string
+  email: string
+}
+
 export type Brand = {
   id: string
   name: string
@@ -12,7 +18,7 @@ export type Brand = {
   active: boolean
   created_at: string
   updated_at: string
-  clinics: Json | null
+  clinics: Clinic[] | null
 }
 
 export type ProductSection = {
