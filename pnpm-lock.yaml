@@ -105,7 +105,7 @@ importers:
         specifier: latest
         version: 0.6.1(@supabase/supabase-js@2.52.1)
       '@supabase/supabase-js':
-        specifier: ^2.45.0
+        specifier: 2.52.1
         version: 2.52.1
       '@vercel/blob':
         specifier: latest
@@ -129,7 +129,7 @@ importers:
         specifier: latest
         version: 1.4.2(react-dom@18.0.0(react@18.0.0))(react@18.0.0)
       jotform:
-        specifier: ^1.0.1
+        specifier: 1.0.1
         version: 1.0.1
       jspdf:
         specifier: latest
@@ -183,9 +183,6 @@ importers:
       '@types/node':
         specifier: ^22
         version: 22.0.0
-      '@types/nodemailer':
-        specifier: ^6.4.15
-        version: 6.4.15
       '@types/react':
         specifier: ^18
         version: 18.0.0
@@ -1130,9 +1127,6 @@ packages:
 
   '@types/node@22.16.3':
     resolution: {integrity: sha512-sr4Xz74KOUeYadexo1r8imhRtlVXcs+j3XK3TcoiYk7B1t3YRVJgtaD3cwX73NYb71pmVuMLNRhJ9XKdoDB74g==}
-
-  '@types/nodemailer@6.4.15':
-    resolution: {integrity: sha512-0EBJxawVNjPkng1zm2vopRctuWVCxk34JcIlRuXSf54habUWdz1FB7wHDqOqvDa8Mtpt0Q3LTXQkAs2LNyK5jQ==}
 
   '@types/phoenix@1.6.6':
     resolution: {integrity: sha512-PIzZZlEppgrpoT2QgbnDU+MMzuR6BbCjllj0bM70lWoejMeNJAxCchxnv7J3XFkI8MpygtRpzXrIlmWUBclP5A==}
@@ -4103,10 +4097,6 @@ snapshots:
   '@types/node@22.16.3':
     dependencies:
       undici-types: 6.21.0
-
-  '@types/nodemailer@6.4.15':
-    dependencies:
-      '@types/node': 22.16.3
 
   '@types/phoenix@1.6.6': {}
 
