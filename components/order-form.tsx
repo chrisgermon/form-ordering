@@ -1,468 +1,296 @@
 "use client"
-import { useState, useMemo } from "react"
-import { useForm, FormProvider, useFormContext, useWatch } from "react-hook-form"
+
+import { useState, type FormEvent } from "react"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useToast } from "@/components/ui/use-toast"
+import type { BrandWithSectionsAndItems, ProductItem, ProductSection } from "@/lib/types"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ArrowLeft, Search } from "lucide-react"
-import { format } from "date-fns"
+import { CalendarIcon, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { Brand, ProductItem } from "@/lib/types"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { format } from "date-fns"
 
-interface FormValues {
-  orderedBy: string
-  email: string
-  billTo: string
-  deliverTo: string
-  date?: Date
-  items: Record<string, { quantity?: string; customQuantity?: string }>
+type OrderFormProps = {
+  brand: BrandWithSectionsAndItems
 }
 
-const ItemRow = ({ item }: { item: ProductItem }) => {
-  const { setValue, watch, register } = useFormContext<FormValues>()
-  const itemState = watch(`items.${item.id}`)
-  const selectedQuantity = itemState?.quantity
+type SelectedItems = {
+  [itemId: string]: {
+    id: string
+    code: string
+    name: string
+    quantity: string
+    customQuantity?: string
+    description?: string | null
+  }
+}
 
-  const handleSelect = (quantity: string, checked: boolean) => {
-    if (checked) {
-      setValue(`items.${item.id}.quantity`, quantity, { shouldValidate: true })
-    } else if (selectedQuantity === quantity) {
-      setValue(`items.${item.id}.quantity`, undefined, { shouldValidate: true })
-      setValue(`items.${item.id}.customQuantity`, "", { shouldValidate: true })
-    }
+export default function OrderForm({ brand }: OrderFormProps) {
+  const { toast } = useToast()
+  const [selectedItems, setSelectedItems] = useState<SelectedItems>({})
+  const [isLoading, setIsLoading] = useState(false)
+  const [date, setDate] = useState<Date | undefined>(new Date())
+
+  const handleItemSelection = (item: ProductItem, checked: boolean) => {
+    setSelectedItems((prev) => {
+      const newItems = { ...prev }
+      if (checked) {
+        newItems[item.id] = {
+          id: item.id,
+          code: item.code,
+          name: item.name,
+          quantity: item.quantities?.[0] || "1",
+          description: item.description,
+        }
+      } else {
+        delete newItems[item.id]
+      }
+      return newItems
+    })
   }
 
-  const isOtherSelected = selectedQuantity === "other"
+  const handleQuantityChange = (itemId: string, value: string) => {
+    setSelectedItems((prev) => ({
+      ...prev,
+      [itemId]: { ...prev[itemId], quantity: value },
+    }))
+  }
 
-  return (
-    <div className="py-4 border-b border-gray-300 last:border-b-0">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-1 space-y-1">
-          <p className="font-bold text-gray-800">CODE: {item.code}</p>
-          <p className="font-semibold text-gray-700">ITEM: {item.name}</p>
-          {item.description && <p className="text-sm text-gray-600">DESCRIPTION: {item.description}</p>}
-          {item.sample_link && (
-            <a
-              href={item.sample_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block mt-1 px-3 py-1 bg-sky-500 text-white text-xs rounded-lg hover:bg-sky-600"
-            >
-              CHECK HERE
-            </a>
-          )}
-        </div>
-        <div className="md:col-span-2 flex flex-wrap items-center gap-x-6 gap-y-2">
-          {item.quantities.map((quantity) => (
-            <div key={quantity} className="flex items-center space-x-2">
-              <Checkbox
-                id={`${item.id}-${quantity}`}
-                checked={selectedQuantity === quantity}
-                onCheckedChange={(checked) => handleSelect(quantity, !!checked)}
-              />
-              <label htmlFor={`${item.id}-${quantity}`} className="text-sm font-medium text-gray-700">
-                {quantity}
-              </label>
-            </div>
-          ))}
-          {isOtherSelected && (
-            <Input
-              type="text"
-              placeholder="Enter quantity"
-              className="h-8 w-40 border-gray-400"
-              {...register(`items.${item.id}.customQuantity`)}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
+  const handleCustomQuantityChange = (itemId: string, value: string) => {
+    setSelectedItems((prev) => ({
+      ...prev,
+      [itemId]: { ...prev[itemId], customQuantity: value },
+    }))
+  }
 
-function OrderSummary({ allItemsMap }: { allItemsMap: Map<string, ProductItem> }) {
-  const { control } = useFormContext<FormValues>()
-  const selectedItems = useWatch({
-    control,
-    name: "items",
-  })
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsLoading(true)
 
-  const itemsToDisplay = useMemo(() => {
-    if (!selectedItems) return []
-    return Object.entries(selectedItems)
-      .map(([id, data]) => {
-        if (data && data.quantity) {
-          const details = allItemsMap.get(id)
-          if (details) {
-            return {
-              ...details,
-              selectedQuantity: data.quantity,
-              customQuantity: data.customQuantity,
-            }
-          }
-        }
-        return null
-      })
-      .filter(Boolean) as (ProductItem & { selectedQuantity: string; customQuantity?: string })[]
-  }, [selectedItems, allItemsMap])
+    const formData = new FormData(e.currentTarget)
+    const formValues = Object.fromEntries(formData.entries())
 
-  return (
-    <div className="sticky top-8">
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200">
-        <div className="bg-gray-100 text-gray-800 text-center py-3 rounded-t-xl border-b">
-          <h2 className="text-xl font-semibold">Your Order</h2>
-        </div>
-        <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
-          {itemsToDisplay.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-8">No items selected yet.</p>
-          ) : (
-            itemsToDisplay.map((item) => (
-              <div key={item.id} className="border-b pb-3 last:border-b-0 last:pb-0">
-                <p className="font-semibold text-gray-800">{item.name}</p>
-                <p className="text-sm text-gray-600">Code: {item.code}</p>
-                <p className="text-sm font-medium text-blue-600 mt-1">
-                  Quantity: {item.selectedQuantity === "other" ? item.customQuantity || "N/A" : item.selectedQuantity}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-export function OrderForm({ brandData }: { brandData: Brand }) {
-  const router = useRouter()
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submissionStatus, setSubmissionStatus] = useState<"success" | "error" | null>(null)
-  const [submissionMessage, setSubmissionMessage] = useState("")
-  const [searchQuery, setSearchQuery] = useState("")
-
-  const allItemsMap = useMemo(() => {
-    const map = new Map<string, ProductItem>()
-    brandData.product_sections.forEach((section) => {
-      section.product_items.forEach((item) => {
-        map.set(item.id, item)
-      })
-    })
-    return map
-  }, [brandData])
-
-  const methods = useForm<FormValues>({
-    defaultValues: {
-      orderedBy: "",
-      email: "",
-      billTo: "",
-      deliverTo: "",
-      date: new Date(),
-      items: {},
-    },
-  })
-
-  const {
-    control,
-    handleSubmit,
-    reset,
-    register,
-    setValue,
-    watch,
-    formState: { errors },
-  } = methods
-
-  const clinicLocations = useMemo(() => brandData.clinics || [], [brandData.clinics])
-
-  const filteredSections = useMemo(() => {
-    if (!searchQuery) {
-      return brandData.product_sections
-    }
-
-    const lowercasedQuery = searchQuery.toLowerCase()
-
-    return brandData.product_sections
-      .map((section) => {
-        const filteredItems = section.product_items.filter(
-          (item) =>
-            item.name.toLowerCase().includes(lowercasedQuery) || item.code.toLowerCase().includes(lowercasedQuery),
-        )
-
-        if (filteredItems.length > 0) {
-          return { ...section, product_items: filteredItems }
-        }
-        return null
-      })
-      .filter(Boolean) as Brand["product_sections"]
-  }, [searchQuery, brandData.product_sections])
-
-  const onSubmit = async (data: FormValues) => {
-    setIsSubmitting(true)
-    setSubmissionStatus(null)
-
-    const itemsForPayload = Object.entries(data.items || {})
-      .filter(([_, value]) => value && value.quantity)
-      .reduce((acc, [itemId, itemValue]) => {
-        const itemDetails = allItemsMap.get(itemId)
-        if (itemDetails) {
-          acc[itemId] = {
-            quantity: itemValue.quantity,
-            customQuantity: itemValue.customQuantity,
-            name: itemDetails.name,
-            code: itemDetails.code,
-            description: itemDetails.description,
-          }
-        }
-        return acc
-      }, {} as any)
-
-    if (Object.keys(itemsForPayload).length === 0) {
-      setSubmissionStatus("error")
-      setSubmissionMessage("Please select at least one item to order.")
-      setIsSubmitting(false)
-      return
-    }
-
-    const payload = {
-      brandId: brandData.id,
-      brandName: brandData.name,
-      brandEmail: brandData.email,
-      orderedBy: data.orderedBy,
-      email: data.email,
-      billTo: data.billTo,
-      deliverTo: data.deliverTo,
-      date: data.date ? format(data.date, "yyyy-MM-dd") : null,
-      items: itemsForPayload,
+    const orderData = {
+      ...formValues,
+      date: date ? format(date, "yyyy-MM-dd") : null,
+      items: selectedItems,
+      brandId: brand.id,
+      brandName: brand.name,
+      brandEmail: brand.email,
     }
 
     try {
       const response = await fetch("/api/submit-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(orderData),
       })
 
       const result = await response.json()
 
-      if (response.ok && result.success) {
-        setSubmissionStatus("success")
-        setSubmissionMessage("Your order has been submitted successfully!")
-        reset()
+      if (result.success) {
+        toast({
+          title: "Order Submitted!",
+          description: "Your order has been sent successfully.",
+        })
+        setSelectedItems({})
+        e.currentTarget.reset()
+        setDate(new Date())
       } else {
         throw new Error(result.message || "An unknown error occurred.")
       }
     } catch (error) {
-      setSubmissionStatus("error")
-      setSubmissionMessage(error instanceof Error ? error.message : "Failed to submit order.")
+      console.error("Submission error:", error)
+      toast({
+        title: "Submission Failed",
+        description: error instanceof Error ? error.message : "Could not submit your order. Please try again.",
+        variant: "destructive",
+      })
     } finally {
-      setIsSubmitting(false)
+      setIsLoading(false)
     }
   }
 
+  const primaryColor = brand.primary_color || "#000000"
+  const totalSelected = Object.keys(selectedItems).length
+  const defaultOpenAccordion = brand.product_sections?.map((s) => s.id.toString()) || []
+
   return (
-    <FormProvider {...methods}>
-      <div className="min-h-screen bg-[#f9f9f9] p-4 sm:p-6 md:p-8 font-work-sans">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center mb-8">
-            <Button variant="outline" onClick={() => router.push("/")} className="mr-auto">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to All Brands
-            </Button>
-            {brandData.logo && (
+    <div className="container mx-auto max-w-4xl py-8 px-4">
+      <Card className="overflow-hidden">
+        <CardHeader className="p-6 text-white" style={{ backgroundColor: primaryColor }}>
+          <div className="flex items-center gap-4">
+            {brand.logo && (
               <Image
-                src={brandData.logo || "/placeholder.svg"}
-                alt={`${brandData.name} Logo`}
-                width={331}
-                height={98}
-                className="mx-auto object-contain"
-                priority
+                src={brand.logo || "/placeholder.svg"}
+                alt={`${brand.name} Logo`}
+                width={80}
+                height={80}
+                className="rounded-md bg-white p-1 object-contain"
               />
             )}
-            <div className="w-[188px] mr-auto"></div> {/* Spacer to balance the back button */}
+            <div>
+              <CardTitle className="text-3xl font-bold">{brand.name}</CardTitle>
+              <p className="text-lg">Printing Order Form</p>
+            </div>
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-xl shadow-lg">
-                <div className="bg-[#2a3760] text-white text-center py-4 rounded-t-xl">
-                  <h1 className="text-2xl font-semibold">Printing Order Form</h1>
-                </div>
-
-                <form onSubmit={handleSubmit(onSubmit)} className="p-6 sm:p-8">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 mb-8">
-                    <div className="space-y-1">
-                      <label htmlFor="orderedBy" className="text-sm font-medium text-gray-800">
-                        Ordered By: <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        id="orderedBy"
-                        className="bg-gray-100 border-gray-300"
-                        {...register("orderedBy", { required: "Ordered By is required." })}
-                      />
-                      {errors.orderedBy && <p className="text-xs text-red-500">{errors.orderedBy.message}</p>}
-                    </div>
-                    <div className="space-y-1">
-                      <label htmlFor="email" className="text-sm font-medium text-gray-800">
-                        Email Address <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        id="email"
-                        type="email"
-                        className="bg-gray-100 border-gray-300"
-                        {...register("email", {
-                          required: "Email is required.",
-                          pattern: { value: /^\S+@\S+$/i, message: "Invalid email address." },
-                        })}
-                      />
-                      {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
-                    </div>
-                    <div className="space-y-1">
-                      <label htmlFor="billTo" className="text-sm font-medium text-gray-800">
-                        Bill to Clinic: <span className="text-red-500">*</span>
-                      </label>
-                      <Select onValueChange={(value) => setValue("billTo", value)} value={watch("billTo")}>
-                        <SelectTrigger id="billTo" className="bg-gray-100 border-gray-300">
-                          <SelectValue placeholder="Select a clinic" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clinicLocations.map((location) => (
-                            <SelectItem key={location} value={location}>
-                              {location}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {errors.billTo && <p className="text-xs text-red-500">{errors.billTo.message}</p>}
-                    </div>
-                    <div className="space-y-1">
-                      <label htmlFor="deliverTo" className="text-sm font-medium text-gray-800">
-                        Deliver to Clinic: <span className="text-red-500">*</span>
-                      </label>
-                      <Select onValueChange={(value) => setValue("deliverTo", value)} value={watch("deliverTo")}>
-                        <SelectTrigger id="deliverTo" className="bg-gray-100 border-gray-300">
-                          <SelectValue placeholder="Select a clinic" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clinicLocations.map((location) => (
-                            <SelectItem key={location} value={location}>
-                              {location}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {errors.deliverTo && <p className="text-xs text-red-500">{errors.deliverTo.message}</p>}
-                    </div>
-                    <div className="space-y-1 sm:col-span-2">
-                      <label htmlFor="date" className="text-sm font-medium text-gray-800">
-                        Date: <span className="text-red-500">*</span>
-                      </label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full justify-start text-left font-normal bg-gray-100 border-gray-300",
-                              !watch("date") && "text-muted-foreground",
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {watch("date") ? format(watch("date")!, "PPP") : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={watch("date")}
-                            onSelect={(date) => setValue("date", date)}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      {errors.date && <p className="text-xs text-red-500">{errors.date.message}</p>}
-                    </div>
-                  </div>
-
-                  <div className="my-8 border-t pt-8">
-                    <div className="relative">
-                      <label htmlFor="search-items" className="sr-only">
-                        Search Items
-                      </label>
-                      <Input
-                        id="search-items"
-                        type="text"
-                        placeholder="Search for an item by name or code..."
-                        className="pl-10 h-12 text-base bg-gray-100 border-gray-300"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                      />
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-8">
-                    {filteredSections.length > 0 ? (
-                      filteredSections.map((section) => (
-                        <div key={section.id} className="border border-dashed border-[#293563] rounded-lg p-4">
-                          <h2 className="text-lg font-semibold text-[#1aa7df] mb-4">{section.title}</h2>
-                          <div className="space-y-4">
-                            {section.product_items.map((item) => (
-                              <ItemRow key={item.id} item={item} />
-                            ))}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-12 text-gray-500">
-                        <p className="font-semibold">No items found</p>
-                        <p className="text-sm">Your search for "{searchQuery}" did not match any items.</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {submissionStatus && (
-                    <Alert
-                      className={cn(
-                        "mt-8",
-                        submissionStatus === "success"
-                          ? "border-green-500 text-green-700"
-                          : "border-red-500 text-red-700",
-                      )}
-                    >
-                      {submissionStatus === "success" ? (
-                        <CheckCircle className="h-4 w-4" />
-                      ) : (
-                        <XCircle className="h-4 w-4" />
-                      )}
-                      <AlertDescription>{submissionMessage}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  <div className="flex justify-center mt-8 pt-6">
+        </CardHeader>
+        <CardContent className="p-6">
+          <form onSubmit={handleSubmit}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <div className="space-y-2">
+                <Label htmlFor="orderedBy">Ordered By</Label>
+                <Input id="orderedBy" name="orderedBy" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="billTo">Bill to Clinic</Label>
+                <Select name="billTo" required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a clinic" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {brand.clinics?.map((clinic) => (
+                      <SelectItem key={clinic} value={clinic}>
+                        {clinic}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="deliverTo">Deliver to Clinic</Label>
+                <Select name="deliverTo" required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a clinic" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {brand.clinics?.map((clinic) => (
+                      <SelectItem key={clinic} value={clinic}>
+                        {clinic}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="date">Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
                     <Button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="bg-[#2a3760] hover:bg-[#2a3760]/90 text-white font-semibold px-12 py-6 text-base"
+                      variant={"outline"}
+                      className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
                     >
-                      {isSubmitting ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="mr-2 h-4 w-4" />
-                      )}
-                      Submit
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {date ? format(date, "PPP") : <span>Pick a date</span>}
                     </Button>
-                  </div>
-                </form>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
-            <div className="lg:col-span-1">
-              <OrderSummary allItemsMap={allItemsMap} />
+
+            <h3 className="text-xl font-semibold mb-4 border-b pb-2">Products</h3>
+            <Accordion type="multiple" className="w-full" defaultValue={defaultOpenAccordion}>
+              {brand.product_sections
+                ?.sort((a, b) => a.sort_order - b.sort_order)
+                .map((section: ProductSection) => (
+                  <AccordionItem key={section.id} value={section.id.toString()}>
+                    <AccordionTrigger className="text-lg font-medium">{section.title}</AccordionTrigger>
+                    <AccordionContent>
+                      <div className="space-y-4">
+                        {section.product_items
+                          ?.sort((a, b) => a.sort_order - b.sort_order)
+                          .map((item: ProductItem) => (
+                            <div key={item.id} className="flex items-start gap-4 p-3 border rounded-md">
+                              <Checkbox
+                                id={`item-${item.id}`}
+                                checked={!!selectedItems[item.id]}
+                                onCheckedChange={(checked) => handleItemSelection(item, !!checked)}
+                                className="mt-1"
+                              />
+                              <div className="flex-1 grid gap-2">
+                                <label htmlFor={`item-${item.id}`} className="font-semibold">
+                                  {item.name}{" "}
+                                  <span className="text-sm text-muted-foreground font-mono">({item.code})</span>
+                                </label>
+                                {item.description && (
+                                  <p className="text-sm text-muted-foreground">{item.description}</p>
+                                )}
+                                {item.sample_link && (
+                                  <a
+                                    href={item.sample_link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm text-blue-600 hover:underline"
+                                  >
+                                    View Sample
+                                  </a>
+                                )}
+                                {selectedItems[item.id] && (
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <Label htmlFor={`quantity-${item.id}`} className="text-sm">
+                                      Quantity:
+                                    </Label>
+                                    <Select
+                                      value={selectedItems[item.id].quantity}
+                                      onValueChange={(value) => handleQuantityChange(item.id, value)}
+                                    >
+                                      <SelectTrigger className="w-[120px]">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {item.quantities?.map((q) => (
+                                          <SelectItem key={q} value={q}>
+                                            {q}
+                                          </SelectItem>
+                                        ))}
+                                        <SelectItem value="other">Other</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    {selectedItems[item.id].quantity === "other" && (
+                                      <Input
+                                        type="text"
+                                        placeholder="Specify"
+                                        className="w-[100px]"
+                                        value={selectedItems[item.id].customQuantity || ""}
+                                        onChange={(e) => handleCustomQuantityChange(item.id, e.target.value)}
+                                        required
+                                      />
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+            </Accordion>
+
+            <div className="mt-8 pt-6 border-t flex justify-end items-center gap-4">
+              <p className="text-muted-foreground">{totalSelected} item(s) selected</p>
+              <Button type="submit" disabled={isLoading || totalSelected === 0} size="lg">
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Submit Order
+              </Button>
             </div>
-          </div>
-        </div>
-      </div>
-    </FormProvider>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

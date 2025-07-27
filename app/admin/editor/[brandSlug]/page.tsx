@@ -1,58 +1,29 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
-import { FormEditor } from "./form-editor"
-import { notFound } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
+import { checkUserPermissions } from "@/lib/auth"
+import FormEditor from "./form-editor"
 import type { Brand, UploadedFile } from "@/lib/types"
+import { notFound } from "next/navigation"
 
-export const revalidate = 0 // Force dynamic rendering and prevent caching
+export default async function FormEditorPage({ params }: { params: { brandSlug: string } }) {
+  await checkUserPermissions()
+  const supabase = createClient()
 
-interface PageProps {
-  params: {
-    brandSlug: string
-  }
-}
-
-export default async function EditorPage({ params }: PageProps) {
-  const supabase = createServerSupabaseClient()
-
-  // Fetch the brand data with nested sections and items
-  const { data, error: brandError } = await supabase
+  const { data: brandData, error: brandError } = await supabase
     .from("brands")
-    .select(
-      `
-      id, name, slug, logo, primary_color, email, active, clinics,
-      product_sections (
-        id, title, sort_order, brand_id,
-        product_items (
-          id, code, name, description, quantities, sample_link, sort_order, section_id, brand_id
-        )
-      )
-    `,
-    )
+    .select("*, product_sections(*, product_items(*))")
     .eq("slug", params.brandSlug)
-    .order("sort_order", { foreignTable: "product_sections", ascending: true })
-    .order("sort_order", { foreignTable: "product_sections.product_items", ascending: true })
-    .limit(1) // Use limit(1) instead of single()
+    .single()
 
-  if (brandError) {
-    console.error("Error fetching brand data:", brandError)
-    notFound()
+  if (brandError || !brandData) {
+    console.error("Error fetching brand:", brandError)
+    return notFound()
   }
 
-  if (!data || data.length === 0) {
-    notFound()
-  }
-
-  const brandData = data[0]
-
-  // Fetch uploaded files
-  const { data: uploadedFiles, error: filesError } = await supabase
-    .from("uploaded_files")
-    .select("*")
-    .order("uploaded_at", { ascending: false })
+  const { data: uploadedFiles, error: filesError } = await supabase.from("files").select("*")
 
   if (filesError) {
-    console.error("Error fetching uploaded files:", filesError)
-    // We can still render the page, but file selection will be empty.
+    console.error("Error fetching files:", filesError)
+    // We can still render the page even if files fail to load
   }
 
   return <FormEditor initialBrandData={brandData as Brand} uploadedFiles={(uploadedFiles as UploadedFile[]) || []} />

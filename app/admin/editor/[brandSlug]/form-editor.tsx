@@ -62,7 +62,7 @@ function Toolbox({ onAddSectionClick, onImportClick }: { onAddSectionClick: () =
 }
 
 // Main Editor Component
-export function FormEditor({
+export default function FormEditor({
   initialBrandData,
   uploadedFiles,
 }: {
