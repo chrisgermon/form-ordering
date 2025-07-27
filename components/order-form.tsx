@@ -46,6 +46,8 @@ const ItemRow = ({ item }: { item: ProductItem }) => {
 
   const isOtherSelected = selectedQuantity === "other"
 
+  const quantities = Array.isArray(item.quantities) ? item.quantities : []
+
   return (
     <div className="py-4 border-b border-gray-300 last:border-b-0">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -65,7 +67,7 @@ const ItemRow = ({ item }: { item: ProductItem }) => {
           )}
         </div>
         <div className="md:col-span-2 flex flex-wrap items-center gap-x-6 gap-y-2">
-          {item.quantities.map((quantity) => (
+          {quantities.map((quantity) => (
             <div key={quantity} className="flex items-center space-x-2">
               <Checkbox
                 id={`${item.id}-${quantity}`}
@@ -181,7 +183,12 @@ export function OrderForm({ brandData }: OrderFormProps) {
     formState: { errors },
   } = methods
 
-  const clinicLocations = useMemo(() => brandData.clinics || [], [brandData.clinics])
+  const clinicLocations = useMemo(() => {
+    if (Array.isArray(brandData.clinics)) {
+      return brandData.clinics.map(String)
+    }
+    return []
+  }, [brandData.clinics])
 
   const filteredSections = useMemo(() => {
     if (!searchQuery) {

@@ -31,9 +31,17 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
   const form = useForm<FormData>({
     defaultValues: {
       ...initialData,
+      // Convert clinics array to a newline-separated string for the textarea
+      clinics: Array.isArray(initialData.clinics) ? initialData.clinics.join("\n") : "",
       sections: initialData.product_sections.map((s) => ({
         ...s,
-        product_items: s.product_items || [],
+        name: s.title, // map title to name for the form
+        product_items:
+          s.product_items?.map((p) => ({
+            ...p,
+            // Convert quantities array to a comma-separated string for the textarea
+            quantities: Array.isArray(p.quantities) ? p.quantities.join(", ") : "",
+          })) || [],
       })),
     },
   })
@@ -52,12 +60,16 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
     if (state.success) {
       toast.success("Form saved successfully!")
       if (state.brand) {
-        router.push(`/admin/editor/${state.brand.slug}`)
+        // If it was a new brand, the slug might have changed.
+        // Redirect to the new slug to ensure the URL is correct.
+        if (initialData.id === "" || initialData.slug !== state.brand.slug) {
+          router.push(`/admin/editor/${state.brand.slug}`)
+        }
       }
     } else if (state.error) {
       toast.error(`Error: ${state.error}`)
     }
-  }, [state, router])
+  }, [state, router, initialData])
 
   const DraggableSection = ({ section, index }: { section: any; index: number }) => {
     const ref = React.useRef<HTMLDivElement>(null)
@@ -127,14 +139,15 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
               placeholder="Item Description (optional)"
               rows={2}
             />
-            <div className="flex items-center gap-2">
-              <Controller
-                control={form.control}
-                name={`sections.${index}.product_items.${itemIndex}.requires_scan`}
-                render={({ field }) => <Switch checked={field.value} onCheckedChange={field.onChange} />}
-              />
-              <Label>Requires Scan/Upload</Label>
-            </div>
+            <Input
+              {...form.register(`sections.${index}.product_items.${itemIndex}.sample_link`)}
+              placeholder="Sample Link (e.g., https://...)"
+            />
+            <Textarea
+              {...form.register(`sections.${index}.product_items.${itemIndex}.quantities`)}
+              placeholder="Enter quantities, comma-separated (e.g. 1, 2, 5, other)"
+              rows={2}
+            />
           </div>
           <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(itemIndex)}>
             <Trash2 className="h-4 w-4 text-red-500" />
@@ -160,7 +173,6 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
             <Trash2 className="h-5 w-5 text-red-500" />
           </Button>
         </div>
-        <Textarea {...form.register(`sections.${index}.description`)} placeholder="Section Description (optional)" />
         <div className="space-y-3 pl-6">
           {items.map((item, itemIndex) => (
             <DraggableItem key={item.id} item={item} itemIndex={itemIndex} />
@@ -174,8 +186,9 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
               id: `new-item-${crypto.randomUUID()}`,
               name: "",
               description: "",
+              sample_link: "",
+              quantities: "",
               sort_order: items.length,
-              requires_scan: false,
             })
           }
           className="flex items-center gap-2"
@@ -188,7 +201,8 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <form action={formAction} className="space-y-8 p-4 md:p-8">
+      <form onSubmit={form.handleSubmit((data) => formAction(data))} className="space-y-8 p-4 md:p-8">
+        <input type="hidden" {...form.register("id")} />
         <Card>
           <CardHeader>
             <CardTitle>Brand Details</CardTitle>
@@ -200,13 +214,22 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
             </div>
             <Input {...form.register("logo")} placeholder="Logo URL" />
             <Input {...form.register("email")} placeholder="Submission Email" />
+            <div>
+              <Label htmlFor="clinics">Clinics</Label>
+              <Textarea
+                id="clinics"
+                {...form.register("clinics")}
+                placeholder="Enter one clinic location per line"
+                rows={5}
+              />
+            </div>
             <div className="flex items-center gap-2">
               <Controller
                 control={form.control}
                 name="active"
-                render={({ field }) => <Switch checked={field.value} onCheckedChange={field.onChange} />}
+                render={({ field }) => <Switch id="active" checked={field.value} onCheckedChange={field.onChange} />}
               />
-              <Label>Active</Label>
+              <Label htmlFor="active">Active</Label>
             </div>
           </CardContent>
         </Card>
