@@ -1,59 +1,24 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
-import { FormEditor } from "./form-editor"
-import { notFound } from "next/navigation"
-import type { Brand, UploadedFile } from "@/lib/types"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 
-export const revalidate = 0 // Force dynamic rendering and prevent caching
-
-interface PageProps {
-  params: {
-    brandSlug: string
-  }
-}
-
-export default async function EditorPage({ params }: PageProps) {
+const FormEditorPage = async ({ params }: { params: { brandSlug: string } }) => {
   const supabase = createServerSupabaseClient()
+  const { data: brand, error } = await supabase.from("brands").select().eq("slug", params.brandSlug).single()
 
-  // Fetch the brand data with nested sections and items
-  const { data, error: brandError } = await supabase
-    .from("brands")
-    .select(
-      `
-      id, name, slug, logo, primary_color, email, active, clinics,
-      product_sections (
-        id, title, sort_order, brand_id,
-        product_items (
-          id, code, name, description, quantities, sample_link, sort_order, section_id, brand_id
-        )
-      )
-    `,
-    )
-    .eq("slug", params.brandSlug)
-    .order("sort_order", { foreignTable: "product_sections", ascending: true })
-    .order("sort_order", { foreignTable: "product_sections.product_items", ascending: true })
-    .limit(1) // Use limit(1) instead of single()
-
-  if (brandError) {
-    console.error("Error fetching brand data:", brandError)
-    notFound()
+  if (error) {
+    console.error(error)
+    return <div>Error loading brand</div>
   }
 
-  if (!data || data.length === 0) {
-    notFound()
+  if (!brand) {
+    return <div>Brand not found</div>
   }
 
-  const brandData = data[0]
-
-  // Fetch uploaded files
-  const { data: uploadedFiles, error: filesError } = await supabase
-    .from("uploaded_files")
-    .select("*")
-    .order("uploaded_at", { ascending: false })
-
-  if (filesError) {
-    console.error("Error fetching uploaded files:", filesError)
-    // We can still render the page, but file selection will be empty.
-  }
-
-  return <FormEditor initialBrandData={brandData as Brand} uploadedFiles={(uploadedFiles as UploadedFile[]) || []} />
+  return (
+    <div>
+      <h1>Editor for {brand.name}</h1>
+      {/* Add your form editor components here, passing the brand data as needed */}
+    </div>
+  )
 }
+
+export default FormEditorPage

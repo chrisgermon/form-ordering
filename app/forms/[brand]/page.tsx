@@ -1,47 +1,52 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
-import { notFound } from "next/navigation"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { OrderForm } from "@/components/order-form"
-import type { Brand } from "@/lib/types"
+import type { Brand, ProductSection, ProductItem } from "@/lib/types"
+import { notFound } from "next/navigation"
 
-export const revalidate = 0 // Revalidate data on every request
+type BrandPageProps = {
+  params: {
+    brand: string
+  }
+}
 
-async function getBrandData(slug: string): Promise<Brand | null> {
+type FormBrandData = Brand & {
+  product_sections: Array<
+    ProductSection & {
+      product_items: ProductItem[]
+    }
+  >
+}
+
+async function getBrandData(slug: string): Promise<FormBrandData | null> {
   const supabase = createServerSupabaseClient()
-
   const { data, error } = await supabase
     .from("brands")
     .select(
       `
-      id, name, slug, logo, primary_color, email, clinics,
+      *,
       product_sections (
-        id, title, sort_order, brand_id,
+        *,
         product_items (
-          id, code, name, description, quantities, sample_link, sort_order, section_id, brand_id
+          *
         )
       )
     `,
     )
     .eq("slug", slug)
     .eq("active", true)
-    .order("sort_order", { foreignTable: "product_sections", ascending: true })
-    .order("sort_order", { foreignTable: "product_sections.product_items", ascending: true })
-    .limit(1) // Use limit(1) instead of single() to avoid throwing an error
+    .order("sort_order", { foreignTable: "product_sections" })
+    .order("sort_order", { foreignTable: "product_sections.product_items" })
+    .single()
 
   if (error) {
-    console.error(`Error fetching brand data for slug '${slug}':`, error)
+    console.error("Error fetching brand data:", error)
     return null
   }
 
-  // If no data is returned, it's a 404
-  if (!data || data.length === 0) {
-    return null
-  }
-
-  return data[0] as Brand
+  return data
 }
 
-// This is a dynamic route handler
-export default async function BrandFormPage({ params }: { params: { brand: string } }) {
+export default async function BrandPage({ params }: BrandPageProps) {
   const brandData = await getBrandData(params.brand)
 
   if (!brandData) {

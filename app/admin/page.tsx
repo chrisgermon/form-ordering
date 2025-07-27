@@ -1,23 +1,18 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
-import { useForm, Controller } from "react-hook-form"
-import { format } from "date-fns"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
+import AdminDashboard from "./AdminDashboard"
+import type { BrandType, SubmissionType, UploadedFileType } from "@/lib/types"
+import { redirect } from "next/navigation"
 import { Loader2, CalendarIcon } from "lucide-react"
 import { Alert } from "@/components/ui/alert"
-import type { Brand, UploadedFile, Submission } from "@/lib/types"
 import { Textarea } from "@/components/ui/textarea"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
-import AdminDashboard from "./AdminDashboard"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { useForm } from "react-hook-form"
+import { format } from "date-fns"
+import { useState, useEffect } from "react"
 
 // This forces the page to be re-rendered on every request, ensuring fresh data.
 export const dynamic = "force-dynamic"
@@ -25,6 +20,14 @@ export const dynamic = "force-dynamic"
 // This is now a pure Server Component. It fetches data and passes it to the client.
 export default async function AdminPage() {
   const supabase = createServerSupabaseClient()
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  if (!session) {
+    redirect("/")
+  }
 
   // Fetch initial data on the server
   const { data: brands, error: brandsError } = await supabase.from("brands").select("*").order("name")
@@ -34,12 +37,18 @@ export default async function AdminPage() {
     .select("*, brands(name)")
     .order("created_at", { ascending: false })
 
+  const { data: uploadedFiles, error: filesError } = await supabase.from("uploaded_files").select("*")
+
   // Handle errors gracefully
   if (brandsError) {
     return <p className="text-red-500 p-8">Error loading brands: {brandsError.message}</p>
   }
   if (submissionsError) {
     return <p className="text-red-500 p-8">Error loading submissions: {submissionsError.message}</p>
+  }
+  if (filesError) {
+    console.error("Error fetching files:", filesError)
+    // We can probably continue without files, so just log it.
   }
 
   // Format submissions data on the server
@@ -52,8 +61,10 @@ export default async function AdminPage() {
   // Pass server-fetched data to the client component
   return (
     <AdminDashboard
-      initialBrands={brands as Brand[]}
-      initialSubmissions={formattedSubmissions as (Submission & { brand_name: string })[]}
+      initialBrands={(brands as BrandType[]) || []}
+      initialSubmissions={formattedSubmissions as (SubmissionType & { brand_name: string })[]}
+      initialUploadedFiles={(uploadedFiles as UploadedFileType[]) || []}
+      user={session.user}
     />
   )
 }
@@ -64,8 +75,8 @@ function BrandForm({
   onSave,
   onCancel,
 }: {
-  brand: Brand | null
-  uploadedFiles: UploadedFile[]
+  brand: any | null
+  uploadedFiles: any[]
   onSave: (brand: any) => void
   onCancel: () => void
 }) {
@@ -115,8 +126,8 @@ function BrandForm({
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       <div>
-        <Label htmlFor="name">Brand Name</Label>
-        <Input
+        <label htmlFor="name">Brand Name</label>
+        <input
           id="name"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -124,8 +135,8 @@ function BrandForm({
         />
       </div>
       <div>
-        <Label htmlFor="primaryColor">Primary Color</Label>
-        <Input
+        <label htmlFor="primaryColor">Primary Color</label>
+        <input
           id="primaryColor"
           placeholder="e.g., #007bff or a Tailwind color"
           value={formData.primaryColor}
@@ -133,8 +144,8 @@ function BrandForm({
         />
       </div>
       <div>
-        <Label htmlFor="email">Recipient Email</Label>
-        <Input
+        <label htmlFor="email">Recipient Email</label>
+        <input
           id="email"
           type="email"
           placeholder="orders@example.com"
@@ -144,25 +155,20 @@ function BrandForm({
         />
       </div>
       <div>
-        <Label htmlFor="logo">Logo URL</Label>
-        <Select
+        <label htmlFor="logo">Logo URL</label>
+        <select
           value={formData.logo}
-          onValueChange={(value) => setFormData({ ...formData, logo: value === "none" ? "" : value })}
+          onChange={(e) => setFormData({ ...formData, logo: e.target.value === "none" ? "" : e.target.value })}
         >
-          <SelectTrigger>
-            <SelectValue placeholder="Select an uploaded logo" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">No logo</SelectItem>
-            {Array.isArray(uploadedFiles) &&
-              uploadedFiles.map((file) => (
-                <SelectItem key={file.id} value={file.url}>
-                  {file.original_name}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-        <Input
+          <option value="none">No logo</option>
+          {Array.isArray(uploadedFiles) &&
+            uploadedFiles.map((file) => (
+              <option key={file.id} value={file.url}>
+                {file.original_name}
+              </option>
+            ))}
+        </select>
+        <input
           className="mt-2"
           placeholder="Or enter custom URL"
           value={formData.logo}
@@ -170,7 +176,7 @@ function BrandForm({
         />
       </div>
       <div>
-        <Label htmlFor="clinics">Clinic Locations (one per line)</Label>
+        <label htmlFor="clinics">Clinic Locations (one per line)</label>
         <Textarea
           id="clinics"
           value={clinicsText}
@@ -187,15 +193,15 @@ function BrandForm({
           checked={formData.active}
           onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
         />
-        <Label htmlFor="active" className="font-medium">
+        <label htmlFor="active" className="font-medium">
           Active
-        </Label>
+        </label>
       </div>
       <div className="flex justify-end gap-2 pt-4">
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <button type="button" variant="outline" onClick={onCancel}>
           Cancel
-        </Button>
-        <Button type="submit">Save</Button>
+        </button>
+        <button type="submit">Save</button>
       </div>
     </form>
   )
@@ -209,7 +215,7 @@ function CompleteSubmissionDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  submission: Submission | null
+  submission: any | null
   onCompleted: () => void
 }) {
   const {
@@ -264,75 +270,66 @@ function CompleteSubmissionDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Mark Order as Complete</DialogTitle>
-        </DialogHeader>
-        {submission && (
-          <div className="text-sm text-muted-foreground border-b pb-4">
-            <p>
-              <strong>Order ID:</strong> {submission.id.substring(0, 8)}...
-            </p>
-            <p>
-              <strong>Brand:</strong> {submission.brand_name}
-            </p>
-            <p>
-              <strong>Ordered By:</strong> {submission.ordered_by} ({submission.email})
-            </p>
-          </div>
-        )}
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
+    <div className={open ? "block" : "hidden"} onClick={() => onOpenChange(false)}>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+        <div className="bg-white p-6 rounded shadow-lg w-full max-w-md relative" onClick={(e) => e.stopPropagation()}>
           <div>
-            <Label htmlFor="delivery_details">Delivery Details (Courier, Tracking #, etc.)</Label>
-            <Controller
-              name="delivery_details"
-              control={control}
-              render={({ field }) => <Textarea id="delivery_details" {...field} />}
-            />
+            <h2 className="text-xl font-bold mb-4">Mark Order as Complete</h2>
           </div>
-          <div>
-            <Label htmlFor="expected_delivery_date">Expected Delivery Date</Label>
-            <Controller
-              name="expected_delivery_date"
-              control={control}
-              rules={{ required: "Delivery date is required." }}
-              render={({ field }) => (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !field.value && "text-muted-foreground",
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
-                  </PopoverContent>
-                </Popover>
+          {submission && (
+            <div className="text-sm text-muted-foreground border-b pb-4">
+              <p>
+                <strong>Order ID:</strong> {submission.id.substring(0, 8)}...
+              </p>
+              <p>
+                <strong>Brand:</strong> {submission.brand_name}
+              </p>
+              <p>
+                <strong>Ordered By:</strong> {submission.ordered_by} ({submission.email})
+              </p>
+            </div>
+          )}
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
+            <div>
+              <label htmlFor="delivery_details">Delivery Details (Courier, Tracking #, etc.)</label>
+              <Textarea id="delivery_details" />
+            </div>
+            <div>
+              <label htmlFor="expected_delivery_date">Expected Delivery Date</label>
+              <div className="relative">
+                <button
+                  variant={"outline"}
+                  className={cn("w-full justify-start text-left font-normal", !submission && "text-muted-foreground")}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {submission ? format(submission.expected_delivery_date, "PPP") : <span>Pick a date</span>}
+                </button>
+                <div className="absolute top-full left-0 w-full mt-2">
+                  <Calendar
+                    mode="single"
+                    selected={submission.expected_delivery_date}
+                    onSelect={onSubmit}
+                    initialFocus
+                  />
+                </div>
+              </div>
+              {errors.expected_delivery_date && (
+                <p className="text-xs text-red-500 mt-1">{errors.expected_delivery_date.message}</p>
               )}
-            />
-            {errors.expected_delivery_date && (
-              <p className="text-xs text-red-500 mt-1">{errors.expected_delivery_date.message}</p>
-            )}
-          </div>
-          {errorMessage && <Alert variant="destructive">{errorMessage}</Alert>}
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Save and Complete
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+            </div>
+            {errorMessage && <Alert variant="destructive">{errorMessage}</Alert>}
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
+                Cancel
+              </button>
+              <button type="submit" disabled={isSaving}>
+                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Save and Complete
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   )
 }

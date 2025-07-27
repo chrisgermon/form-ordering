@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { put } from "@vercel/blob"
 import { jsPDF } from "jspdf"
 import { sendEmail, generateOrderEmailTemplate } from "@/lib/email"

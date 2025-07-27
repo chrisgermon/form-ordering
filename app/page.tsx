@@ -1,8 +1,9 @@
 import Link from "next/link"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { BrandGrid } from "@/components/brand-grid"
 import type { Brand } from "@/lib/types"
 import { Package2 } from "lucide-react"
+import { redirect } from "next/navigation"
 
 export const revalidate = 60 // Revalidate every 60 seconds
 
@@ -12,13 +13,28 @@ async function getBrands(): Promise<Brand[]> {
 
   if (error) {
     console.error("Error fetching brands:", error)
-    return []
+    throw new Error(`Failed to fetch brands. Please try again later.`)
   }
   return data || []
 }
 
 export default async function HomePage() {
-  const brands = await getBrands()
+  const supabase = createServerSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (user) {
+    return redirect("/admin")
+  }
+
+  let brands: Brand[] = []
+  let fetchError: string | null = null
+  try {
+    brands = await getBrands()
+  } catch (error) {
+    fetchError = error instanceof Error ? error.message : "An unknown error occurred."
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -50,7 +66,11 @@ export default async function HomePage() {
               </div>
             </div>
             <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 py-12 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
-              <BrandGrid brands={brands} />
+              {fetchError ? (
+                <p className="col-span-full text-center text-red-500">{fetchError}</p>
+              ) : (
+                <BrandGrid brands={brands} />
+              )}
             </div>
           </div>
         </section>

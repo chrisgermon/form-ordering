@@ -12,8 +12,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ArrowLeft, Search } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
-import type { Brand, ProductItem } from "@/lib/types"
+import type { Brand, ProductItem, ProductSection } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
+interface OrderFormProps {
+  brandData: Brand & {
+    product_sections: Array<ProductSection & { product_items: ProductItem[] }>
+  }
+}
 
 interface FormValues {
   orderedBy: string
@@ -137,7 +143,7 @@ function OrderSummary({ allItemsMap }: { allItemsMap: Map<string, ProductItem> }
   )
 }
 
-export function OrderForm({ brandData }: { brandData: Brand }) {
+export function OrderForm({ brandData }: OrderFormProps) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submissionStatus, setSubmissionStatus] = useState<"success" | "error" | null>(null)

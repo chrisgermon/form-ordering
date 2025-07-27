@@ -1,165 +1,255 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
 import { useForm, Controller } from "react-hook-form"
 import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Loader2, CalendarIcon, PlusCircle, Upload, Edit, Trash2 } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import type { Brand, UploadedFile, Submission } from "@/lib/types"
 import { Textarea } from "@/components/ui/textarea"
-import { toast } from "@/components/ui/use-toast"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { Loader2, CalendarIcon } from "lucide-react"
-import { Alert } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
-import type { Brand, UploadedFile, Submission } from "@/lib/types"
-import BrandGrid from "@/components/brand-grid"
 import SubmissionsTable from "./SubmissionsTable"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import Link from "next/link"
 
-type FormattedSubmission = Submission & { brand_name: string }
-
-interface AdminDashboardProps {
+// This is now a Client Component that handles all the state and interactions.
+export default function AdminDashboard({
+  initialBrands,
+  initialSubmissions,
+  initialUploadedFiles,
+}: {
   initialBrands: Brand[]
-  initialSubmissions: FormattedSubmission[]
-}
-
-export default function AdminDashboard({ initialBrands, initialSubmissions }: AdminDashboardProps) {
-  const router = useRouter()
+  initialSubmissions: (Submission & { brand_name: string })[]
+  initialUploadedFiles: UploadedFile[]
+}) {
   const [brands, setBrands] = useState<Brand[]>(initialBrands)
-  const [submissions, setSubmissions] = useState<FormattedSubmission[]>(initialSubmissions)
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
+  const [submissions, setSubmissions] = useState<(Submission & { brand_name: string })[]>(initialSubmissions)
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>(initialUploadedFiles)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [isBrandFormOpen, setIsBrandFormOpen] = useState(false)
-  const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
+  const [editingBrand, setEditingBrand] = useState<Brand | null>(null)
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
-  const [selectedSubmission, setSelectedSubmission] = useState<FormattedSubmission | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [completingSubmission, setCompletingSubmission] = useState<Submission | null>(null)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [deletingBrand, setDeletingBrand] = useState<Brand | null>(null)
 
-  const refreshData = useCallback(() => {
-    router.refresh()
-  }, [router])
+  const fetchAllData = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [brandsRes, submissionsRes, filesRes] = await Promise.all([
+        fetch("/api/admin/brands"),
+        fetch("/api/admin/submissions"),
+        fetch("/api/admin/files"),
+      ])
 
-  useEffect(() => {
-    setBrands(initialBrands)
-    setSubmissions(initialSubmissions)
-  }, [initialBrands, initialSubmissions])
-
-  useEffect(() => {
-    const fetchFiles = async () => {
-      try {
-        const res = await fetch("/api/admin/files")
-        if (!res.ok) throw new Error("Failed to fetch files")
-        const data = await res.json()
-        setUploadedFiles(data)
-      } catch (error) {
-        console.error(error)
-        toast({
-          title: "Error",
-          description: "Could not load uploaded files.",
-          variant: "destructive",
-        })
+      if (!brandsRes.ok || !submissionsRes.ok || !filesRes.ok) {
+        throw new Error("Failed to fetch data.")
       }
+
+      const [brandsData, submissionsData, filesData] = await Promise.all([
+        brandsRes.json(),
+        submissionsRes.json(),
+        filesRes.json(),
+      ])
+
+      setBrands(brandsData)
+      setSubmissions(submissionsData)
+      setUploadedFiles(filesData)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unknown error occurred.")
+    } finally {
+      setLoading(false)
     }
-    fetchFiles()
-  }, [])
-
-  const handleEditBrand = (brand: Brand) => {
-    setSelectedBrand(brand)
-    setIsBrandFormOpen(true)
-  }
-
-  const handleAddNewBrand = () => {
-    setSelectedBrand(null)
-    setIsBrandFormOpen(true)
   }
 
   const handleSaveBrand = async (brandData: any) => {
-    setIsLoading(true)
     const method = brandData.id ? "PUT" : "POST"
-    const endpoint = brandData.id ? `/api/admin/brands/${brandData.id}` : "/api/admin/brands"
+    const url = brandData.id ? `/api/admin/brands/${brandData.slug}` : "/api/admin/brands"
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(brandData),
       })
-
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || "Failed to save brand.")
       }
-
-      toast({
-        title: "Success",
-        description: `Brand ${brandData.id ? "updated" : "created"} successfully.`,
-      })
       setIsBrandFormOpen(false)
-      refreshData()
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "An unknown error occurred.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
+      setEditingBrand(null)
+      await fetchAllData() // Refresh data
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "An unknown error occurred.")
     }
   }
 
-  const handleMarkComplete = (submission: FormattedSubmission) => {
-    setSelectedSubmission(submission)
-    setIsCompleteDialogOpen(true)
+  const handleDeleteBrand = async () => {
+    if (!deletingBrand) return
+    try {
+      const response = await fetch(`/api/admin/brands/${deletingBrand.slug}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to delete brand.")
+      }
+      setIsDeleteDialogOpen(false)
+      setDeletingBrand(null)
+      await fetchAllData() // Refresh data
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "An unknown error occurred.")
+    }
   }
 
-  const onCompleted = () => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const formData = new FormData()
+    formData.append("file", file)
+
+    try {
+      const response = await fetch("/api/admin/upload", {
+        method: "POST",
+        body: formData,
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "File upload failed.")
+      }
+      await fetchAllData() // Refresh files list
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "An unknown error occurred.")
+    }
+  }
+
+  const handleCompleteSubmission = () => {
     setIsCompleteDialogOpen(false)
-    toast({
-      title: "Success",
-      description: "Order marked as complete.",
-    })
-    refreshData()
+    setCompletingSubmission(null)
+    fetchAllData() // Refresh submissions
   }
 
   return (
     <div className="container mx-auto p-4 md:p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <Button onClick={handleAddNewBrand}>Add New Brand</Button>
-      </div>
-      <Tabs defaultValue="submissions">
-        <TabsList>
-          <TabsTrigger value="submissions">Submissions</TabsTrigger>
-          <TabsTrigger value="brands">Brands</TabsTrigger>
-        </TabsList>
-        <TabsContent value="submissions">
-          <SubmissionsTable
-            submissions={submissions}
-            refreshSubmissions={refreshData}
-            onMarkComplete={handleMarkComplete}
-          />
-        </TabsContent>
-        <TabsContent value="brands">
-          <BrandGrid brands={brands} onEdit={handleEditBrand} />
-        </TabsContent>
-      </Tabs>
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
+        <div className="flex gap-2">
+          <Button onClick={() => setIsBrandFormOpen(true)}>
+            <PlusCircle className="mr-2 h-4 w-4" /> New Brand
+          </Button>
+          <Button variant="outline" asChild>
+            <label htmlFor="file-upload" className="cursor-pointer">
+              <Upload className="mr-2 h-4 w-4" /> Upload Logo
+            </label>
+          </Button>
+          <input id="file-upload" type="file" className="hidden" onChange={handleFileUpload} accept="image/*" />
+        </div>
+      </header>
+
+      {error && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold mb-4">Brands</h2>
+        {loading && !brands.length ? (
+          <p>Loading brands...</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {brands.map((brand) => (
+              <div key={brand.id} className="border rounded-lg p-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-3 mb-3">
+                    {brand.logo && (
+                      <img src={brand.logo || "/placeholder.svg"} alt={`${brand.name} logo`} className="h-8 w-auto" />
+                    )}
+                    <h3 className="font-bold text-lg">{brand.name}</h3>
+                  </div>
+                  <p className={`text-sm ${brand.active ? "text-green-600" : "text-red-500"}`}>
+                    {brand.active ? "Active" : "Inactive"}
+                  </p>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingBrand(brand)
+                      setIsBrandFormOpen(true)
+                    }}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/admin/editor/${brand.slug}`}>
+                      <span className="sr-only">Edit Form</span>
+                      <Edit className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      setDeletingBrand(brand)
+                      setIsDeleteDialogOpen(true)
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="text-2xl font-semibold mb-4">Recent Submissions</h2>
+        <SubmissionsTable
+          submissions={submissions}
+          onMarkComplete={(submission) => {
+            setCompletingSubmission(submission)
+            setIsCompleteDialogOpen(true)
+          }}
+        />
+      </section>
 
       <Dialog open={isBrandFormOpen} onOpenChange={setIsBrandFormOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{selectedBrand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
+            <DialogTitle>{editingBrand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
           </DialogHeader>
           <BrandForm
-            brand={selectedBrand}
+            brand={editingBrand}
             uploadedFiles={uploadedFiles}
             onSave={handleSaveBrand}
-            onCancel={() => setIsBrandFormOpen(false)}
-            isLoading={isLoading}
+            onCancel={() => {
+              setIsBrandFormOpen(false)
+              setEditingBrand(null)
+            }}
           />
         </DialogContent>
       </Dialog>
@@ -167,29 +257,47 @@ export default function AdminDashboard({ initialBrands, initialSubmissions }: Ad
       <CompleteSubmissionDialog
         open={isCompleteDialogOpen}
         onOpenChange={setIsCompleteDialogOpen}
-        submission={selectedSubmission}
-        onCompleted={onCompleted}
+        submission={completingSubmission}
+        onCompleted={handleCompleteSubmission}
       />
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the brand &quot;{deletingBrand?.name}&quot; and all associated form
+              configurations. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteBrand}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
+
+// These sub-components should be here or in their own files.
+// For now, keeping them here is fine as they are tightly coupled with the dashboard.
 
 function BrandForm({
   brand,
   uploadedFiles,
   onSave,
   onCancel,
-  isLoading,
 }: {
   brand: Brand | null
   uploadedFiles: UploadedFile[]
   onSave: (brand: any) => void
   onCancel: () => void
-  isLoading: boolean
 }) {
   const [formData, setFormData] = useState({
     id: brand?.id || undefined,
     name: brand?.name || "",
+    slug: brand?.slug || "",
     logo: brand?.logo || "",
     primary_color: brand?.primary_color || "",
     email: brand?.email || "",
@@ -202,6 +310,7 @@ function BrandForm({
       setFormData({
         id: brand.id,
         name: brand.name,
+        slug: brand.slug,
         logo: brand.logo || "",
         primary_color: brand.primary_color || "",
         email: brand.email,
@@ -212,6 +321,7 @@ function BrandForm({
       setFormData({
         id: undefined,
         name: "",
+        slug: "",
         logo: "",
         primary_color: "",
         email: "",
@@ -310,12 +420,10 @@ function BrandForm({
         </Label>
       </div>
       <div className="flex justify-end gap-2 pt-4">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+        <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={isLoading}>
-          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Save"}
-        </Button>
+        <Button type="submit">Save</Button>
       </div>
     </form>
   )
@@ -329,7 +437,7 @@ function CompleteSubmissionDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  submission: FormattedSubmission | null
+  submission: Submission | null
   onCompleted: () => void
 }) {
   const {
@@ -349,14 +457,12 @@ function CompleteSubmissionDialog({
   useEffect(() => {
     if (open) {
       reset({
-        delivery_details: submission?.delivery_details || "",
-        expected_delivery_date: submission?.expected_delivery_date
-          ? new Date(submission.expected_delivery_date)
-          : new Date(),
+        delivery_details: "",
+        expected_delivery_date: new Date(),
       })
       setErrorMessage("")
     }
-  }, [open, reset, submission])
+  }, [open, reset])
 
   const onSubmit = async (data: any) => {
     if (!submission) return
@@ -367,7 +473,6 @@ function CompleteSubmissionDialog({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          status: "completed",
           delivery_details: data.delivery_details,
           expected_delivery_date: data.expected_delivery_date
             ? format(data.expected_delivery_date, "yyyy-MM-dd")
@@ -398,7 +503,7 @@ function CompleteSubmissionDialog({
               <strong>Order ID:</strong> {submission.id.substring(0, 8)}...
             </p>
             <p>
-              <strong>Brand:</strong> {submission.brand_name}
+              <strong>Brand:</strong> {(submission as any).brand_name}
             </p>
             <p>
               <strong>Ordered By:</strong> {submission.ordered_by} ({submission.email})
