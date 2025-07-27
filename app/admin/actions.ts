@@ -2,125 +2,99 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import { seedDatabase as seedDb } from "@/lib/seed-data"
-import { z } from "zod"
+import { seedData } from "@/lib/seed-data"
 
-const brandSchema = z.object({
-  name: z.string().min(1, "Brand name is required"),
-  logo_url: z.string().url("Must be a valid URL").optional().or(z.literal("")),
-  primary_color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color"),
-  secondary_color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color"),
-  recipient_email: z.string().email("Must be a valid email address"),
-  is_active: z.boolean(),
-  clinics: z
-    .array(
-      z.object({
-        name: z.string().min(1, "Clinic name cannot be empty"),
-        address: z.string().min(1, "Clinic address cannot be empty"),
-      }),
-    )
-    .optional(),
-})
+export async function seedDatabase() {
+  const supabase = createClient()
+
+  console.log("Seeding data...")
+  await supabase.from("brands").delete().neq("id", 0)
+  await supabase.from("sections").delete().neq("id", 0)
+  await supabase.from("items").delete().neq("id", 0)
+
+  const { brands, sections, items } = seedData
+
+  const { data: seededBrands, error: brandsError } = await supabase.from("brands").insert(brands).select()
+  if (brandsError) {
+    console.error("Error seeding brands:", brandsError)
+    return { success: false, error: brandsError.message }
+  }
+
+  const { error: sectionsError } = await supabase.from("sections").insert(sections)
+  if (sectionsError) {
+    console.error("Error seeding sections:", sectionsError)
+    return { success: false, error: sectionsError.message }
+  }
+
+  const { error: itemsError } = await supabase.from("items").insert(items)
+  if (itemsError) {
+    console.error("Error seeding items:", itemsError)
+    return { success: false, error: itemsError.message }
+  }
+
+  console.log("Seeding complete.")
+  revalidatePath("/admin")
+  return { success: true }
+}
 
 export async function createBrand(formData: FormData) {
   const supabase = createClient()
-  const values = Object.fromEntries(formData.entries())
+  const name = formData.get("name") as string
+  const slug = formData.get("slug") as string
+  const logo_path = formData.get("logo_path") as string
+  const clinics = JSON.parse((formData.get("clinics") as string) || "[]")
 
-  const parsedValues = {
-    ...values,
-    is_active: values.is_active === "true",
-    clinics: values.clinics ? JSON.parse(values.clinics as string) : [],
-  }
-
-  const validatedFields = brandSchema.safeParse(parsedValues)
-
-  if (!validatedFields.success) {
-    return {
-      success: false,
-      message: "Invalid form data.",
-      errors: validatedFields.error.flatten().fieldErrors,
-    }
-  }
-
-  const { clinics, ...brandData } = validatedFields.data
-
-  const { error } = await supabase.from("brands").insert([
-    {
-      ...brandData,
-      slug: brandData.name.toLowerCase().replace(/\s+/g, "-"),
-      clinics: clinics || [],
-    },
-  ])
+  const { data, error } = await supabase.from("brands").insert([{ name, slug, logo_path, clinics }]).select().single()
 
   if (error) {
-    return { success: false, message: `Database error: ${error.message}` }
+    console.error("Error creating brand:", error)
+    return { success: false, error: error.message }
   }
 
   revalidatePath("/admin")
-  return { success: true, message: "Brand created successfully." }
+  if (data?.slug) {
+    revalidatePath(`/admin/editor/${data.slug}`)
+  }
+  return { success: true, brand: data }
 }
 
-export async function updateBrand(id: number, formData: FormData) {
+export async function updateBrand(formData: FormData) {
   const supabase = createClient()
-  const values = Object.fromEntries(formData.entries())
-
-  const parsedValues = {
-    ...values,
-    is_active: values.is_active === "true",
-    clinics: values.clinics ? JSON.parse(values.clinics as string) : [],
-  }
-
-  const validatedFields = brandSchema.safeParse(parsedValues)
-
-  if (!validatedFields.success) {
-    return {
-      success: false,
-      message: "Invalid form data.",
-      errors: validatedFields.error.flatten().fieldErrors,
-    }
-  }
-
-  const { clinics, ...brandData } = validatedFields.data
+  const id = formData.get("id") as string
+  const name = formData.get("name") as string
+  const slug = formData.get("slug") as string
+  const logo_path = formData.get("logo_path") as string
+  const clinics = JSON.parse((formData.get("clinics") as string) || "[]")
 
   const { data, error } = await supabase
     .from("brands")
-    .update({
-      ...brandData,
-      slug: brandData.name.toLowerCase().replace(/\s+/g, "-"),
-      clinics: clinics || [],
-    })
+    .update({ name, slug, logo_path, clinics })
     .eq("id", id)
     .select()
     .single()
 
   if (error) {
-    return { success: false, message: `Database error: ${error.message}` }
+    console.error("Error updating brand:", error)
+    return { success: false, error: error.message }
   }
 
   revalidatePath("/admin")
-  revalidatePath(`/forms/${data.slug}`)
-  return { success: true, message: "Brand updated successfully." }
+  if (data?.slug) {
+    revalidatePath(`/admin/editor/${data.slug}`)
+  }
+  return { success: true, brand: data }
 }
 
 export async function deleteBrand(id: number) {
   const supabase = createClient()
+
   const { error } = await supabase.from("brands").delete().eq("id", id)
 
   if (error) {
-    return { success: false, message: `Database error: ${error.message}` }
+    console.error("Error deleting brand:", error)
+    return { success: false, error: error.message }
   }
 
   revalidatePath("/admin")
-  return { success: true, message: "Brand deleted." }
-}
-
-export async function seedDatabase() {
-  try {
-    await seedDb()
-    revalidatePath("/admin")
-    return { success: true, message: "Database seeded successfully!" }
-  } catch (error: any) {
-    console.error("Error seeding database:", error)
-    return { success: false, message: `Failed to seed database: ${error.message}` }
-  }
+  return { success: true }
 }
