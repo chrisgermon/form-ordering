@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ArrowLeft, Search } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
-import type { Brand, ProductItem } from "@/lib/types"
+import type { Brand, ProductItem, Clinic } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface FormValues {
@@ -166,7 +166,6 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
   })
 
   const {
-    control,
     handleSubmit,
     reset,
     register,
@@ -175,7 +174,7 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
     formState: { errors },
   } = methods
 
-  const clinicLocations = useMemo(() => brandData.clinics || [], [brandData.clinics])
+  const clinicLocations: Clinic[] = useMemo(() => brandData.clinics || [], [brandData.clinics])
 
   const filteredSections = useMemo(() => {
     if (!searchQuery) {
@@ -328,9 +327,9 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                           <SelectValue placeholder="Select a clinic" />
                         </SelectTrigger>
                         <SelectContent>
-                          {clinicLocations.map((location) => (
-                            <SelectItem key={location} value={location}>
-                              {location}
+                          {clinicLocations.map((clinic) => (
+                            <SelectItem key={clinic.name} value={clinic.name}>
+                              {clinic.name} - {clinic.address}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -346,9 +345,9 @@ export function OrderForm({ brandData }: { brandData: Brand }) {
                           <SelectValue placeholder="Select a clinic" />
                         </SelectTrigger>
                         <SelectContent>
-                          {clinicLocations.map((location) => (
-                            <SelectItem key={location} value={location}>
-                              {location}
+                          {clinicLocations.map((clinic) => (
+                            <SelectItem key={clinic.name} value={clinic.name}>
+                              {clinic.name} - {clinic.address}
                             </SelectItem>
                           ))}
                         </SelectContent>

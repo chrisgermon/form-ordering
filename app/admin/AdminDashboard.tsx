@@ -15,13 +15,18 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { Loader2, CalendarIcon, PlusCircle } from "lucide-react"
-import { Alert } from "@/components/ui/alert"
+import { Loader2, CalendarIcon, PlusCircle, X } from 'lucide-react'
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription
+} from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
-import type { Brand, UploadedFile, Submission } from "@/lib/types"
+import type { Brand, UploadedFile, Submission, Clinic } from "@/lib/types"
 import SubmissionsTable from "./SubmissionsTable"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import AdminActions from "./AdminActions"
 
 type FormattedSubmission = Submission & { brand_name: string }
 
@@ -128,19 +133,21 @@ export default function AdminDashboard({ initialBrands, initialSubmissions }: Ad
   }
 
   const handleSubmissionUpdated = (updatedSubmission: Submission) => {
-    setSubmissions((prev) => prev.map((s) => (s.id === updatedSubmission.id ? updatedSubmission : s)))
+    setSubmissions((prev) =>
+      prev.map((s) => (s.id === updatedSubmission.id ? { ...s, ...updatedSubmission } : s)),
+    )
   }
 
   return (
     <div className="container mx-auto p-4 md:p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <Button onClick={handleAddNewBrand}>Add New Brand</Button>
       </div>
       <Tabs defaultValue="submissions">
-        <TabsList>
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="submissions">Submissions</TabsTrigger>
           <TabsTrigger value="brands">Brands</TabsTrigger>
+          <TabsTrigger value="actions">Admin Actions</TabsTrigger>
         </TabsList>
         <TabsContent value="submissions">
           <SubmissionsTable
@@ -153,31 +160,59 @@ export default function AdminDashboard({ initialBrands, initialSubmissions }: Ad
         <TabsContent value="brands">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Brands</CardTitle>
-              <Button asChild>
-                <Link href="/admin/editor/new">
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add New Brand
-                </Link>
+              <CardTitle>Manage Brands</CardTitle>
+              <Button onClick={handleAddNewBrand}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add New Brand
               </Button>
             </CardHeader>
             <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Click a brand to edit its details, or click the link icon to go to its form editor.
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {brands.map((brand) => (
-                  <Link href={`/admin/editor/${brand.slug}`} key={brand.id}>
-                    <div className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                      <h3 className="font-semibold">{brand.name}</h3>
-                      <p className="text-sm text-gray-500">{brand.slug}</p>
-                    </div>
-                  </Link>
+                  <div
+                    key={brand.id}
+                    onClick={() => handleEditBrand(brand)}
+                    className="p-4 border rounded-lg hover:bg-gray-50 transition-colors cursor-pointer group relative"
+                  >
+                    <h3 className="font-semibold">{brand.name}</h3>
+                    <p className="text-sm text-gray-500">{brand.slug}</p>
+                    <Link
+                      href={`/admin/editor/${brand.slug}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute top-2 right-2 text-muted-foreground hover:text-primary"
+                      aria-label={`Edit form for ${brand.name}`}
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-5 w-5"
+                      >
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.72" />
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.72-1.72" />
+                      </svg>
+                    </Link>
+                  </div>
                 ))}
               </div>
             </CardContent>
           </Card>
         </TabsContent>
+        <TabsContent value="actions">
+          <AdminActions />
+        </TabsContent>
       </Tabs>
 
       <Dialog open={isBrandFormOpen} onOpenChange={setIsBrandFormOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[625px]">
           <DialogHeader>
             <DialogTitle>{selectedBrand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
           </DialogHeader>
@@ -222,7 +257,7 @@ function BrandForm({
     email: brand?.email || "",
     active: brand?.active ?? true,
   })
-  const [clinicsText, setClinicsText] = useState(brand?.clinics?.join("\n") || "")
+  const [clinics, setClinics] = useState<Clinic[]>(brand?.clinics || [])
 
   useEffect(() => {
     if (brand) {
@@ -231,10 +266,10 @@ function BrandForm({
         name: brand.name,
         logo: brand.logo || "",
         primary_color: brand.primary_color || "",
-        email: brand.email,
+        email: brand.email || "",
         active: brand.active,
       })
-      setClinicsText(brand.clinics?.join("\n") || "")
+      setClinics(brand.clinics || [])
     } else {
       setFormData({
         id: undefined,
@@ -244,38 +279,50 @@ function BrandForm({
         email: "",
         active: true,
       })
-      setClinicsText("")
+      setClinics([])
     }
   }, [brand])
 
+  const handleClinicChange = (index: number, field: "name" | "address", value: string) => {
+    const newClinics = [...clinics]
+    newClinics[index] = { ...newClinics[index], [field]: value }
+    setClinics(newClinics)
+  }
+
+  const handleAddClinic = () => {
+    setClinics([...clinics, { name: "", address: "" }])
+  }
+
+  const handleRemoveClinic = (index: number) => {
+    setClinics(clinics.filter((_, i) => i !== index))
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const clinicsArray = clinicsText
-      .split("\n")
-      .map((c) => c.trim())
-      .filter(Boolean)
-    onSave({ ...formData, clinics: clinicsArray })
+    onSave({ ...formData, clinics })
   }
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <div>
-        <Label htmlFor="name">Brand Name</Label>
-        <Input
-          id="name"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          required
-        />
-      </div>
-      <div>
-        <Label htmlFor="primaryColor">Primary Color</Label>
-        <Input
-          id="primaryColor"
-          placeholder="e.g., #007bff or a Tailwind color"
-          value={formData.primary_color}
-          onChange={(e) => setFormData({ ...formData, primary_color: e.target.value })}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="name">Brand Name</Label>
+          <Input
+            id="name"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            required
+          />
+        </div>
+        <div>
+          <Label htmlFor="primaryColor">Primary Color</Label>
+          <Input
+            id="primaryColor"
+            placeholder="e.g., #007bff or a Tailwind color"
+            value={formData.primary_color || ""}
+            onChange={(e) => setFormData({ ...formData, primary_color: e.target.value })}
+          />
+        </div>
       </div>
       <div>
         <Label htmlFor="email">Recipient Email</Label>
@@ -283,7 +330,7 @@ function BrandForm({
           id="email"
           type="email"
           placeholder="orders@example.com"
-          value={formData.email}
+          value={formData.email || ""}
           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
           required
         />
@@ -291,7 +338,7 @@ function BrandForm({
       <div>
         <Label htmlFor="logo">Logo URL</Label>
         <Select
-          value={formData.logo}
+          value={formData.logo || ""}
           onValueChange={(value) => setFormData({ ...formData, logo: value === "none" ? "" : value })}
         >
           <SelectTrigger>
@@ -310,19 +357,56 @@ function BrandForm({
         <Input
           className="mt-2"
           placeholder="Or enter custom URL"
-          value={formData.logo}
+          value={formData.logo || ""}
           onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
         />
       </div>
       <div>
-        <Label htmlFor="clinics">Clinic Locations (one per line)</Label>
-        <Textarea
-          id="clinics"
-          value={clinicsText}
-          onChange={(e) => setClinicsText(e.target.value)}
-          rows={6}
-          placeholder={"Botanic Ridge\nBulleen\nCarnegie"}
-        />
+        <Label>Clinic Locations</Label>
+        <div className="space-y-3 max-h-60 overflow-y-auto p-1">
+          {clinics.map((clinic, index) => (
+            <div key={index} className="p-3 border rounded-md space-y-2 bg-gray-50/50 relative">
+              <div className="absolute top-1 right-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleRemoveClinic(index)}
+                  className="h-7 w-7 p-0"
+                >
+                  <X className="h-4 w-4" />
+                  <span className="sr-only">Remove clinic</span>
+                </Button>
+              </div>
+              <div>
+                <Label htmlFor={`clinic-name-${index}`} className="text-xs font-medium">
+                  Clinic Name
+                </Label>
+                <Input
+                  id={`clinic-name-${index}`}
+                  value={clinic.name}
+                  onChange={(e) => handleClinicChange(index, "name", e.target.value)}
+                  placeholder="e.g. Main Street Clinic"
+                />
+              </div>
+              <div>
+                <Label htmlFor={`clinic-address-${index}`} className="text-xs font-medium">
+                  Clinic Address
+                </Label>
+                <Textarea
+                  id={`clinic-address-${index}`}
+                  value={clinic.address}
+                  onChange={(e) => handleClinicChange(index, "address", e.target.value)}
+                  rows={2}
+                  placeholder="e.g. 123 Main St, Anytown, USA 12345"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={handleAddClinic} className="mt-2">
+          <PlusCircle className="mr-2 h-4 w-4" /> Add Clinic
+        </Button>
       </div>
       <div className="flex items-center space-x-2 pt-2">
         <input

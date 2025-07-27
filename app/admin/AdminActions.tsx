@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { Loader2 } from "lucide-react"
 import { runSeedDatabase, autoAssignPdfs } from "./actions"
 
-export function AdminActions() {
+export default function AdminActions() {
   const [isSeeding, setIsSeeding] = useState(false)
   const [isAssigning, setIsAssigning] = useState(false)
   const router = useRouter()
