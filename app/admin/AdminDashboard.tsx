@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { PlusCircle } from "lucide-react"
-import SubmissionsTable from "./SubmissionsTable" // Corrected: default import
+import SubmissionsTable from "./SubmissionsTable"
 import { toast } from "@/components/ui/use-toast"
 import type { Submission, Brand } from "@/lib/types"
 
@@ -19,6 +19,7 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ initialSubmissions, initialBrands }: AdminDashboardProps) {
   const [submissions, setSubmissions] = useState(initialSubmissions)
   const [brands, setBrands] = useState(initialBrands)
+  const [isClearing, setIsClearing] = useState(false)
 
   const refreshSubmissions = async () => {
     try {
@@ -35,25 +36,58 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
     }
   }
 
-  const handleMarkComplete = async (submission: FormattedSubmission) => {
+  const handleMarkComplete = async (
+    submission: FormattedSubmission,
+    completionData: { delivery_details: string; expected_delivery_date: string },
+  ) => {
     try {
       const response = await fetch(`/api/admin/submissions/${submission.id}`, {
-        method: "PATCH",
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "completed" }),
+        body: JSON.stringify(completionData),
       })
-      if (!response.ok) throw new Error("Failed to mark as complete")
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to mark as complete.")
+      }
+
       toast({
         title: "Success",
         description: `Submission for ${submission.ordered_by} marked as complete.`,
       })
-      refreshSubmissions()
+
+      await refreshSubmissions()
     } catch (error) {
       toast({
         title: "Error",
-        description: "Could not mark submission as complete.",
+        description: error instanceof Error ? error.message : "Could not mark submission as complete.",
         variant: "destructive",
       })
+    }
+  }
+
+  const handleClearAll = async () => {
+    setIsClearing(true)
+    try {
+      const response = await fetch("/api/admin/submissions", { method: "DELETE" })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to clear submissions.")
+      }
+      toast({
+        title: "Success",
+        description: "All submissions have been cleared.",
+      })
+      await refreshSubmissions()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "An unknown error occurred.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsClearing(false)
     }
   }
 
@@ -61,7 +95,11 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
     <div className="flex min-h-screen w-full flex-col bg-muted/40">
       <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
         <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        {/* Removed User menu and sign out button */}
+        <div className="ml-auto">
+          <Link href="/">
+            <Button variant="outline">View Forms</Button>
+          </Link>
+        </div>
       </header>
       <main className="flex-1 p-4 sm:px-6 sm:py-0">
         <div className="grid auto-rows-max items-start gap-4 py-4 md:gap-8 lg:col-span-2">
@@ -105,8 +143,9 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
             <CardContent>
               <SubmissionsTable
                 submissions={submissions}
-                refreshSubmissions={refreshSubmissions}
                 onMarkComplete={handleMarkComplete}
+                onClearAll={handleClearAll}
+                isClearing={isClearing}
               />
             </CardContent>
           </Card>
