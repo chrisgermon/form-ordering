@@ -20,7 +20,7 @@ export const supabase = createPublicClient()
 
 // This function creates the admin client.
 // It should only be called on the server.
-export const createServerSupabaseClient = (): SupabaseClient => {
+const _createServerSupabaseClient = (): SupabaseClient => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -30,3 +30,7 @@ export const createServerSupabaseClient = (): SupabaseClient => {
 
   return _createClient(supabaseUrl, supabaseServiceKey)
 }
+
+// Export under both names to avoid deployment errors from inconsistent imports.
+export const createServerSupabaseClient = _createServerSupabaseClient
+export const createAdminSupabaseClient = _createServerSupabaseClient

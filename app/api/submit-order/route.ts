@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createAdminSupabaseClient } from "@/lib/supabase"
 import { put } from "@vercel/blob"
 import { jsPDF } from "jspdf"
 import { sendEmail, generateOrderEmailTemplate } from "@/lib/email"
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Brand information is missing." }, { status: 400 })
     }
 
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     const pdfBuffer = generatePDF(formData, brandName)
 
     const filename = `${brandId}-order-${Date.now()}.pdf`
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
 
     if (dbError) {
       console.error("Database error:", dbError)
-      throw new Error("Failed to save submission to database")
+      throw new Error(`Failed to save submission to database: ${dbError.message}`)
     }
 
     // This is the key change to fix the submissions list not updating.

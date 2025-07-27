@@ -1,24 +1,46 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
+import { notFound } from "next/navigation"
+import { FormEditor } from "./form-editor"
+import type { Brand, ProductSection } from "@/lib/types"
 
-const FormEditorPage = async ({ params }: { params: { brandSlug: string } }) => {
-  const supabase = createServerSupabaseClient()
-  const { data: brand, error } = await supabase.from("brands").select().eq("slug", params.brandSlug).single()
-
-  if (error) {
-    console.error(error)
-    return <div>Error loading brand</div>
+type EditorPageProps = {
+  params: {
+    brandSlug: string
   }
+}
 
-  if (!brand) {
-    return <div>Brand not found</div>
+export default async function EditorPage({ params }: EditorPageProps) {
+  const supabase = createServerSupabaseClient()
+  const { brandSlug } = params
+
+  let brandData: (Brand & { product_sections: ProductSection[] }) | null = null
+
+  if (brandSlug !== "new") {
+    const { data, error } = await supabase
+      .from("brands")
+      .select(
+        `
+        *,
+        product_sections (
+          *,
+          items (*)
+        )
+      `,
+      )
+      .eq("slug", brandSlug)
+      .single()
+
+    if (error) {
+      console.error("Error fetching brand for editor:", error)
+      notFound()
+    }
+    brandData = data as any
   }
 
   return (
-    <div>
-      <h1>Editor for {brand.name}</h1>
-      {/* Add your form editor components here, passing the brand data as needed */}
-    </div>
+    <main className="container mx-auto p-4 md:p-8">
+      <h1 className="text-3xl font-bold mb-6">{brandData ? `Editing: ${brandData.name}` : "Create New Brand"}</h1>
+      <FormEditor brand={brandData} />
+    </main>
   )
 }
-
-export default FormEditorPage
