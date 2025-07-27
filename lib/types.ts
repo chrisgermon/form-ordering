@@ -5,6 +5,8 @@ export interface Brand {
   name: string
   slug: string
   logo: string | null
+  primary_color: string | null
+  email: string | null
   active: boolean
   clinics: string[]
 }

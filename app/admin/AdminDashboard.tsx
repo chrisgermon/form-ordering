@@ -82,7 +82,7 @@ export default function AdminDashboard({ initialBrands, initialSubmissions }: Ad
   const handleSaveBrand = async (brandData: any) => {
     setIsLoading(true)
     const method = brandData.id ? "PUT" : "POST"
-    const endpoint = brandData.id ? `/api/admin/brands/${brandData.id}` : "/api/admin/brands"
+    const endpoint = "/api/admin/brands"
 
     try {
       const response = await fetch(endpoint, {
