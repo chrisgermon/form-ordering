@@ -1,261 +1,173 @@
 "use client"
 
-import { useEffect } from "react"
 import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
+import type { Brand } from "@/lib/types"
+import { createBrand, updateBrand } from "./actions"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog"
-import { useToast } from "@/components/ui/use-toast"
-import type { Brand } from "@/lib/types"
-import { createBrand, updateBrand, deleteBrand } from "./actions"
-import { Loader2, PlusCircle, Trash2 } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog"
+import { Trash2 } from "lucide-react"
 
-export const brandFormSchema = z.object({
-  name: z.string().min(1, "Brand name is required."),
-  logo: z.string().url("Must be a valid URL.").optional().or(z.literal("")),
-  primary_color: z.string().optional(),
-  email: z.string().email("Invalid email address.").optional().or(z.literal("")),
-  active: z.boolean(),
-  clinics: z
-    .array(
-      z.object({
-        name: z.string().min(1, "Clinic name cannot be empty."),
-        address: z.string().min(1, "Clinic address cannot be empty."),
-      }),
-    )
-    .min(1, "At least one clinic is required."),
+const clinicSchema = z.object({
+  name: z.string().min(1, "Clinic name is required"),
+  address: z.string().min(1, "Clinic address is required"),
 })
 
-type BrandFormValues = z.infer<typeof brandFormSchema>
+const brandSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().min(1, "Brand name is required"),
+  logo_url: z.string().url("Must be a valid URL").optional().or(z.literal("")),
+  primary_color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color"),
+  secondary_color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color"),
+  recipient_email: z.string().email("Must be a valid email address"),
+  is_active: z.boolean(),
+  clinics: z.array(clinicSchema),
+})
+
+type BrandFormData = z.infer<typeof brandSchema>
 
 interface BrandEditorProps {
+  brand?: Brand
   isOpen: boolean
   onClose: () => void
-  brand: Brand | null
 }
 
-export default function BrandEditor({ isOpen, onClose, brand }: BrandEditorProps) {
-  const { toast } = useToast()
-  const isCreating = brand === null
-
-  const form = useForm<BrandFormValues>({
-    resolver: zodResolver(brandFormSchema),
+export default function BrandEditor({ brand, isOpen, onClose }: BrandEditorProps) {
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<BrandFormData>({
+    resolver: zodResolver(brandSchema),
     defaultValues: {
-      name: "",
-      logo: "",
-      primary_color: "#000000",
-      email: "",
-      active: true,
-      clinics: [{ name: "", address: "" }],
+      id: brand?.id,
+      name: brand?.name || "",
+      logo_url: brand?.logo_url || "",
+      primary_color: brand?.primary_color || "#000000",
+      secondary_color: brand?.secondary_color || "#ffffff",
+      recipient_email: brand?.recipient_email || "",
+      is_active: brand?.is_active ?? true,
+      clinics: brand?.clinics || [],
     },
   })
 
   const { fields, append, remove } = useFieldArray({
-    control: form.control,
+    control,
     name: "clinics",
   })
 
-  useEffect(() => {
-    if (brand) {
-      form.reset({
-        name: brand.name,
-        logo: brand.logo || "",
-        primary_color: brand.primary_color || "#000000",
-        email: brand.email || "",
-        active: brand.active,
-        clinics: brand.clinics && brand.clinics.length > 0 ? brand.clinics : [{ name: "", address: "" }],
-      })
+  const handleFormSubmit = async (data: BrandFormData) => {
+    const formData = new FormData()
+    formData.append("name", data.name)
+    formData.append("logo_url", data.logo_url || "")
+    formData.append("primary_color", data.primary_color)
+    formData.append("secondary_color", data.secondary_color)
+    formData.append("recipient_email", data.recipient_email)
+    formData.append("is_active", String(data.is_active))
+    formData.append("clinics", JSON.stringify(data.clinics))
+
+    let result
+    if (brand?.id) {
+      formData.append("id", String(brand.id))
+      result = await updateBrand(formData)
     } else {
-      form.reset({
-        name: "",
-        logo: "",
-        primary_color: "#000000",
-        email: "",
-        active: true,
-        clinics: [{ name: "", address: "" }],
-      })
+      result = await createBrand(formData)
     }
-  }, [brand, form, isOpen])
-
-  const { isSubmitting } = form.formState
-
-  const onSubmit = async (values: BrandFormValues) => {
-    const action = isCreating ? createBrand : (data: BrandFormValues) => updateBrand(brand!.id, data)
-    const result = await action(values)
 
     if (result.success) {
-      toast({
-        title: "Success!",
-        description: result.message,
-      })
+      toast.success(result.message)
       onClose()
     } else {
-      toast({
-        title: "Error",
-        description: result.message,
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleDelete = async () => {
-    if (!brand || !confirm(`Are you sure you want to delete the brand "${brand.name}"? This cannot be undone.`)) {
-      return
-    }
-    const result = await deleteBrand(brand.id)
-    if (result.success) {
-      toast({
-        title: "Brand Deleted",
-        description: result.message,
-      })
-      onClose()
-    } else {
-      toast({
-        title: "Error",
-        description: result.message,
-        variant: "destructive",
-      })
+      toast.error(result.message)
     }
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[625px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>{isCreating ? "Create New Brand" : "Edit Brand"}</DialogTitle>
-          <DialogDescription>
-            {isCreating ? "Add a new brand to the system." : `Editing details for ${brand?.name}.`}
-          </DialogDescription>
+          <DialogTitle>{brand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-4">
+        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
+            <div>
               <Label htmlFor="name">Brand Name</Label>
-              <Input id="name" {...form.register("name")} />
-              {form.formState.errors.name && (
-                <p className="text-sm text-red-500">{form.formState.errors.name.message}</p>
-              )}
+              <Input id="name" {...register("name")} />
+              {errors.name && <p className="text-red-500 text-sm">{errors.name.message}</p>}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Recipient Email</Label>
-              <Input id="email" type="email" {...form.register("email")} />
-              {form.formState.errors.email && (
-                <p className="text-sm text-red-500">{form.formState.errors.email.message}</p>
-              )}
+            <div>
+              <Label htmlFor="recipient_email">Recipient Email</Label>
+              <Input id="recipient_email" {...register("recipient_email")} />
+              {errors.recipient_email && <p className="text-red-500 text-sm">{errors.recipient_email.message}</p>}
             </div>
           </div>
+          <div>
+            <Label htmlFor="logo_url">Logo URL</Label>
+            <Input id="logo_url" {...register("logo_url")} />
+            {errors.logo_url && <p className="text-red-500 text-sm">{errors.logo_url.message}</p>}
+          </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="logo">Logo URL</Label>
-              <Input id="logo" {...form.register("logo")} />
-              {form.formState.errors.logo && (
-                <p className="text-sm text-red-500">{form.formState.errors.logo.message}</p>
-              )}
+            <div>
+              <Label htmlFor="primary_color">Primary Color</Label>
+              <Input id="primary_color" type="color" {...register("primary_color")} className="h-10" />
+              {errors.primary_color && <p className="text-red-500 text-sm">{errors.primary_color.message}</p>}
             </div>
-            <div className="flex items-center gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="primary_color">Primary Color</Label>
-                <Input id="primary_color" type="color" {...form.register("primary_color")} className="p-1 h-10" />
-              </div>
-              <div className="space-y-2 pt-6">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="active"
-                    checked={form.watch("active")}
-                    onCheckedChange={(checked) => form.setValue("active", checked)}
-                  />
-                  <Label htmlFor="active">Active</Label>
-                </div>
-              </div>
+            <div>
+              <Label htmlFor="secondary_color">Secondary Color</Label>
+              <Input id="secondary_color" type="color" {...register("secondary_color")} className="h-10" />
+              {errors.secondary_color && <p className="text-red-500 text-sm">{errors.secondary_color.message}</p>}
             </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="is_active"
+              {...register("is_active")}
+              defaultChecked={brand?.is_active ?? true}
+              onCheckedChange={(checked) => reset({ ...control._formValues, is_active: checked })}
+            />
+            <Label htmlFor="is_active">Active</Label>
           </div>
 
           <div>
-            <Label>Clinics</Label>
-            <div className="space-y-2 mt-2">
+            <h3 className="font-medium mb-2">Clinics</h3>
+            <div className="space-y-2">
               {fields.map((field, index) => (
-                <div key={field.id} className="flex items-end gap-2 p-3 border rounded-md">
-                  <div className="grid grid-cols-2 gap-2 flex-grow">
-                    <div className="space-y-1">
-                      <Label htmlFor={`clinics.${index}.name`} className="text-xs">
-                        Clinic Name
-                      </Label>
-                      <Input {...form.register(`clinics.${index}.name`)} />
-                      {form.formState.errors.clinics?.[index]?.name && (
-                        <p className="text-sm text-red-500">{form.formState.errors.clinics?.[index]?.name?.message}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor={`clinics.${index}.address`} className="text-xs">
-                        Clinic Address
-                      </Label>
-                      <Input {...form.register(`clinics.${index}.address`)} />
-                      {form.formState.errors.clinics?.[index]?.address && (
-                        <p className="text-sm text-red-500">
-                          {form.formState.errors.clinics?.[index]?.address?.message}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => remove(index)}
-                    disabled={fields.length <= 1}
-                  >
+                <div key={field.id} className="flex items-center gap-2">
+                  <Input {...register(`clinics.${index}.name`)} placeholder="Clinic Name" className="flex-1" />
+                  <Input {...register(`clinics.${index}.address`)} placeholder="Clinic Address" className="flex-1" />
+                  <Button type="button" variant="destructive" size="icon" onClick={() => remove(index)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               ))}
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full bg-transparent"
-                onClick={() => append({ name: "", address: "" })}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Add Clinic
-              </Button>
-              {form.formState.errors.clinics?.root && (
-                <p className="text-sm text-red-500">{form.formState.errors.clinics.root.message}</p>
-              )}
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => append({ name: "", address: "" })}
+              className="mt-2"
+            >
+              Add Clinic
+            </Button>
           </div>
 
-          <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between pt-4">
-            <div>
-              {!isCreating && (
-                <Button type="button" variant="destructive" onClick={handleDelete} disabled={isSubmitting}>
-                  {isSubmitting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="mr-2 h-4 w-4" />
-                  )}
-                  Delete
-                </Button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="secondary" onClick={onClose}>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary">
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isCreating ? "Create Brand" : "Save Changes"}
-              </Button>
-            </div>
+            </DialogClose>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Save Brand"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

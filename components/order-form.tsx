@@ -11,7 +11,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
-import type { Brand, ProductSection, ProductItem } from "@/lib/types"
+import type { Brand, Section, Item } from "@/lib/types"
 import { Loader2, Eye, Trash2 } from "lucide-react"
 import {
   Dialog,
@@ -30,7 +30,7 @@ const formSchema = z.object({
   items: z
     .array(
       z.object({
-        id: z.string(),
+        id: z.number(),
         code: z.string(),
         name: z.string(),
         quantity: z.string().min(1, "Please select a quantity."),
@@ -44,8 +44,8 @@ type OrderFormValues = z.infer<typeof formSchema>
 
 interface OrderFormProps {
   brand: Brand & {
-    product_sections: (ProductSection & {
-      product_items: ProductItem[]
+    sections: (Section & {
+      items: Item[]
     })[]
   }
 }
@@ -70,12 +70,11 @@ export function OrderForm({ brand }: OrderFormProps) {
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "items",
-    keyName: "key",
   })
 
   const selectedItems = form.watch("items")
 
-  const handleAddItem = (item: ProductItem) => {
+  const handleAddItem = (item: Item) => {
     const existingItemIndex = fields.findIndex((field) => field.id === item.id)
     if (existingItemIndex === -1) {
       append({
@@ -111,7 +110,7 @@ export function OrderForm({ brand }: OrderFormProps) {
       const response = await fetch("/api/submit-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...values, brandName: brand.name, brandEmail: brand.email }),
+        body: JSON.stringify({ ...values, brandName: brand.name, brandEmail: brand.recipient_email }),
       })
 
       if (!response.ok) {
@@ -151,14 +150,14 @@ export function OrderForm({ brand }: OrderFormProps) {
                 </CardHeader>
                 <CardContent>
                   <Accordion type="multiple" className="w-full">
-                    {brand.product_sections
+                    {brand.sections
                       .sort((a, b) => a.sort_order - b.sort_order)
                       .map((section) => (
-                        <AccordionItem key={section.id} value={section.id}>
+                        <AccordionItem key={section.id} value={String(section.id)}>
                           <AccordionTrigger>{section.title}</AccordionTrigger>
                           <AccordionContent>
                             <div className="space-y-4">
-                              {section.product_items
+                              {section.items
                                 .sort((a, b) => a.sort_order - b.sort_order)
                                 .map((item) => (
                                   <div
@@ -287,7 +286,7 @@ export function OrderForm({ brand }: OrderFormProps) {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {fields.map((field, index) => (
-                      <div key={field.key} className="p-3 rounded-md border space-y-3">
+                      <div key={field.id} className="p-3 rounded-md border space-y-3">
                         <div className="flex items-start justify-between">
                           <div>
                             <p className="font-semibold">{field.name}</p>
@@ -311,9 +310,8 @@ export function OrderForm({ brand }: OrderFormProps) {
                                 </FormControl>
                                 <SelectContent>
                                   {(
-                                    brand.product_sections
-                                      .flatMap((s) => s.product_items)
-                                      .find((i) => i.id === field.id)?.quantities || []
+                                    brand.sections.flatMap((s) => s.items).find((i) => i.id === field.id)?.quantities ||
+                                    []
                                   ).map((q) => (
                                     <SelectItem key={q} value={q}>
                                       {q}
