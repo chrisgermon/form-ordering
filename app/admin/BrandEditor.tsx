@@ -1,160 +1,192 @@
 "use client"
 
+import { useEffect } from "react"
 import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import * as z from "zod"
-import type { Brand } from "@/lib/types"
-import { createBrand, updateBrand } from "./actions"
-import { toast } from "sonner"
+import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog"
-import { Trash2 } from "lucide-react"
-
-const clinicSchema = z.object({
-  name: z.string().min(1, "Clinic name is required"),
-  address: z.string().min(1, "Clinic address is required"),
-})
+import { useToast } from "@/components/ui/use-toast"
+import { createBrand, updateBrand } from "./actions"
+import type { Brand } from "@/lib/types"
+import { PlusCircle, Trash2 } from "lucide-react"
 
 const brandSchema = z.object({
-  id: z.number().optional(),
   name: z.string().min(1, "Brand name is required"),
   logo_url: z.string().url("Must be a valid URL").optional().or(z.literal("")),
   primary_color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color"),
   secondary_color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color"),
   recipient_email: z.string().email("Must be a valid email address"),
   is_active: z.boolean(),
-  clinics: z.array(clinicSchema),
+  clinics: z
+    .array(
+      z.object({
+        name: z.string().min(1, "Clinic name cannot be empty"),
+        address: z.string().min(1, "Clinic address cannot be empty"),
+      }),
+    )
+    .optional(),
 })
 
-type BrandFormData = z.infer<typeof brandSchema>
+type BrandFormValues = z.infer<typeof brandSchema>
 
 interface BrandEditorProps {
-  brand?: Brand
   isOpen: boolean
-  onClose: () => void
+  setIsOpen: (isOpen: boolean) => void
+  brand: Brand | null
+  onSuccess: () => void
 }
 
-export default function BrandEditor({ brand, isOpen, onClose }: BrandEditorProps) {
-  const {
-    register,
-    handleSubmit,
-    control,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<BrandFormData>({
+export default function BrandEditor({ isOpen, setIsOpen, brand, onSuccess }: BrandEditorProps) {
+  const { toast } = useToast()
+  const isEditMode = !!brand
+
+  const form = useForm<BrandFormValues>({
     resolver: zodResolver(brandSchema),
     defaultValues: {
-      id: brand?.id,
-      name: brand?.name || "",
-      logo_url: brand?.logo_url || "",
-      primary_color: brand?.primary_color || "#000000",
-      secondary_color: brand?.secondary_color || "#ffffff",
-      recipient_email: brand?.recipient_email || "",
-      is_active: brand?.is_active ?? true,
-      clinics: brand?.clinics || [],
+      name: "",
+      logo_url: "",
+      primary_color: "#000000",
+      secondary_color: "#ffffff",
+      recipient_email: "",
+      is_active: true,
+      clinics: [{ name: "", address: "" }],
     },
   })
 
   const { fields, append, remove } = useFieldArray({
-    control,
+    control: form.control,
     name: "clinics",
   })
 
-  const handleFormSubmit = async (data: BrandFormData) => {
-    const formData = new FormData()
-    formData.append("name", data.name)
-    formData.append("logo_url", data.logo_url || "")
-    formData.append("primary_color", data.primary_color)
-    formData.append("secondary_color", data.secondary_color)
-    formData.append("recipient_email", data.recipient_email)
-    formData.append("is_active", String(data.is_active))
-    formData.append("clinics", JSON.stringify(data.clinics))
-
-    let result
-    if (brand?.id) {
-      formData.append("id", String(brand.id))
-      result = await updateBrand(formData)
+  useEffect(() => {
+    if (brand) {
+      form.reset({
+        name: brand.name,
+        logo_url: brand.logo_url || "",
+        primary_color: brand.primary_color || "#000000",
+        secondary_color: brand.secondary_color || "#ffffff",
+        recipient_email: brand.recipient_email,
+        is_active: brand.is_active,
+        clinics: brand.clinics && brand.clinics.length > 0 ? brand.clinics : [{ name: "", address: "" }],
+      })
     } else {
-      result = await createBrand(formData)
+      form.reset({
+        name: "",
+        logo_url: "",
+        primary_color: "#000000",
+        secondary_color: "#ffffff",
+        recipient_email: "",
+        is_active: true,
+        clinics: [{ name: "", address: "" }],
+      })
     }
+  }, [brand, form])
+
+  const onSubmit = async (values: BrandFormValues) => {
+    const formData = new FormData()
+    Object.entries(values).forEach(([key, value]) => {
+      if (key === "clinics") {
+        formData.append(key, JSON.stringify(value))
+      } else {
+        formData.append(key, String(value))
+      }
+    })
+
+    const action = isEditMode ? updateBrand.bind(null, brand.id) : createBrand
+    const result = await action(formData)
 
     if (result.success) {
-      toast.success(result.message)
-      onClose()
+      toast({ title: "Success", description: result.message })
+      onSuccess()
     } else {
-      toast.error(result.message)
+      toast({
+        title: "Error",
+        description: result.message || "An unexpected error occurred.",
+        variant: "destructive",
+      })
+      if (result.errors) {
+        // You can optionally display form errors here
+        console.error(result.errors)
+      }
     }
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>{brand ? "Edit Brand" : "Create New Brand"}</DialogTitle>
+          <DialogTitle>{isEditMode ? "Edit Brand" : "Create New Brand"}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-4">
           <div className="grid grid-cols-2 gap-4">
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="name">Brand Name</Label>
-              <Input id="name" {...register("name")} />
-              {errors.name && <p className="text-red-500 text-sm">{errors.name.message}</p>}
+              <Input id="name" {...form.register("name")} />
+              {form.formState.errors.name && (
+                <p className="text-sm text-red-500">{form.formState.errors.name.message}</p>
+              )}
             </div>
-            <div>
-              <Label htmlFor="recipient_email">Recipient Email</Label>
-              <Input id="recipient_email" {...register("recipient_email")} />
-              {errors.recipient_email && <p className="text-red-500 text-sm">{errors.recipient_email.message}</p>}
+            <div className="space-y-2">
+              <Label htmlFor="logo_url">Logo URL</Label>
+              <Input id="logo_url" {...form.register("logo_url")} />
+              {form.formState.errors.logo_url && (
+                <p className="text-sm text-red-500">{form.formState.errors.logo_url.message}</p>
+              )}
             </div>
-          </div>
-          <div>
-            <Label htmlFor="logo_url">Logo URL</Label>
-            <Input id="logo_url" {...register("logo_url")} />
-            {errors.logo_url && <p className="text-red-500 text-sm">{errors.logo_url.message}</p>}
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="primary_color">Primary Color</Label>
-              <Input id="primary_color" type="color" {...register("primary_color")} className="h-10" />
-              {errors.primary_color && <p className="text-red-500 text-sm">{errors.primary_color.message}</p>}
+              <Input id="primary_color" type="color" {...form.register("primary_color")} />
+              {form.formState.errors.primary_color && (
+                <p className="text-sm text-red-500">{form.formState.errors.primary_color.message}</p>
+              )}
             </div>
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="secondary_color">Secondary Color</Label>
-              <Input id="secondary_color" type="color" {...register("secondary_color")} className="h-10" />
-              {errors.secondary_color && <p className="text-red-500 text-sm">{errors.secondary_color.message}</p>}
+              <Input id="secondary_color" type="color" {...form.register("secondary_color")} />
+              {form.formState.errors.secondary_color && (
+                <p className="text-sm text-red-500">{form.formState.errors.secondary_color.message}</p>
+              )}
             </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="is_active"
-              {...register("is_active")}
-              defaultChecked={brand?.is_active ?? true}
-              onCheckedChange={(checked) => reset({ ...control._formValues, is_active: checked })}
-            />
-            <Label htmlFor="is_active">Active</Label>
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="recipient_email">Recipient Email</Label>
+              <Input id="recipient_email" type="email" {...form.register("recipient_email")} />
+              {form.formState.errors.recipient_email && (
+                <p className="text-sm text-red-500">{form.formState.errors.recipient_email.message}</p>
+              )}
+            </div>
+            <div className="flex items-center space-x-2 col-span-2">
+              <Switch id="is_active" {...form.register("is_active")} checked={form.watch("is_active")} />
+              <Label htmlFor="is_active">Active</Label>
+            </div>
           </div>
 
-          <div>
-            <h3 className="font-medium mb-2">Clinics</h3>
-            <div className="space-y-2">
-              {fields.map((field, index) => (
-                <div key={field.id} className="flex items-center gap-2">
-                  <Input {...register(`clinics.${index}.name`)} placeholder="Clinic Name" className="flex-1" />
-                  <Input {...register(`clinics.${index}.address`)} placeholder="Clinic Address" className="flex-1" />
-                  <Button type="button" variant="destructive" size="icon" onClick={() => remove(index)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+          <div className="space-y-4">
+            <Label>Clinics</Label>
+            {fields.map((field, index) => (
+              <div key={field.id} className="flex items-end gap-2">
+                <div className="flex-grow space-y-2">
+                  <Label htmlFor={`clinics.${index}.name`} className="text-xs">
+                    Clinic Name
+                  </Label>
+                  <Input {...form.register(`clinics.${index}.name`)} />
                 </div>
-              ))}
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => append({ name: "", address: "" })}
-              className="mt-2"
-            >
+                <div className="flex-grow space-y-2">
+                  <Label htmlFor={`clinics.${index}.address`} className="text-xs">
+                    Clinic Address
+                  </Label>
+                  <Input {...form.register(`clinics.${index}.address`)} />
+                </div>
+                <Button type="button" variant="destructive" size="icon" onClick={() => remove(index)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" onClick={() => append({ name: "", address: "" })}>
+              <PlusCircle className="mr-2 h-4 w-4" />
               Add Clinic
             </Button>
           </div>
@@ -165,8 +197,8 @@ export default function BrandEditor({ brand, isOpen, onClose }: BrandEditorProps
                 Cancel
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : "Save Brand"}
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </form>

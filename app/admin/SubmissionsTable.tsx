@@ -1,21 +1,15 @@
 "use client"
 
+import type React from "react"
+
+import { DialogFooter } from "@/components/ui/dialog"
+
 import { useState } from "react"
 import { format } from "date-fns"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { toast } from "@/components/ui/use-toast"
 import type { Submission } from "@/lib/types"
 
@@ -33,6 +27,7 @@ export default function SubmissionsTable({
   onMarkComplete,
 }: SubmissionsTableProps) {
   const [isClearing, setIsClearing] = useState(false)
+  const [selectedSubmission, setSelectedSubmission] = useState<FormattedSubmission | null>(null)
 
   const handleClearAll = async () => {
     setIsClearing(true)
@@ -74,25 +69,34 @@ export default function SubmissionsTable({
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="destructive" disabled={isClearing || submissions.length === 0}>
-              {isClearing ? "Clearing..." : "Clear All Submissions"}
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-              <AlertDialogDescription>
+        <Dialog>
+          <Button variant="destructive" disabled={isClearing || submissions.length === 0}>
+            {isClearing ? "Clearing..." : "Clear All Submissions"}
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Are you absolutely sure?</DialogTitle>
+              <DialogDescription>
                 This action cannot be undone. This will permanently delete all submissions from the database.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleClearAll}>Continue</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-4 space-y-4">
+              {submissions.map((submission) => (
+                <div key={submission.id} className="p-3 rounded-md border">
+                  <p className="font-semibold">{submission.brand_name}</p>
+                  <p className="text-sm text-muted-foreground">{submission.ordered_by}</p>
+                  <p className="text-sm">
+                    Quantity: {submission.quantity === "other" ? submission.otherQuantity : submission.quantity}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setSelectedSubmission(null)}>Cancel</Button>
+              <Button onClick={handleClearAll}>Continue</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       <div className="border rounded-lg">
         <Table>
@@ -100,9 +104,10 @@ export default function SubmissionsTable({
             <TableRow>
               <TableHead>Date</TableHead>
               <TableHead>Brand</TableHead>
-              <TableHead>Ordered By</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
+              <TableHead>Clinic</TableHead>
+              <TableHead>Contact</TableHead>
+              <TableHead className="text-right">Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -111,14 +116,15 @@ export default function SubmissionsTable({
                 <TableRow key={submission.id}>
                   <TableCell>{format(new Date(submission.created_at), "dd MMM yyyy, h:mm a")}</TableCell>
                   <TableCell>{submission.brand_name}</TableCell>
+                  <TableCell>{submission.clinic_name}</TableCell>
                   <TableCell>
-                    <div className="font-medium">{submission.ordered_by}</div>
-                    <div className="text-sm text-muted-foreground">{submission.email}</div>
+                    <div className="font-medium">{submission.contact_person}</div>
+                    <div className="text-sm text-muted-foreground">{submission.contact_email}</div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-right">
                     <Badge variant={getStatusVariant(submission.status)}>{submission.status}</Badge>
                   </TableCell>
-                  <TableCell className="space-x-2">
+                  <TableCell className="text-right space-x-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -140,7 +146,7 @@ export default function SubmissionsTable({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={5} className="text-center h-24">
+                <TableCell colSpan={6} className="text-center h-24">
                   No submissions yet.
                 </TableCell>
               </TableRow>
@@ -150,4 +156,9 @@ export default function SubmissionsTable({
       </div>
     </div>
   )
+}
+
+// Add a Card component wrapper if it's not already there
+function Card({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-lg border bg-card text-card-foreground shadow-sm">{children}</div>
 }

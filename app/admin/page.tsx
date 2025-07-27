@@ -1,39 +1,22 @@
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createClient } from "@/lib/supabase/server"
 import AdminDashboard from "./AdminDashboard"
-import SubmissionsTable from "./SubmissionsTable"
-import AdminActions from "./AdminActions"
-
-export const dynamic = "force-dynamic"
+import type { Brand, Submission } from "@/lib/types"
 
 export default async function AdminPage() {
-  const supabase = createServerSupabaseClient()
-  const { data: brands, error: brandsError } = await supabase
-    .from("brands")
-    .select("*")
-    .order("name", { ascending: true })
+  const supabase = createClient()
 
+  const { data: brands, error: brandsError } = await supabase.from("brands").select("*").order("name")
   const { data: submissions, error: submissionsError } = await supabase
     .from("submissions")
-    .select("*, brands(name, logo)")
+    .select("*")
     .order("created_at", { ascending: false })
-    .limit(10)
 
-  if (brandsError || submissionsError) {
-    return <p>Error loading data: {brandsError?.message || submissionsError?.message}</p>
+  if (brandsError) {
+    console.error("Error fetching brands:", brandsError)
+  }
+  if (submissionsError) {
+    console.error("Error fetching submissions:", submissionsError)
   }
 
-  return (
-    <div className="container mx-auto p-4 md:p-8 space-y-8">
-      <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-      <div className="grid gap-8 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-8">
-          <AdminDashboard brands={brands || []} />
-          <SubmissionsTable initialSubmissions={submissions || []} />
-        </div>
-        <div className="lg:col-span-1">
-          <AdminActions />
-        </div>
-      </div>
-    </div>
-  )
+  return <AdminDashboard brands={(brands as Brand[]) || []} submissions={(submissions as Submission[]) || []} />
 }

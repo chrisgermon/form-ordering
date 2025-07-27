@@ -111,7 +111,7 @@ export async function deleteBrand(id: number) {
   }
 
   revalidatePath("/admin")
-  return { success: true, message: "Brand deleted successfully." }
+  return { success: true, message: "Brand deleted." }
 }
 
 export async function seedDatabase() {

@@ -2,40 +2,40 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useToast } from "@/components/ui/use-toast"
 import { seedDatabase } from "./actions"
-import { toast } from "sonner"
+import { Loader2 } from "lucide-react"
 
 export default function AdminActions() {
   const [isSeeding, setIsSeeding] = useState(false)
+  const { toast } = useToast()
 
-  const handleSeed = async () => {
-    setIsSeeding(true)
-    toast.info("Seeding database... This may take a moment.")
-    const result = await seedDatabase()
-    if (result.success) {
-      toast.success(result.message)
-    } else {
-      toast.error(result.message)
+  const handleSeedDatabase = async () => {
+    if (window.confirm("Are you sure you want to seed the database? This will delete all existing data.")) {
+      setIsSeeding(true)
+      const result = await seedDatabase()
+      if (result.success) {
+        toast({
+          title: "Success!",
+          description: result.message,
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.message,
+          variant: "destructive",
+        })
+      }
+      setIsSeeding(false)
     }
-    setIsSeeding(false)
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Global Actions</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col space-y-2">
-          <p className="text-sm text-muted-foreground">
-            This will delete all existing brands and products and replace them with the original seed data.
-          </p>
-          <Button onClick={handleSeed} disabled={isSeeding}>
-            {isSeeding ? "Seeding..." : "Seed Database"}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex gap-2">
+      <Button onClick={handleSeedDatabase} disabled={isSeeding}>
+        {isSeeding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        Seed Database
+      </Button>
+    </div>
   )
 }
