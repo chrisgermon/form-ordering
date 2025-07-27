@@ -2,7 +2,11 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
-import type { Clinic } from "@/lib/types"
+import type { Brand } from "@/lib/types"
+import type { brandFormSchema } from "./BrandEditor"
+import type { z } from "zod"
+
+type BrandFormValues = z.infer<typeof brandFormSchema>
 
 function generateSlug(name: string) {
   return name
@@ -12,24 +16,13 @@ function generateSlug(name: string) {
     .replace(/^-+|-+$/g, "")
 }
 
-export async function createBrand(formData: FormData) {
+export async function createBrand(values: BrandFormValues) {
   const supabase = createServerSupabaseClient()
-  const name = formData.get("name") as string
-  const clinicsData = formData.get("clinics") as string
-  const clinics = clinicsData ? (JSON.parse(clinicsData) as Clinic[]) : []
-
-  if (!name) {
-    return { success: false, message: "Brand name is required." }
-  }
 
   const newBrand = {
-    name,
-    slug: generateSlug(name),
-    logo: formData.get("logo") as string,
-    primary_color: formData.get("primary_color") as string,
-    email: formData.get("email") as string,
-    active: formData.get("active") === "true",
-    clinics: clinics.filter((c) => c.name && c.address), // Filter out empty clinics
+    ...values,
+    slug: generateSlug(values.name),
+    clinics: values.clinics.filter((c) => c.name && c.address),
   }
 
   const { error } = await supabase.from("brands").insert(newBrand)
@@ -43,24 +36,13 @@ export async function createBrand(formData: FormData) {
   return { success: true, message: "Brand created successfully." }
 }
 
-export async function updateBrand(id: string, formData: FormData) {
+export async function updateBrand(id: string, values: BrandFormValues) {
   const supabase = createServerSupabaseClient()
-  const name = formData.get("name") as string
-  const clinicsData = formData.get("clinics") as string
-  const clinics = clinicsData ? (JSON.parse(clinicsData) as Clinic[]) : []
-
-  if (!id || !name) {
-    return { success: false, message: "Brand ID and name are required." }
-  }
 
   const updatedBrand = {
-    name,
-    slug: generateSlug(name),
-    logo: formData.get("logo") as string,
-    primary_color: formData.get("primary_color") as string,
-    email: formData.get("email") as string,
-    active: formData.get("active") === "true",
-    clinics: clinics.filter((c) => c.name && c.address),
+    ...values,
+    slug: generateSlug(values.name),
+    clinics: values.clinics.filter((c) => c.name && c.address),
   }
 
   const { error } = await supabase.from("brands").update(updatedBrand).eq("id", id)
@@ -92,28 +74,73 @@ export async function deleteBrand(id: string) {
   return { success: true, message: "Brand deleted successfully." }
 }
 
-export async function runSeedProductData() {
+export async function seedDatabase() {
   try {
     const supabase = createServerSupabaseClient()
-    console.log("--- Seeding Product and Section Data ---")
+    console.log("--- Starting Full Database Seed ---")
 
-    const { data: brandData, error: brandFetchError } = await supabase.from("brands").select("id, slug")
-    if (brandFetchError || !brandData) {
-      throw new Error("Could not fetch brand data for seeding.")
-    }
-    const brandMap = brandData.reduce(
-      (acc, brand) => ({ ...acc, [brand.slug]: brand.id }),
-      {} as Record<string, string>,
-    )
+    // Clear existing data
+    console.log("Clearing existing data...")
+    await supabase.from("product_items").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+    await supabase.from("product_sections").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+    await supabase.from("brands").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+    console.log("✅ Data cleared.")
 
-    // Clear existing product data
-    await supabase.from("product_items").delete().neq("id", "0")
-    await supabase.from("product_sections").delete().neq("id", "0")
-    console.log("Cleared existing product and section data.")
+    // Seed Brands
+    console.log("Seeding brands...")
+    const brandsToSeed: Omit<Brand, "id" | "created_at">[] = [
+      {
+        name: "Vision Radiology",
+        slug: "vision-radiology",
+        logo: "/vision-radiology-logo.svg",
+        active: true,
+        primary_color: "#1e40af",
+        email: "orders@visionradiology.com.au",
+        clinics: [{ name: "Main Clinic", address: "123 Vision St, Melbourne" }],
+      },
+      {
+        name: "Light Radiology",
+        slug: "light-radiology",
+        logo: "/light-radiology-logo.svg",
+        active: true,
+        primary_color: "#059669",
+        email: "orders@lightradiology.com.au",
+        clinics: [{ name: "Sunshine Clinic", address: "456 Light Ave, Brisbane" }],
+      },
+      {
+        name: "Focus Radiology",
+        slug: "focus-radiology",
+        logo: "/images/focus-radiology-logo.png",
+        active: true,
+        primary_color: "#dc2626",
+        email: "orders@focusradiology.com.au",
+        clinics: [{ name: "City Imaging", address: "789 Focus Rd, Sydney" }],
+      },
+      {
+        name: "Quantum Medical Imaging",
+        slug: "quantum-medical-imaging",
+        logo: "https://www.jotform.com/uploads/Germon/form_files/Quantum-Imaging-Logo.67ce57124c7890.77397803-removebg-preview.67d52f7359e367.05025068.png",
+        active: true,
+        primary_color: "#2a3760",
+        email: "orders@quantummedical.com.au",
+        clinics: [{ name: "Quantum HQ", address: "101 Quantum Blvd, Perth" }],
+      },
+    ]
+    const { error: brandInsertError } = await supabase.from("brands").insert(brandsToSeed)
+    if (brandInsertError) throw new Error(`Brand seeding failed: ${brandInsertError.message}`)
+    console.log("✅ Brands seeded.")
 
-    // --- SEED VISION RADIOLOGY ---
-    if (brandMap["vision-radiology"]) {
-      const brand_id = brandMap["vision-radiology"]
+    // Fetch seeded brands to get their IDs
+    const { data: seededBrands, error: brandFetchError } = await supabase.from("brands").select("id, slug")
+    if (brandFetchError) throw new Error("Could not fetch seeded brands.")
+    const brandMap = new Map(seededBrands.map((b) => [b.slug, b.id]))
+
+    // Seed Product Data for each brand
+    console.log("Seeding product data...")
+
+    // Vision Radiology Data
+    const visionBrandId = brandMap.get("vision-radiology")
+    if (visionBrandId) {
       const visionFormData = [
         {
           section: { title: "OPERATIONAL AND PATIENT BROCHURES", sort_order: 0 },
@@ -132,84 +159,83 @@ export async function runSeedProductData() {
               quantities: ["1 box", "2 boxes", "4 boxes", "other"],
               sort_order: 1,
             },
-            {
-              code: "VR-AC",
-              name: "APPOINTMENT CARDS",
-              description: "250 per box (site specific)",
-              quantities: ["1 box", "2 boxes", "4 boxes", "other"],
-              sort_order: 2,
-            },
           ],
         },
       ]
       for (const { section, items } of visionFormData) {
         const { data: newSection } = await supabase
           .from("product_sections")
-          .insert({ ...section, brand_id })
+          .insert({ ...section, brand_id: visionBrandId })
           .select("id")
           .single()
         if (newSection) {
           await supabase
             .from("product_items")
-            .insert(items.map((item) => ({ ...item, section_id: newSection.id, brand_id })))
+            .insert(items.map((item) => ({ ...item, section_id: newSection.id, brand_id: visionBrandId })))
         }
       }
-      console.log("✅ Seeded Vision Radiology product data.")
+      console.log("✅ Seeded Vision Radiology products.")
     }
 
-    // Add other brands' product data here...
-
-    revalidatePath("/admin", "layout")
-    revalidatePath("/forms", "layout")
-    return { success: true, message: "Product data seeded successfully!" }
-  } catch (error) {
-    console.error("Error seeding product data:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return { success: false, message: `Failed to seed product data: ${errorMessage}` }
-  }
-}
-
-export async function autoAssignPdfs() {
-  try {
-    const supabase = createServerSupabaseClient()
-    const { data: files, error: filesError } = await supabase
-      .from("uploaded_files")
-      .select("id, original_name, url")
-      .ilike("original_name", "%.pdf")
-    if (filesError) throw filesError
-    const { data: items, error: itemsError } = await supabase.from("product_items").select("id, code")
-    if (itemsError) throw itemsError
-
-    const itemCodeMap = new Map(items.map((item) => [item.code.toUpperCase(), item.id]))
-    const updatePromises = []
-    let updatedCount = 0
-    const unmatchedFiles = []
-
-    for (const file of files) {
-      const fileCode = file.original_name.replace(/\.pdf$/i, "").toUpperCase()
-      if (itemCodeMap.has(fileCode)) {
-        const itemId = itemCodeMap.get(fileCode)
-        updatePromises.push(supabase.from("product_items").update({ sample_link: file.url }).eq("id", itemId))
-        updatedCount++
-      } else {
-        unmatchedFiles.push(file.original_name)
+    // Quantum Medical Imaging Data
+    const quantumBrandId = brandMap.get("quantum-medical-imaging")
+    if (quantumBrandId) {
+      const quantumFormData = [
+        {
+          section: { title: "OPERATIONAL AND PATIENT BROCHURES", sort_order: 0 },
+          items: [
+            {
+              code: "QMI-A5LAB",
+              name: "LABELS",
+              description: "1000 per box",
+              quantities: ["6 boxes", "10 boxes", "16 boxes", "other"],
+              sort_order: 0,
+            },
+            {
+              code: "QMI-A4LET",
+              name: "LETTERHEAD",
+              description: "2000 per box",
+              quantities: ["1 box", "2 boxes", "4 boxes", "other"],
+              sort_order: 1,
+            },
+          ],
+        },
+        {
+          section: { title: "REFERRALS", sort_order: 1 },
+          items: [
+            {
+              code: "QMI-A4REF",
+              name: "A4 REFERRAL (with wrapping)",
+              description: "20 packs of 100 per box (with wrapping)",
+              quantities: ["3 boxes", "6 boxes", "9 boxes", "other"],
+              sort_order: 0,
+            },
+          ],
+        },
+      ]
+      for (const { section, items } of quantumFormData) {
+        const { data: newSection } = await supabase
+          .from("product_sections")
+          .insert({ ...section, brand_id: quantumBrandId })
+          .select("id")
+          .single()
+        if (newSection) {
+          await supabase
+            .from("product_items")
+            .insert(items.map((item) => ({ ...item, section_id: newSection.id, brand_id: quantumBrandId })))
+        }
       }
+      console.log("✅ Seeded Quantum Medical Imaging products.")
     }
 
-    if (updatePromises.length > 0) {
-      await Promise.all(updatePromises)
-    }
+    // Add other brand data similarly...
 
-    revalidatePath("/admin", "layout")
-    revalidatePath("/forms", "layout")
-    let message = `${updatedCount} PDF(s) were successfully assigned.`
-    if (unmatchedFiles.length > 0) {
-      message += ` The following files could not be matched: ${unmatchedFiles.join(", ")}.`
-    }
-    return { success: true, message }
+    console.log("--- Database Seed Complete ---")
+    revalidatePath("/admin")
+    return { success: true, message: "Database seeded successfully!" }
   } catch (error) {
-    console.error("Error auto-assigning PDFs:", error)
+    console.error("Error seeding database:", error)
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return { success: false, message: `Failed to assign PDFs: ${errorMessage}` }
+    return { success: false, message: `Failed to seed database: ${errorMessage}` }
   }
 }

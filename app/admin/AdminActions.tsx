@@ -5,27 +5,29 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
 import { Loader2 } from "lucide-react"
-import { runSeedProductData, autoAssignPdfs } from "./actions"
+import { seedDatabase } from "./actions"
+import { useRouter } from "next/navigation"
 
 export default function AdminActions() {
   const [isSeeding, setIsSeeding] = useState(false)
-  const [isAssigning, setIsAssigning] = useState(false)
   const { toast } = useToast()
+  const router = useRouter()
 
-  const handleSeedData = async () => {
+  const handleSeedDatabase = async () => {
     if (
       !confirm(
-        "Are you sure you want to re-seed all product data? This will clear and replace existing items and sections.",
+        "Are you sure you want to re-seed the database? This will ERASE all current brands and products and replace them with default data.",
       )
     ) {
       return
     }
     setIsSeeding(true)
-    toast({ title: "Seeding Product Data..." })
+    toast({ title: "Seeding Database...", description: "This may take a moment." })
     try {
-      const result = await runSeedProductData()
+      const result = await seedDatabase()
       if (result.success) {
         toast({ title: "Success!", description: result.message })
+        router.refresh()
       } else {
         throw new Error(result.message)
       }
@@ -40,27 +42,6 @@ export default function AdminActions() {
     }
   }
 
-  const handleAutoAssign = async () => {
-    setIsAssigning(true)
-    toast({ title: "Assigning PDFs..." })
-    try {
-      const result = await autoAssignPdfs()
-      if (result.success) {
-        toast({ title: "Success!", description: result.message })
-      } else {
-        throw new Error(result.message)
-      }
-    } catch (error) {
-      toast({
-        title: "Error Assigning PDFs",
-        description: error instanceof Error ? error.message : "An unknown error occurred.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsAssigning(false)
-    }
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -68,13 +49,9 @@ export default function AdminActions() {
         <CardDescription>Run tasks that affect the entire application.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col sm:flex-row gap-4">
-        <Button onClick={handleSeedData} disabled={isSeeding || isAssigning} variant="destructive">
+        <Button onClick={handleSeedDatabase} disabled={isSeeding} variant="destructive">
           {isSeeding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Seed Product Data
-        </Button>
-        <Button onClick={handleAutoAssign} disabled={isSeeding || isAssigning}>
-          {isAssigning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Auto-assign PDFs
+          Seed Database
         </Button>
       </CardContent>
     </Card>
