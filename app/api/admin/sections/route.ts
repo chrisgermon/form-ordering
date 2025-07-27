@@ -1,14 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
 
 export async function GET() {
   try {
-    const supabase = createClient()
+    const supabase = createServerSupabaseClient()
+
     const { data: sections, error } = await supabase
       .from("product_sections")
-      .select(`*, product_items (*)`)
+      .select(`
+        *,
+        product_items (*)
+      `)
       .order("sort_order")
+
     if (error) throw error
+
     return NextResponse.json(sections)
   } catch (error) {
     console.error("Error fetching sections:", error)
@@ -18,8 +24,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = createServerSupabaseClient()
     const body = await request.json()
+
     const { data: maxSortOrderData, error: maxSortError } = await supabase
       .from("product_sections")
       .select("sort_order")
@@ -27,10 +34,14 @@ export async function POST(request: NextRequest) {
       .order("sort_order", { ascending: false })
       .limit(1)
       .single()
+
     if (maxSortError && maxSortError.code !== "PGRST116") {
+      // Ignore 'No rows found' error
       throw maxSortError
     }
+
     const newSortOrder = (maxSortOrderData?.sort_order ?? -1) + 1
+
     const { data: section, error } = await supabase
       .from("product_sections")
       .insert({
@@ -40,7 +51,9 @@ export async function POST(request: NextRequest) {
       })
       .select()
       .single()
+
     if (error) throw error
+
     return NextResponse.json(section)
   } catch (error) {
     console.error("Error creating section:", error)
@@ -50,8 +63,9 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = createServerSupabaseClient()
     const body = await request.json()
+
     const { data: section, error } = await supabase
       .from("product_sections")
       .update({
@@ -61,7 +75,9 @@ export async function PUT(request: NextRequest) {
       .eq("id", body.id)
       .select()
       .single()
+
     if (error) throw error
+
     return NextResponse.json(section)
   } catch (error) {
     console.error("Error updating section:", error)
@@ -71,14 +87,18 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = createServerSupabaseClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
+
     if (!id) {
       return NextResponse.json({ error: "Section ID is required" }, { status: 400 })
     }
+
     const { error } = await supabase.from("product_sections").delete().eq("id", id)
+
     if (error) throw error
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error deleting section:", error)

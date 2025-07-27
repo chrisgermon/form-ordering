@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
 import { put } from "@vercel/blob"
 import { jsPDF } from "jspdf"
 import { sendEmail, generateOrderEmailTemplate } from "@/lib/email"
@@ -19,7 +19,9 @@ async function sendOrderEmail(
     quantity: item.quantity === "other" ? `${item.customQuantity} (custom)` : item.quantity,
     description: item.description || "",
   }))
+
   const emailHtml = generateOrderEmailTemplate(brandName, formData, selectedItems)
+
   return await sendEmail({
     to,
     cc: originalSubmitterEmail,
@@ -37,12 +39,14 @@ async function sendOrderEmail(
 
 function generatePDF(formData: any, brandName: string) {
   const doc = new jsPDF()
+
   doc.setFont("helvetica")
   doc.setFontSize(24)
   doc.setTextColor(42, 55, 96)
   doc.text(brandName, 105, 30, { align: "center" })
   doc.setFontSize(20)
   doc.text("Printing Order Form", 105, 45, { align: "center" })
+
   doc.setFontSize(10)
   doc.setTextColor(0, 0, 0)
   let yPos = 65
@@ -56,20 +60,25 @@ function generatePDF(formData: any, brandName: string) {
     20,
     yPos + 20,
   )
+
   yPos += 35
   doc.setFontSize(8)
   doc.setTextColor(100, 100, 100)
   doc.text(`Please check stock levels for all, then complete and send to: ${formData.brandEmail}`, 105, yPos, {
     align: "center",
   })
+
   yPos += 15
+
   const selectedItems = Object.values(formData.items || {}) as any[]
+
   if (selectedItems.length > 0) {
     doc.setFontSize(12)
     doc.setTextColor(42, 55, 96)
     doc.text("Selected Items:", 20, yPos)
     yPos += 10
-    selectedItems.forEach((item: any) => {
+
+    selectedItems.forEach((item) => {
       if (yPos > 270) {
         doc.addPage()
         yPos = 20
@@ -81,6 +90,7 @@ function generatePDF(formData: any, brandName: string) {
       yPos += 7
     })
   }
+
   return doc.output("arraybuffer")
 }
 
@@ -89,16 +99,20 @@ export async function POST(request: NextRequest) {
     const ip = request.ip ?? request.headers.get("x-forwarded-for") ?? "Unknown"
     const formData = await request.json()
     const { brandId, brandName, brandEmail } = formData
+
     if (!brandId || !brandName || !brandEmail) {
       return NextResponse.json({ success: false, message: "Brand information is missing." }, { status: 400 })
     }
-    const supabase = createClient()
+
+    const supabase = createServerSupabaseClient()
     const pdfBuffer = generatePDF(formData, brandName)
+
     const filename = `${brandId}-order-${Date.now()}.pdf`
     const blob = await put(filename, pdfBuffer, {
       access: "public",
       contentType: "application/pdf",
     })
+
     const { data: submission, error: dbError } = await supabase
       .from("submissions")
       .insert({
@@ -115,11 +129,16 @@ export async function POST(request: NextRequest) {
       })
       .select()
       .single()
+
     if (dbError) {
       console.error("Database error:", dbError)
       throw new Error("Failed to save submission to database")
     }
+
+    // This is the key change to fix the submissions list not updating.
     revalidatePath("/admin")
+    console.log("Revalidated /admin path.")
+
     const emailResult = await sendOrderEmail(
       brandEmail,
       `New Printing Order - ${brandName} - ${formData.orderedBy}`,
@@ -128,8 +147,10 @@ export async function POST(request: NextRequest) {
       Buffer.from(pdfBuffer),
       formData.email,
     )
+
     const finalStatus = emailResult.success ? "sent" : "failed"
     await supabase.from("submissions").update({ status: finalStatus }).eq("id", submission.id)
+
     return NextResponse.json({
       success: true,
       message: emailResult.success
