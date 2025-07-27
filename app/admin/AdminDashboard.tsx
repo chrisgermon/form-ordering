@@ -15,12 +15,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { Loader2, CalendarIcon } from "lucide-react"
+import { Loader2, CalendarIcon, PlusCircle } from "lucide-react"
 import { Alert } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import type { Brand, UploadedFile, Submission } from "@/lib/types"
-import BrandGrid from "@/components/brand-grid"
 import SubmissionsTable from "./SubmissionsTable"
+import Link from "next/link"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 type FormattedSubmission = Submission & { brand_name: string }
 
@@ -126,6 +127,10 @@ export default function AdminDashboard({ initialBrands, initialSubmissions }: Ad
     refreshData()
   }
 
+  const handleSubmissionUpdated = (updatedSubmission: Submission) => {
+    setSubmissions((prev) => prev.map((s) => (s.id === updatedSubmission.id ? updatedSubmission : s)))
+  }
+
   return (
     <div className="container mx-auto p-4 md:p-8">
       <div className="flex justify-between items-center mb-6">
@@ -142,10 +147,32 @@ export default function AdminDashboard({ initialBrands, initialSubmissions }: Ad
             submissions={submissions}
             refreshSubmissions={refreshData}
             onMarkComplete={handleMarkComplete}
+            onSubmissionUpdated={handleSubmissionUpdated}
           />
         </TabsContent>
         <TabsContent value="brands">
-          <BrandGrid brands={brands} onEdit={handleEditBrand} />
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Brands</CardTitle>
+              <Button asChild>
+                <Link href="/admin/editor/new">
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add New Brand
+                </Link>
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {brands.map((brand) => (
+                  <Link href={`/admin/editor/${brand.slug}`} key={brand.id}>
+                    <div className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                      <h3 className="font-semibold">{brand.name}</h3>
+                      <p className="text-sm text-gray-500">{brand.slug}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
