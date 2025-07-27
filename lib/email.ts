@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer"
+import nodemailer, { type SendMailOptions } from "nodemailer"
 import type { OrderSubmission } from "./types"
 
 // Ensure environment variables are defined
@@ -26,7 +26,8 @@ const transporter =
     : null
 
 export function generateOrderEmailTemplate(submission: OrderSubmission): string {
-  const itemsHtml = submission.items
+  const items = Array.isArray(submission.items) ? submission.items : []
+  const itemsHtml = items
     .map(
       (item) => `
     <tr>
@@ -92,38 +93,48 @@ export function generateOrderEmailTemplate(submission: OrderSubmission): string 
 
 export async function sendEmail({
   to,
+  cc,
   subject,
   html,
+  attachments,
 }: {
   to: string
+  cc?: string
   subject: string
   html: string
+  attachments?: { filename: string; content: Buffer; contentType: string }[]
 }) {
   if (!transporter) {
     console.error("Email transporter is not configured. Cannot send email.")
     if (process.env.NODE_ENV !== "production") {
       console.log("--- FAKE EMAIL (sending disabled) ---")
       console.log(`To: ${to}`)
+      if (cc) console.log(`CC: ${cc}`)
       console.log(`Subject: ${subject}`)
       console.log("-------------------------------------")
     }
-    // In a real app, you might want to throw an error or handle this more gracefully
-    return
+    return { success: true, error: "Email sending is disabled." } // Return success in dev to not block UI
   }
 
-  const mailOptions = {
+  const mailOptions: SendMailOptions = {
     from: FROM_EMAIL,
     to: to,
     subject: subject,
     html: html,
+    attachments: attachments,
+  }
+
+  if (cc) {
+    mailOptions.cc = cc
   }
 
   try {
     const info = await transporter.sendMail(mailOptions)
     console.log("Message sent: %s", info.messageId)
-    return info
+    return { success: true, info }
   } catch (error) {
     console.error("Error sending email:", error)
-    throw new Error("Failed to send email.")
+    const errorMessage = error instanceof Error ? error.message : "Unknown email error"
+    return { success: false, error: errorMessage }
   }
 }

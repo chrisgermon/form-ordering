@@ -1,41 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminSupabaseClient } from "@/lib/supabase"
+import { createAdminSupabaseClient } from "@/lib/supabase/server"
 import { put } from "@vercel/blob"
 import { jsPDF } from "jspdf"
 import { sendEmail, generateOrderEmailTemplate } from "@/lib/email"
 import { revalidatePath } from "next/cache"
-
-async function sendOrderEmail(
-  to: string,
-  subject: string,
-  formData: any,
-  brandName: string,
-  pdfBuffer: Buffer,
-  originalSubmitterEmail?: string,
-) {
-  const selectedItems = Object.values(formData.items || {}).map((item: any) => ({
-    code: item.code,
-    name: item.name,
-    quantity: item.quantity === "other" ? `${item.customQuantity} (custom)` : item.quantity,
-    description: item.description || "",
-  }))
-
-  const emailHtml = generateOrderEmailTemplate(brandName, formData, selectedItems)
-
-  return await sendEmail({
-    to,
-    cc: originalSubmitterEmail,
-    subject,
-    html: emailHtml,
-    attachments: [
-      {
-        filename: `${brandName.toLowerCase().replace(/\s+/g, "-")}-order.pdf`,
-        content: pdfBuffer,
-        contentType: "application/pdf",
-      },
-    ],
-  })
-}
+import type { OrderSubmission } from "@/lib/types"
 
 function generatePDF(formData: any, brandName: string) {
   const doc = new jsPDF()
@@ -98,10 +67,14 @@ export async function POST(request: NextRequest) {
   try {
     const ip = request.ip ?? request.headers.get("x-forwarded-for") ?? "Unknown"
     const formData = await request.json()
-    const { brandId, brandName, brandEmail } = formData
+    const { brandId, brandName, brandEmail, items } = formData
 
     if (!brandId || !brandName || !brandEmail) {
       return NextResponse.json({ success: false, message: "Brand information is missing." }, { status: 400 })
+    }
+
+    if (!items || Object.keys(items).length === 0) {
+      return NextResponse.json({ success: false, message: "No items were selected." }, { status: 400 })
     }
 
     const supabase = createAdminSupabaseClient()
@@ -135,18 +108,37 @@ export async function POST(request: NextRequest) {
       throw new Error(`Failed to save submission to database: ${dbError.message}`)
     }
 
-    // This is the key change to fix the submissions list not updating.
     revalidatePath("/admin")
     console.log("Revalidated /admin path.")
 
-    const emailResult = await sendOrderEmail(
-      brandEmail,
-      `New Printing Order - ${brandName} - ${formData.orderedBy}`,
-      formData,
-      brandName,
-      Buffer.from(pdfBuffer),
-      formData.email,
-    )
+    const selectedItemsForEmail = Object.values(formData.items || {}).map((item: any) => ({
+      name: item.name,
+      quantity: item.quantity === "other" ? `${item.customQuantity || "N/A"} (custom)` : item.quantity,
+    }))
+
+    const submissionDataForEmail: OrderSubmission = {
+      brand_name: brandName,
+      clinic_name: formData.deliverTo,
+      submitted_by: formData.orderedBy,
+      created_at: new Date().toISOString(),
+      items: selectedItemsForEmail,
+    }
+
+    const emailHtml = generateOrderEmailTemplate(submissionDataForEmail)
+
+    const emailResult = await sendEmail({
+      to: brandEmail,
+      cc: formData.email,
+      subject: `New Printing Order - ${brandName} - ${formData.orderedBy}`,
+      html: emailHtml,
+      attachments: [
+        {
+          filename: `${brandName.toLowerCase().replace(/\s+/g, "-")}-order.pdf`,
+          content: Buffer.from(pdfBuffer),
+          contentType: "application/pdf",
+        },
+      ],
+    })
 
     const finalStatus = emailResult.success ? "sent" : "failed"
     await supabase.from("submissions").update({ status: finalStatus }).eq("id", submission.id)
