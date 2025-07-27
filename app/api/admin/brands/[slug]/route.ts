@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
 
 export async function GET(request: NextRequest, { params }: { params: { slug: string } }) {
   try {
-    const supabase = createClient()
+    const supabase = createServerSupabaseClient()
     const { data: brand, error } = await supabase
       .from("brands")
       .select(

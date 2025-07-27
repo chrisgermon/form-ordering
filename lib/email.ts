@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer"
+import type { OrderSubmission } from "./types"
 
 // Ensure environment variables are defined
 const { MAILGUN_SMTP_HOST, MAILGUN_SMTP_PORT, MAILGUN_SMTP_USERNAME, MAILGUN_SMTP_PASSWORD, FROM_EMAIL } = process.env
@@ -24,21 +25,15 @@ const transporter =
       })
     : null
 
-export function generateOrderEmailTemplate(
-  brandName: string,
-  formData: any,
-  selectedItems: Array<{ code: string; name: string; quantity: string; description?: string }>,
-) {
-  const itemsHtml = selectedItems
+export function generateOrderEmailTemplate(submission: OrderSubmission): string {
+  const itemsHtml = submission.items
     .map(
       (item) => `
-        <tr>
-          <td style="padding: 8px; border: 1px solid #ddd;">${item.code}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${item.name}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${item.description || ""}</td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${item.quantity}</td>
-        </tr>
-      `,
+    <tr>
+      <td style="padding: 8px; border: 1px solid #ddd;">${item.name}</td>
+      <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${item.quantity}</td>
+    </tr>
+  `,
     )
     .join("")
 
@@ -46,56 +41,39 @@ export function generateOrderEmailTemplate(
     <!DOCTYPE html>
     <html>
     <head>
-      <meta charset="utf-8">
-      <title>New Printing Order - ${brandName}</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { width: 100%; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; }
+        .header { text-align: center; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+        .header h1 { margin: 0; color: #0056b3; }
+        .content { padding: 20px 0; }
+        .content h2 { color: #0056b3; }
+        .info-table, .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        .info-table td, .items-table th, .items-table td { padding: 8px; border: 1px solid #ddd; }
+        .info-table td:first-child { font-weight: bold; width: 150px; }
+        .items-table th { background-color: #f2f2f2; text-align: left; }
+        .footer { text-align: center; font-size: 0.9em; color: #777; padding-top: 20px; border-top: 1px solid #eee; }
+      </style>
     </head>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-      <div style="max-width: 800px; margin: 0 auto; padding: 20px;">
-        <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
-          New Printing Order Submission
-        </h1>
-        
-        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <h2 style="margin-top: 0; color: #1e40af;">Order Details</h2>
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 8px; font-weight: bold; width: 150px;">Brand:</td>
-              <td style="padding: 8px;">${brandName}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; font-weight: bold;">Ordered By:</td>
-              <td style="padding: 8px;">${formData.orderedBy}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; font-weight: bold;">Email:</td>
-              <td style="padding: 8px;">${formData.email}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; font-weight: bold;">Bill to Clinic:</td>
-              <td style="padding: 8px;">${formData.billTo}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; font-weight: bold;">Deliver to Clinic:</td>
-              <td style="padding: 8px;">${formData.deliverTo}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; font-weight: bold;">Date:</td>
-              <td style="padding: 8px;">${
-                formData.date ? new Date(formData.date).toLocaleDateString("en-AU") : "Not specified"
-              }</td>
-            </tr>
-          </table>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>New Order Submission</h1>
         </div>
-
-        <div style="margin: 20px 0;">
-          <h2 style="color: #1e40af;">Selected Items</h2>
-          <table style="width: 100%; border-collapse: collapse; border: 1px solid #ddd;">
+        <div class="content">
+          <h2>Order Details</h2>
+          <table class="info-table">
+            <tr><td>Brand:</td><td>${submission.brand_name}</td></tr>
+            <tr><td>Clinic:</td><td>${submission.clinic_name}</td></tr>
+            <tr><td>Submitted By:</td><td>${submission.submitted_by}</td></tr>
+            <tr><td>Date:</td><td>${new Date(submission.created_at).toLocaleString()}</td></tr>
+          </table>
+          <h2>Ordered Items</h2>
+          <table class="items-table">
             <thead>
-              <tr style="background-color: #f1f5f9;">
-                <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Code</th>
-                <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Item</th>
-                <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Description</th>
-                <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Quantity</th>
+              <tr>
+                <th>Item Name</th>
+                <th style="text-align: center;">Quantity</th>
               </tr>
             </thead>
             <tbody>
@@ -103,17 +81,8 @@ export function generateOrderEmailTemplate(
             </tbody>
           </table>
         </div>
-
-        <div style="margin-top: 30px; padding: 20px; background-color: #e0f2fe; border-radius: 8px;">
-          <p style="margin: 0; font-size: 14px; color: #0369a1;">
-            This order was submitted through the Printed Form Ordering system. 
-            Please find the detailed PDF order form attached to this email.
-          </p>
-        </div>
-
-        <div style="margin-top: 20px; text-align: center; font-size: 12px; color: #6b7280;">
-          <p>Generated by Printed Form Ordering System</p>
-          <p>Platform created by <a href="https://crowdit.com.au" style="color: #2563eb;">Crowd IT</a></p>
+        <div class="footer">
+          <p>This is an automated notification. Please do not reply to this email.</p>
         </div>
       </div>
     </body>
@@ -121,47 +90,40 @@ export function generateOrderEmailTemplate(
   `
 }
 
-export interface EmailOptions {
+export async function sendEmail({
+  to,
+  subject,
+  html,
+}: {
   to: string
-  cc?: string
   subject: string
   html: string
-  attachments?: Array<{
-    filename: string
-    content: Buffer
-    contentType: string
-  }>
-}
-
-export async function sendEmail(options: EmailOptions) {
+}) {
   if (!transporter) {
-    const errorMsg = "Email transporter is not configured. Cannot send email."
-    console.error(errorMsg)
+    console.error("Email transporter is not configured. Cannot send email.")
     if (process.env.NODE_ENV !== "production") {
       console.log("--- FAKE EMAIL (sending disabled) ---")
-      console.log(`To: ${options.to}`)
-      console.log(`Subject: ${options.subject}`)
+      console.log(`To: ${to}`)
+      console.log(`Subject: ${subject}`)
       console.log("-------------------------------------")
-      return { success: true, messageId: "fake-email-id" }
     }
-    return { success: false, error: errorMsg }
+    // In a real app, you might want to throw an error or handle this more gracefully
+    return
   }
 
   const mailOptions = {
     from: FROM_EMAIL,
-    to: options.to,
-    cc: options.cc,
-    subject: options.subject,
-    html: options.html,
-    attachments: options.attachments,
+    to: to,
+    subject: subject,
+    html: html,
   }
 
   try {
     const info = await transporter.sendMail(mailOptions)
     console.log("Message sent: %s", info.messageId)
-    return { success: true, messageId: info.messageId }
+    return info
   } catch (error) {
     console.error("Error sending email:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
+    throw new Error("Failed to send email.")
   }
 }
