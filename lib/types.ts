@@ -1,160 +1,37 @@
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+// This file is the single source of truth for all data structures.
 
-export interface Database {
-  public: {
-    Tables: {
-      brands: {
-        Row: {
-          id: number
-          created_at: string
-          name: string
-          slug: string
-          logo_url: string | null
-          recipient_email: string
-          clinics: Json | null
-        }
-        Insert: {
-          id?: number
-          created_at?: string
-          name: string
-          slug: string
-          logo_url?: string | null
-          recipient_email: string
-          clinics?: Json | null
-        }
-        Update: {
-          id?: number
-          created_at?: string
-          name?: string
-          slug?: string
-          logo_url?: string | null
-          recipient_email?: string
-          clinics?: Json | null
-        }
-      }
-      items: {
-        Row: {
-          id: number
-          created_at: string
-          section_id: number
-          code: string
-          name: string
-          description: string | null
-          quantities: string[] | null
-          sort_order: number
-          sample_link: string | null
-        }
-        Insert: {
-          id?: number
-          created_at?: string
-          section_id: number
-          code: string
-          name: string
-          description?: string | null
-          quantities?: string[] | null
-          sort_order?: number
-          sample_link?: string | null
-        }
-        Update: {
-          id?: number
-          created_at?: string
-          section_id?: number
-          code?: string
-          name?: string
-          description?: string | null
-          quantities?: string[] | null
-          sort_order?: number
-          sample_link?: string | null
-        }
-      }
-      sections: {
-        Row: {
-          id: number
-          created_at: string
-          brand_id: number
-          title: string
-          sort_order: number
-        }
-        Insert: {
-          id?: number
-          created_at?: string
-          brand_id: number
-          title: string
-          sort_order?: number
-        }
-        Update: {
-          id?: number
-          created_at?: string
-          brand_id?: number
-          title?: string
-          sort_order?: number
-        }
-      }
-      submissions: {
-        Row: {
-          id: number
-          created_at: string
-          brand_id: number
-          clinic_name: string
-          contact_person: string
-          contact_email: string
-          order_details: Json
-          is_completed: boolean
-          completed_at: string | null
-          completed_by: string | null
-        }
-        Insert: {
-          id?: number
-          created_at?: string
-          brand_id: number
-          clinic_name: string
-          contact_person: string
-          contact_email: string
-          order_details: Json
-          is_completed?: boolean
-          completed_at?: string | null
-          completed_by?: string | null
-        }
-        Update: {
-          id?: number
-          created_at?: string
-          brand_id?: number
-          clinic_name?: string
-          contact_person?: string
-          contact_email?: string
-          order_details?: Json
-          is_completed?: boolean
-          completed_at?: string | null
-          completed_by?: string | null
-        }
-      }
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      [_ in never]: never
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
+export interface Brand {
+  id: string
+  name: string
+  slug: string
+  logo: string | null
+  active: boolean
+  clinics: string[]
 }
 
-export type Brand = Database["public"]["Tables"]["brands"]["Row"] & {
-  sections: Section[]
-}
-export type Section = Database["public"]["Tables"]["sections"]["Row"] & {
+export interface Section {
+  id: string
+  name: string
   items: Item[]
 }
-export type Item = Database["public"]["Tables"]["items"]["Row"]
-export type Submission = Database["public"]["Tables"]["submissions"]["Row"] & {
-  brands: { name: string }
-}
-export type Clinic = {
+
+export interface Item {
+  id: string
   name: string
-  address: string
+  type: "text" | "number" | "checkbox" | "textarea"
+}
+
+export interface Submission {
+  id: string
+  brand_id: string
+  ordered_by: string
+  email: string
+  bill_to: string
+  deliver_to: string
+  order_date: string | null
+  items: Record<string, any>
+  pdf_url: string | null
+  status: "pending" | "sent" | "failed"
+  created_at: string
+  updated_at: string
 }

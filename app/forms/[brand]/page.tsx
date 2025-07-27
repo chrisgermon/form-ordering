@@ -1,56 +1,52 @@
-import { createClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
 import { notFound } from "next/navigation"
 import { OrderForm } from "@/components/order-form"
-import Image from "next/image"
-import type { BrandWithSectionsAndItems } from "@/lib/types"
+import type { Brand } from "@/lib/types"
 
-export default async function BrandFormPage({
-  params,
-}: {
-  params: { brand: string }
-}) {
-  const supabase = createClient()
-  const { data: brand, error } = await supabase
+export const revalidate = 0 // Revalidate data on every request
+
+async function getBrandData(slug: string): Promise<Brand | null> {
+  const supabase = createServerSupabaseClient()
+
+  const { data, error } = await supabase
     .from("brands")
     .select(
       `
-      *,
-      sections:sections(*, items:items(*))
+      id, name, slug, logo, primary_color, email, clinics,
+      product_sections (
+        id, title, sort_order, brand_id,
+        product_items (
+          id, code, name, description, quantities, sample_link, sort_order, section_id, brand_id
+        )
+      )
     `,
     )
-    .eq("slug", params.brand)
-    .single()
+    .eq("slug", slug)
+    .eq("active", true)
+    .order("sort_order", { foreignTable: "product_sections", ascending: true })
+    .order("sort_order", { foreignTable: "product_sections.product_items", ascending: true })
+    .limit(1) // Use limit(1) instead of single() to avoid throwing an error
 
-  if (error || !brand) {
-    console.error("Error fetching brand:", error)
+  if (error) {
+    console.error(`Error fetching brand data for slug '${slug}':`, error)
+    return null
+  }
+
+  // If no data is returned, it's a 404
+  if (!data || data.length === 0) {
+    return null
+  }
+
+  return data[0] as Brand
+}
+
+// This is a dynamic route handler
+export default async function BrandFormPage({ params }: { params: { brand: string } }) {
+  const brandData = await getBrandData(params.brand)
+
+  if (!brandData) {
     notFound()
   }
 
-  const typedBrand: BrandWithSectionsAndItems = brand
-
-  // Sort sections and items by their 'order' property
-  typedBrand.sections.sort((a, b) => a.order - b.order)
-  typedBrand.sections.forEach((section) => {
-    if (section.items) {
-      section.items.sort((a, b) => a.order - b.order)
-    }
-  })
-
-  return (
-    <div className="container mx-auto p-4 md:p-8">
-      <div className="mb-8 flex flex-col items-center text-center">
-        {typedBrand.logo_url && (
-          <Image
-            src={typedBrand.logo_url || "/placeholder.svg"}
-            alt={`${typedBrand.name} Logo`}
-            width={200}
-            height={100}
-            className="mb-4 h-auto w-auto max-h-24 object-contain"
-          />
-        )}
-        <h1 className="text-3xl font-bold">{typedBrand.name} Order Form</h1>
-      </div>
-      <OrderForm brand={typedBrand} />
-    </div>
-  )
+  return <OrderForm brandData={brandData} />
 }

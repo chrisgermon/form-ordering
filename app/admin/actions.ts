@@ -1,70 +1,73 @@
 "use server"
 
+import seedDatabase from "@/lib/seed-database"
 import { revalidatePath } from "next/cache"
-import { createClient } from "@/lib/supabase/server"
-import { seedData } from "@/lib/seed-data"
+import { createServerSupabaseClient } from "@/lib/supabase"
 
-export async function seedDatabase() {
-  const supabase = createClient()
+export async function runSeed() {
   try {
-    await seedData(supabase)
+    await seedDatabase()
     revalidatePath("/")
     revalidatePath("/admin")
-    return { success: true, message: "Database seeded successfully." }
+    return { success: true, message: "Database seeded successfully!" }
   } catch (error) {
     console.error("Error seeding database:", error)
-    return { success: false, message: "Failed to seed database." }
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+    return { success: false, message: `Failed to seed database: ${errorMessage}` }
   }
 }
 
-export async function createBrand(formData: FormData) {
-  const supabase = createClient()
-  const name = formData.get("name") as string
-  const slug = formData.get("slug") as string
-  const logo_url = formData.get("logo_url") as string
-  const clinics = JSON.parse((formData.get("clinics") as string) || "[]")
+export async function autoAssignPdfs() {
+  try {
+    const supabase = createServerSupabaseClient()
 
-  const { error } = await supabase.from("brands").insert([{ name, slug, logo_url, clinics }])
+    const { data: files, error: filesError } = await supabase
+      .from("uploaded_files")
+      .select("id, original_name, url")
+      .ilike("original_name", "%.pdf") // Only get PDF files
 
-  if (error) {
-    console.error("Error creating brand:", error)
-    return { success: false, message: "Failed to create brand." }
+    if (filesError) throw filesError
+
+    const { data: items, error: itemsError } = await supabase.from("product_items").select("id, code")
+    if (itemsError) throw itemsError
+
+    const itemCodeMap = new Map(items.map((item) => [item.code.toUpperCase(), item.id]))
+    const updatePromises = []
+    let updatedCount = 0
+    const unmatchedFiles = []
+
+    for (const file of files) {
+      const fileCode = file.original_name.replace(/\.pdf$/i, "").toUpperCase()
+      if (itemCodeMap.has(fileCode)) {
+        const itemId = itemCodeMap.get(fileCode)
+        updatePromises.push(supabase.from("product_items").update({ sample_link: file.url }).eq("id", itemId))
+        updatedCount++
+      } else {
+        unmatchedFiles.push(file.original_name)
+      }
+    }
+
+    if (updatePromises.length > 0) {
+      const results = await Promise.all(updatePromises)
+      const dbError = results.find((res) => res.error)
+      if (dbError) throw dbError.error
+    }
+
+    revalidatePath("/admin", "layout")
+    revalidatePath("/forms", "layout")
+
+    let message = `${updatedCount} PDF(s) were successfully assigned.`
+    if (unmatchedFiles.length > 0) {
+      message += ` The following files could not be matched: ${unmatchedFiles.join(", ")}.`
+    }
+    if (updatedCount === 0 && unmatchedFiles.length === 0) {
+      message = "No new PDFs found to assign."
+    }
+
+    return { success: true, message }
+  } catch (error) {
+    console.error("Error auto-assigning PDFs:", error)
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+    return { success: false, message: `Failed to assign PDFs: ${errorMessage}` }
   }
-
-  revalidatePath("/admin")
-  return { success: true, message: "Brand created successfully." }
-}
-
-export async function updateBrand(formData: FormData) {
-  const supabase = createClient()
-  const id = formData.get("id") as string
-  const name = formData.get("name") as string
-  const slug = formData.get("slug") as string
-  const logo_url = formData.get("logo_url") as string
-  const clinics = JSON.parse((formData.get("clinics") as string) || "[]")
-
-  const { error } = await supabase.from("brands").update({ name, slug, logo_url, clinics }).eq("id", id)
-
-  if (error) {
-    console.error("Error updating brand:", error)
-    return { success: false, message: "Failed to update brand." }
-  }
-
-  revalidatePath("/admin")
-  revalidatePath(`/admin/editor/${slug}`)
-  return { success: true, message: "Brand updated successfully." }
-}
-
-export async function deleteBrand(id: string) {
-  const supabase = createClient()
-
-  const { error } = await supabase.from("brands").delete().eq("id", id)
-
-  if (error) {
-    console.error("Error deleting brand:", error)
-    return { success: false, message: "Failed to delete brand." }
-  }
-
-  revalidatePath("/admin")
-  return { success: true, message: "Brand deleted successfully." }
 }
