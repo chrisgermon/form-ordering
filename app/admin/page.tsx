@@ -1,61 +1,46 @@
-"use client"
-
-import { useState, useEffect } from "react"
+import { createServerSupabaseClient } from "@/lib/supabase"
 import AdminDashboard from "./AdminDashboard"
-import { Loader2 } from "lucide-react"
+import { AdminActions } from "./AdminActions"
 import type { Brand, Submission } from "@/lib/types"
 
-export default function AdminPage() {
-  const [brands, setBrands] = useState<Brand[]>([])
-  const [submissions, setSubmissions] = useState<(Submission & { brand_name: string })[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+type FormattedSubmission = Submission & { brand_name: string }
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true)
-        const [brandsRes, submissionsRes] = await Promise.all([
-          fetch("/api/admin/brands"),
-          fetch("/api/admin/submissions"),
-        ])
+async function getData() {
+  const supabase = createServerSupabaseClient()
 
-        if (!brandsRes.ok) {
-          const errorData = await brandsRes.json().catch(() => ({ message: brandsRes.statusText }))
-          throw new Error(`Failed to fetch brands: ${errorData.message || brandsRes.statusText}`)
-        }
-        if (!submissionsRes.ok) {
-          const errorData = await submissionsRes.json().catch(() => ({ message: submissionsRes.statusText }))
-          throw new Error(`Failed to fetch submissions: ${errorData.message || submissionsRes.statusText}`)
-        }
-
-        const brandsData = await brandsRes.json()
-        const submissionsData = await submissionsRes.json()
-
-        setBrands(brandsData || [])
-        setSubmissions(submissionsData || [])
-        setError(null)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "An unknown error occurred")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadData()
-  }, [])
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-screen bg-gray-50">
-        <Loader2 className="h-16 w-16 animate-spin text-gray-500" />
-      </div>
-    )
+  const { data: brands, error: brandsError } = await supabase.from("brands").select("*").order("name")
+  if (brandsError) {
+    console.error("Error fetching brands:", brandsError)
+    throw new Error("Could not fetch brands.")
   }
 
-  if (error) {
-    return <p className="text-red-500 p-8">Error loading admin data: {error}</p>
+  const { data: submissions, error: submissionsError } = await supabase
+    .from("submissions")
+    .select("*, brand_name:brands(name)")
+    .order("created_at", { ascending: false })
+
+  if (submissionsError) {
+    console.error("Error fetching submissions:", submissionsError)
+    throw new Error("Could not fetch submissions.")
   }
 
-  return <AdminDashboard initialBrands={brands} initialSubmissions={submissions} />
+  // The type from Supabase might be { brand_name: { name: string } | null }[]
+  // We need to flatten it to FormattedSubmission[]
+  const formattedSubmissions = submissions.map((s: any) => ({
+    ...s,
+    brand_name: s.brands?.name || "Unknown Brand",
+    brands: undefined, // remove the nested object
+  })) as FormattedSubmission[]
+
+  return { brands: brands as Brand[], submissions: formattedSubmissions }
+}
+
+export default async function AdminPage() {
+  const { brands, submissions } = await getData()
+  return (
+    <>
+      <AdminActions />
+      <AdminDashboard initialBrands={brands} initialSubmissions={submissions} />
+    </>
+  )
 }
