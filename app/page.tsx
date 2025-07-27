@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createClient } from "@/lib/supabase/server"
 import { BrandGrid } from "@/components/brand-grid"
 import type { Brand } from "@/lib/types"
 import { Package2 } from "lucide-react"
@@ -7,7 +7,7 @@ import { Package2 } from "lucide-react"
 export const revalidate = 60 // Revalidate every 60 seconds
 
 async function getBrands(): Promise<Brand[]> {
-  const supabase = createServerSupabaseClient()
+  const supabase = createClient()
   const { data, error } = await supabase.from("brands").select("id, name, slug, logo").eq("active", true).order("name")
 
   if (error) {
