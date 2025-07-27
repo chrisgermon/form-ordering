@@ -1,22 +1,8 @@
 "use client"
 
-import { AlertDialogTrigger } from "@/components/ui/alert-dialog"
-
 import { useState } from "react"
-import { format } from "date-fns"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -25,11 +11,12 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MoreHorizontal } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import type { Submission } from "@/lib/types"
 
 type FormattedSubmission = Submission & { brand_name: string }
@@ -38,10 +25,8 @@ interface SubmissionsTableProps {
   submissions: FormattedSubmission[]
   onMarkComplete: (
     submission: FormattedSubmission,
-    completionData: { delivery_details: string; expected_delivery_date: string },
+    data: { delivery_details: string; expected_delivery_date: string },
   ) => Promise<void>
-  onClearAll: () => Promise<void>
-  isClearing: boolean
 }
 
 function CompleteSubmissionDialog({
@@ -63,7 +48,9 @@ function CompleteSubmissionDialog({
       delivery_details: deliveryDetails,
       expected_delivery_date: expectedDeliveryDate,
     })
-    onOpenChange(false) // Close dialog on submit
+    onOpenChange(false)
+    setDeliveryDetails("")
+    setExpectedDeliveryDate("")
   }
 
   return (
@@ -71,7 +58,7 @@ function CompleteSubmissionDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Complete Submission for {submission.ordered_by}</DialogTitle>
-          <DialogDescription>Enter delivery details and the expected delivery date for this order.</DialogDescription>
+          <DialogDescription>Enter delivery details and the expected delivery date.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
@@ -80,7 +67,7 @@ function CompleteSubmissionDialog({
               id="delivery-details"
               value={deliveryDetails}
               onChange={(e) => setDeliveryDetails(e.target.value)}
-              placeholder="e.g., Courier name, tracking number"
+              placeholder="e.g., Tracking number, courier info"
             />
           </div>
           <div className="grid gap-2">
@@ -104,122 +91,65 @@ function CompleteSubmissionDialog({
   )
 }
 
-export default function SubmissionsTable({
-  submissions,
-  onMarkComplete,
-  onClearAll,
-  isClearing,
-}: SubmissionsTableProps) {
+export default function SubmissionsTable({ submissions, onMarkComplete }: SubmissionsTableProps) {
   const [selectedSubmission, setSelectedSubmission] = useState<FormattedSubmission | null>(null)
 
   const handleOpenDialog = (submission: FormattedSubmission) => {
     setSelectedSubmission(submission)
   }
 
-  const handleConfirmCompletion = async (data: {
+  const handleConfirmCompletion = (data: {
     delivery_details: string
     expected_delivery_date: string
   }) => {
     if (selectedSubmission) {
-      await onMarkComplete(selectedSubmission, data)
-    }
-  }
-
-  const getStatusVariant = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "default"
-      case "sent":
-        return "secondary"
-      case "failed":
-        return "destructive"
-      default:
-        return "outline"
+      onMarkComplete(selectedSubmission, data)
     }
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="destructive" disabled={isClearing || submissions.length === 0}>
-              {isClearing ? "Clearing..." : "Clear All Submissions"}
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete all submissions from the database.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={onClearAll}>Continue</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-      <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Brand</TableHead>
-              <TableHead>Ordered By</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Brand</TableHead>
+            <TableHead>Ordered By</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead>
+              <span className="sr-only">Actions</span>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {submissions.map((submission) => (
+            <TableRow key={submission.id}>
+              <TableCell>{submission.brand_name}</TableCell>
+              <TableCell className="font-medium">{submission.ordered_by}</TableCell>
+              <TableCell>
+                <Badge variant={submission.status === "completed" ? "default" : "secondary"}>{submission.status}</Badge>
+              </TableCell>
+              <TableCell>{new Date(submission.created_at).toLocaleDateString()}</TableCell>
+              <TableCell>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button aria-haspopup="true" size="icon" variant="ghost">
+                      <MoreHorizontal className="h-4 w-4" />
+                      <span className="sr-only">Toggle menu</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem>View Details</DropdownMenuItem>
+                    {submission.status !== "completed" && (
+                      <DropdownMenuItem onClick={() => handleOpenDialog(submission)}>Mark as Complete</DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {submissions.length > 0 ? (
-              submissions.map((submission) => (
-                <TableRow key={submission.id}>
-                  <TableCell>{format(new Date(submission.created_at), "dd MMM yyyy, h:mm a")}</TableCell>
-                  <TableCell>{submission.brand_name}</TableCell>
-                  <TableCell>
-                    <div className="font-medium">{submission.ordered_by}</div>
-                    <div className="text-sm text-muted-foreground">{submission.email}</div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusVariant(submission.status)}>{submission.status}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button aria-haspopup="true" size="icon" variant="ghost">
-                          <MoreHorizontal className="h-4 w-4" />
-                          <span className="sr-only">Toggle menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => window.open(submission.pdf_url || "", "_blank")}
-                          disabled={!submission.pdf_url}
-                        >
-                          View PDF
-                        </DropdownMenuItem>
-                        {submission.status !== "completed" && (
-                          <DropdownMenuItem onClick={() => handleOpenDialog(submission)}>
-                            Mark as Complete
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center h-24">
-                  No submissions yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+          ))}
+        </TableBody>
+      </Table>
       {selectedSubmission && (
         <CompleteSubmissionDialog
           submission={selectedSubmission}
@@ -228,6 +158,6 @@ export default function SubmissionsTable({
           onConfirm={handleConfirmCompletion}
         />
       )}
-    </div>
+    </>
   )
 }

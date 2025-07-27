@@ -1,8 +1,6 @@
 "use client"
 
-import React from "react"
-
-import { useEffect } from "react"
+import React, { useEffect, useActionState } from "react"
 import { useForm, useFieldArray, Controller } from "react-hook-form"
 import { DndProvider, useDrag, useDrop } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
@@ -12,9 +10,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Trash2, GripVertical, PlusCircle } from "lucide-react"
+import { Trash2, GripVertical, PlusCircle, Save } from "lucide-react"
 import { saveForm, type FormData } from "./actions"
-import { useFormState } from "react-dom"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import type { BrandForEditor } from "./page"
@@ -26,7 +23,7 @@ const ItemTypes = {
 
 export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
   const router = useRouter()
-  const [state, formAction] = useFormState(saveForm, { success: false, error: null, brand: null })
+  const [state, formAction] = useActionState(saveForm, { success: false, error: null, brand: null })
 
   const form = useForm<FormData>({
     defaultValues: {
@@ -111,7 +108,7 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
 
     const DraggableItem = ({ item, itemIndex }: { item: any; itemIndex: number }) => {
       const itemRef = React.useRef<HTMLDivElement>(null)
-      const [{ isDragging: isItemDragging }, itemDrag] = useDrag({
+      const [{ isItemDragging }, itemDrag] = useDrag({
         type: `${ItemTypes.ITEM}_${index}`,
         item: { id: item.id, index: itemIndex },
         collect: (monitor) => ({
@@ -135,9 +132,9 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
         <div
           ref={itemRef}
           style={{ opacity: isItemDragging ? 0.5 : 1 }}
-          className="flex items-start gap-2 p-3 border rounded-lg bg-gray-50"
+          className="flex items-start gap-2 p-3 border rounded-lg bg-background"
         >
-          <GripVertical className="h-5 w-5 mt-2 text-gray-400 cursor-move" />
+          <GripVertical className="h-5 w-5 mt-2 text-muted-foreground cursor-move" />
           <div className="flex-grow space-y-2">
             <Input {...form.register(`sections.${index}.product_items.${itemIndex}.name`)} placeholder="Item Name" />
             <Textarea
@@ -156,7 +153,7 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
             />
           </div>
           <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(itemIndex)}>
-            <Trash2 className="h-4 w-4 text-red-500" />
+            <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
         </div>
       )
@@ -166,20 +163,20 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
       <div
         ref={ref}
         style={{ opacity: isDragging ? 0.5 : 1 }}
-        className="p-4 border-2 border-dashed rounded-lg space-y-4"
+        className="p-4 border-2 border-dashed rounded-lg space-y-4 bg-card"
       >
         <div className="flex items-center gap-2">
-          <GripVertical className="h-6 w-6 text-gray-500 cursor-move" />
+          <GripVertical className="h-6 w-6 text-muted-foreground cursor-move" />
           <Input
             {...form.register(`sections.${index}.name`)}
             placeholder="Section Name"
-            className="text-lg font-bold"
+            className="text-lg font-bold flex-grow bg-transparent border-none focus-visible:ring-0"
           />
           <Button type="button" variant="ghost" size="icon" onClick={() => removeSection(index)}>
-            <Trash2 className="h-5 w-5 text-red-500" />
+            <Trash2 className="h-5 w-5 text-destructive" />
           </Button>
         </div>
-        <div className="space-y-3 pl-6">
+        <div className="space-y-3 pl-8">
           {items.map((item, itemIndex) => (
             <DraggableItem key={item.id} item={item} itemIndex={itemIndex} />
           ))}
@@ -197,7 +194,7 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
               sort_order: items.length,
             })
           }
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 ml-8"
         >
           <PlusCircle className="h-4 w-4" /> Add Item
         </Button>
@@ -207,7 +204,14 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <form onSubmit={form.handleSubmit((data) => formAction(data))} className="space-y-8 p-4 md:p-8">
+      <form onSubmit={form.handleSubmit((data) => formAction(data))} className="space-y-8 py-4">
+        <div className="flex justify-end gap-2">
+          <Button type="submit" disabled={form.formState.isSubmitting}>
+            <Save className="mr-2 h-4 w-4" />
+            {form.formState.isSubmitting ? "Saving..." : "Save Changes"}
+          </Button>
+        </div>
+
         <input type="hidden" {...form.register("id")} />
         <Card>
           <CardHeader>
@@ -237,12 +241,7 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
           </CardHeader>
           <CardContent className="space-y-4">
             {clinics.map((clinic, index) => (
-              <div key={clinic.id} className="p-4 border rounded-lg space-y-2 relative">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input {...form.register(`clinics.${index}.name`)} placeholder="Clinic Name" />
-                  <Input {...form.register(`clinics.${index}.email`)} placeholder="Clinic Email" />
-                </div>
-                <Textarea {...form.register(`clinics.${index}.address`)} placeholder="Full Address" />
+              <div key={clinic.id} className="p-4 border rounded-lg space-y-2 relative bg-background">
                 <Button
                   type="button"
                   variant="ghost"
@@ -250,8 +249,13 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
                   className="absolute top-2 right-2"
                   onClick={() => removeClinic(index)}
                 >
-                  <Trash2 className="h-4 w-4 text-red-500" />
+                  <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input {...form.register(`clinics.${index}.name`)} placeholder="Clinic Name" />
+                  <Input {...form.register(`clinics.${index}.email`)} placeholder="Clinic Email" />
+                </div>
+                <Textarea {...form.register(`clinics.${index}.address`)} placeholder="Full Address" />
               </div>
             ))}
             <Button
@@ -294,6 +298,7 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
 
         <div className="flex justify-end">
           <Button type="submit" disabled={form.formState.isSubmitting}>
+            <Save className="mr-2 h-4 w-4" />
             {form.formState.isSubmitting ? "Saving..." : "Save Changes"}
           </Button>
         </div>

@@ -4,9 +4,9 @@ import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-import { PlusCircle } from "lucide-react"
+import { PlusCircle, Home } from "lucide-react"
 import SubmissionsTable from "./SubmissionsTable"
-import { toast } from "@/components/ui/use-toast"
+import { toast } from "sonner"
 import type { Submission, Brand } from "@/lib/types"
 
 type FormattedSubmission = Submission & { brand_name: string }
@@ -19,7 +19,6 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ initialSubmissions, initialBrands }: AdminDashboardProps) {
   const [submissions, setSubmissions] = useState(initialSubmissions)
   const [brands, setBrands] = useState(initialBrands)
-  const [isClearing, setIsClearing] = useState(false)
 
   const refreshSubmissions = async () => {
     try {
@@ -28,11 +27,7 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
       const data = await response.json()
       setSubmissions(data)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Could not refresh submissions.",
-        variant: "destructive",
-      })
+      toast.error("Could not refresh submissions.")
     }
   }
 
@@ -46,48 +41,15 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(completionData),
       })
-
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to mark as complete.")
+        throw new Error(errorData.error || "Failed to mark as complete")
       }
-
-      toast({
-        title: "Success",
-        description: `Submission for ${submission.ordered_by} marked as complete.`,
-      })
-
-      await refreshSubmissions()
+      toast.success(`Submission for ${submission.ordered_by} marked as complete.`)
+      refreshSubmissions()
     } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Could not mark submission as complete.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleClearAll = async () => {
-    setIsClearing(true)
-    try {
-      const response = await fetch("/api/admin/submissions", { method: "DELETE" })
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to clear submissions.")
-      }
-      toast({
-        title: "Success",
-        description: "All submissions have been cleared.",
-      })
-      await refreshSubmissions()
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "An unknown error occurred.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsClearing(false)
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+      toast.error(`Error: ${errorMessage}`)
     }
   }
 
@@ -95,9 +57,12 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
     <div className="flex min-h-screen w-full flex-col bg-muted/40">
       <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
         <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <Link href="/">
-            <Button variant="outline">View Forms</Button>
+            <Button variant="outline" size="sm" className="gap-1 bg-transparent">
+              <Home className="h-3.5 w-3.5" />
+              <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">View Forms</span>
+            </Button>
           </Link>
         </div>
       </header>
@@ -141,12 +106,7 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
               <CardTitle>Recent Submissions</CardTitle>
             </CardHeader>
             <CardContent>
-              <SubmissionsTable
-                submissions={submissions}
-                onMarkComplete={handleMarkComplete}
-                onClearAll={handleClearAll}
-                isClearing={isClearing}
-              />
+              <SubmissionsTable submissions={submissions} onMarkComplete={handleMarkComplete} />
             </CardContent>
           </Card>
         </div>
