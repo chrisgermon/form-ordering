@@ -1,246 +1,393 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 
 import { useState, useEffect } from "react"
-import { useFormState, useFormStatus } from "react-dom"
+import { useRouter } from "next/navigation"
+import { useForm, useFieldArray, Controller, register } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { DndProvider, useDrag, useDrop } from "react-dnd"
+import { HTML5Backend } from "react-dnd-html5-backend"
+import { toast } from "sonner"
 import { saveForm } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Trash2, GripVertical, PlusCircle } from "lucide-react"
-import type { Brand, ProductSection, Item } from "@/lib/types"
-import { v4 as uuidv4 } from "uuid"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { GripVertical, Trash2 } from "lucide-react"
+import type { Brand, ProductSection, ProductItem, UploadedFile } from "@/lib/types"
+
+type SectionWithItems = ProductSection & {
+  product_items: ProductItem[]
+}
+
+const formSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1, "Brand name is required"),
+  slug: z.string().min(1, "Slug is required"),
+  logo: z.string().nullable(),
+  primary_color: z.string().nullable(),
+  email: z.string().email("Invalid email address"),
+  active: z.boolean(),
+  clinics: z.array(z.string()).optional(),
+  sections: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string().min(1, "Section name is required"),
+      description: z.string().nullable(),
+      sort_order: z.number(),
+      product_items: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string().min(1, "Item name is required"),
+          description: z.string().nullable(),
+          sort_order: z.number(),
+          requires_scan: z.boolean(),
+        }),
+      ),
+    }),
+  ),
+})
+
+type FormData = z.infer<typeof formSchema>
 
 type FormEditorProps = {
-  brand: (Brand & { product_sections: ProductSection[] }) | null
+  initialBrand: Brand | null
+  initialSections: SectionWithItems[]
+  uploadedFiles: UploadedFile[]
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus()
-  return (
-    <Button type="submit" disabled={pending}>
-      {pending ? "Saving..." : "Save Changes"}
-    </Button>
-  )
-}
+export function FormEditor({ initialBrand, initialSections, uploadedFiles }: FormEditorProps) {
+  const router = useRouter()
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-export function FormEditor({ brand: initialBrand }: FormEditorProps) {
-  const [brand, setBrand] = useState<Partial<Brand>>(
-    initialBrand || { name: "", slug: "", active: true, submission_recipients: [] },
-  )
-  const [sections, setSections] = useState<(Partial<ProductSection> & { items: Partial<Item>[] })[]>(
-    initialBrand?.product_sections || [],
-  )
+  const defaultValues: FormData = {
+    id: initialBrand?.id || undefined,
+    name: initialBrand?.name || "",
+    slug: initialBrand?.slug || "",
+    logo: initialBrand?.logo || null,
+    primary_color: initialBrand?.primary_color || "#000000",
+    email: initialBrand?.email || "",
+    active: initialBrand?.active ?? true,
+    clinics: initialBrand?.clinics || [],
+    sections: initialSections.map((s) => ({
+      ...s,
+      product_items: s.product_items || [],
+    })),
+  }
 
-  const [state, formAction] = useFormState(saveForm, { message: "" })
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+    watch,
+    setValue,
+  } = useForm<FormData>({
+    resolver: zodResolver(formSchema),
+    defaultValues,
+  })
 
+  const {
+    fields: sections,
+    append: appendSection,
+    remove: removeSection,
+    move: moveSection,
+  } = useFieldArray({
+    control,
+    name: "sections",
+  })
+
+  const watchedName = watch("name")
   useEffect(() => {
-    if (initialBrand) {
-      setBrand(initialBrand)
-      setSections(initialBrand.product_sections.sort((a, b) => (a.position || 0) - (b.position || 0)))
+    if (!initialBrand) {
+      const newSlug = watchedName
+        .toLowerCase()
+        .replace(/&/g, "and")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+      setValue("slug", newSlug)
     }
-  }, [initialBrand])
+  }, [watchedName, setValue, initialBrand])
 
-  const handleBrandChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setBrand((prev) => ({ ...prev, [name]: value }))
-  }
+  const onSubmit = async (data: FormData) => {
+    setIsSubmitting(true)
+    toast.loading("Saving form...")
 
-  const handleBrandSwitch = (checked: boolean) => {
-    setBrand((prev) => ({ ...prev, active: checked }))
-  }
-
-  const handleSectionChange = (sectionIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setSections((prev) => prev.map((sec, i) => (i === sectionIndex ? { ...sec, [name]: value } : sec)))
-  }
-
-  const addSection = () => {
-    setSections((prev) => [...prev, { id: uuidv4(), name: "", position: prev.length, items: [] }])
-  }
-
-  const removeSection = (sectionIndex: number) => {
-    setSections((prev) => prev.filter((_, i) => i !== sectionIndex))
-  }
-
-  const handleItemChange = (
-    sectionIndex: number,
-    itemIndex: number,
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => {
-    const { name, value } = e.target
-    setSections((prev) =>
-      prev.map((sec, i) => {
-        if (i === sectionIndex) {
-          return {
-            ...sec,
-            items: sec.items.map((item, j) => (j === itemIndex ? { ...item, [name]: value } : item)),
-          }
+    try {
+      const result = await saveForm(data, initialBrand?.id || null)
+      if (result.success && result.brand) {
+        toast.success("Form saved successfully!")
+        if (!initialBrand) {
+          router.push(`/admin/editor/${result.brand.slug}`)
+        } else {
+          router.refresh()
         }
-        return sec
-      }),
-    )
+      } else {
+        throw new Error(result.error || "An unknown error occurred.")
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to save form."
+      toast.error(errorMessage)
+    } finally {
+      setIsSubmitting(false)
+      toast.dismiss()
+    }
   }
 
-  const addItem = (sectionIndex: number) => {
-    setSections((prev) =>
-      prev.map((sec, i) => {
-        if (i === sectionIndex) {
-          return {
-            ...sec,
-            items: [
-              ...sec.items,
-              {
-                id: uuidv4(),
+  return (
+    <DndProvider backend={HTML5Backend}>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Brand Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="name">Brand Name</Label>
+                <Input id="name" {...register("name")} />
+                {errors.name && <p className="text-red-500 text-sm">{errors.name.message}</p>}
+              </div>
+              <div>
+                <Label htmlFor="slug">Slug</Label>
+                <Input id="slug" {...register("slug")} />
+                {errors.slug && <p className="text-red-500 text-sm">{errors.slug.message}</p>}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="logo">Logo</Label>
+                <Controller
+                  name="logo"
+                  control={control}
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} defaultValue={field.value || "default-logo-url"}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a logo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">None</SelectItem>
+                        {uploadedFiles.map((file) => (
+                          <SelectItem key={file.id} value={file.url}>
+                            {file.file_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+              <div>
+                <Label htmlFor="primary_color">Primary Color</Label>
+                <Input id="primary_color" type="color" {...register("primary_color")} />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="email">Recipient Email</Label>
+              <Input id="email" type="email" {...register("email")} />
+              {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
+            </div>
+            <div className="flex items-center space-x-2">
+              <Controller
+                name="active"
+                control={control}
+                render={({ field }) => <Switch id="active" checked={field.value} onCheckedChange={field.onChange} />}
+              />
+              <Label htmlFor="active">Active</Label>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div>
+          <h2 className="text-2xl font-bold mb-4">Form Sections</h2>
+          <div className="space-y-4">
+            {sections.map((section, index) => (
+              <SectionDndItem key={section.id} index={index} moveSection={moveSection}>
+                <SectionForm control={control} sectionIndex={index} removeSection={removeSection} />
+              </SectionDndItem>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4 bg-transparent"
+            onClick={() =>
+              appendSection({
+                id: `new-section-${Date.now()}`,
                 name: "",
                 description: "",
-                price: 0,
-                position: sec.items.length,
-              },
-            ],
-          }
-        }
-        return sec
-      }),
-    )
-  }
+                sort_order: sections.length,
+                product_items: [],
+              })
+            }
+          >
+            Add Section
+          </Button>
+        </div>
 
-  const removeItem = (sectionIndex: number, itemIndex: number) => {
-    setSections((prev) =>
-      prev.map((sec, i) => {
-        if (i === sectionIndex) {
-          return {
-            ...sec,
-            items: sec.items.filter((_, j) => j !== itemIndex),
-          }
-        }
-        return sec
-      }),
-    )
-  }
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Saving..." : "Save Changes"}
+        </Button>
+      </form>
+    </DndProvider>
+  )
+}
+
+// Drag and Drop Components
+const ItemTypes = {
+  SECTION: "section",
+  ITEM: "item",
+}
+
+function SectionDndItem({
+  index,
+  moveSection,
+  children,
+}: { index: number; moveSection: (from: number, to: number) => void; children: React.ReactNode }) {
+  const ref = React.useRef<HTMLDivElement>(null)
+  const [, drop] = useDrop({
+    accept: ItemTypes.SECTION,
+    hover(item: { index: number }) {
+      if (!ref.current) return
+      if (item.index === index) return
+      moveSection(item.index, index)
+      item.index = index
+    },
+  })
+  const [{ isDragging }, drag, preview] = useDrag({
+    type: ItemTypes.SECTION,
+    item: { index },
+    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+  })
+  preview(drop(ref))
 
   return (
-    <form action={formAction} className="space-y-8">
-      <input type="hidden" name="data" value={JSON.stringify({ brand, sections })} />
+    <div ref={ref} style={{ opacity: isDragging ? 0.5 : 1 }} className="flex items-start gap-2">
+      <div ref={drag} className="cursor-move pt-10">
+        <GripVertical />
+      </div>
+      <div className="flex-grow">{children}</div>
+    </div>
+  )
+}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Brand Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="name">Brand Name</Label>
-              <Input id="name" name="name" value={brand.name || ""} onChange={handleBrandChange} required />
-            </div>
-            <div>
-              <Label htmlFor="slug">URL Slug</Label>
-              <Input id="slug" name="slug" value={brand.slug || ""} onChange={handleBrandChange} required />
-            </div>
-          </div>
-          <div>
-            <Label htmlFor="logo">Logo URL</Label>
-            <Input id="logo" name="logo" value={brand.logo || ""} onChange={handleBrandChange} />
-          </div>
-          <div>
-            <Label htmlFor="submission_recipients">Submission Recipient Emails (comma-separated)</Label>
-            <Textarea
-              id="submission_recipients"
-              name="submission_recipients"
-              value={Array.isArray(brand.submission_recipients) ? brand.submission_recipients.join(", ") : ""}
-              onChange={(e) =>
-                setBrand((prev) => ({
-                  ...prev,
-                  submission_recipients: e.target.value.split(",").map((s) => s.trim()),
-                }))
-              }
-            />
-          </div>
-          <div className="flex items-center space-x-2">
-            <Switch id="active" checked={brand.active} onCheckedChange={handleBrandSwitch} />
-            <Label htmlFor="active">Active</Label>
-          </div>
-        </CardContent>
-      </Card>
+function SectionForm({
+  control,
+  sectionIndex,
+  removeSection,
+}: { control: any; sectionIndex: number; removeSection: (index: number) => void }) {
+  const { fields, append, remove, move } = useFieldArray({
+    control,
+    name: `sections.${sectionIndex}.product_items`,
+  })
 
-      <div>
-        <h2 className="text-2xl font-bold mb-4">Form Sections</h2>
-        <div className="space-y-6">
-          {sections.map((section, sectionIndex) => (
-            <Card key={section.id || sectionIndex}>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>
-                  <Input
-                    name="name"
-                    placeholder="Section Name"
-                    value={section.name || ""}
-                    onChange={(e) => handleSectionChange(sectionIndex, e)}
-                    className="text-xl font-bold"
-                  />
-                </CardTitle>
-                <div className="flex items-center gap-2">
-                  <GripVertical className="cursor-grab text-muted-foreground" />
-                  <Button type="button" variant="destructive" size="icon" onClick={() => removeSection(sectionIndex)}>
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-4">
+        <div className="flex justify-between items-start">
+          <div className="flex-grow space-y-2">
+            <Label>Section Name</Label>
+            <Input {...register(`sections.${sectionIndex}.name`)} placeholder="e.g., MRI Scans" />
+            <Label>Section Description</Label>
+            <Textarea {...register(`sections.${sectionIndex}.description`)} placeholder="Optional description" />
+          </div>
+          <Button type="button" variant="ghost" size="icon" onClick={() => removeSection(sectionIndex)}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+        <h4 className="font-semibold">Items</h4>
+        <div className="space-y-2">
+          {fields.map((item, itemIndex) => (
+            <ItemDndItem key={item.id} sectionIndex={sectionIndex} itemIndex={itemIndex} moveItem={move}>
+              <div className="p-2 border rounded-md space-y-2">
+                <div className="flex justify-between items-start">
+                  <div className="flex-grow space-y-2">
+                    <Label>Item Name</Label>
+                    <Input
+                      {...register(`sections.${sectionIndex}.product_items.${itemIndex}.name`)}
+                      placeholder="e.g., Brain MRI"
+                    />
+                    <Label>Item Description</Label>
+                    <Textarea
+                      {...register(`sections.${sectionIndex}.product_items.${itemIndex}.description`)}
+                      placeholder="Optional description"
+                    />
+                  </div>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => remove(itemIndex)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {section.items.map((item, itemIndex) => (
-                  <div key={item.id || itemIndex} className="flex items-start gap-4 p-2 border rounded-md">
-                    <GripVertical className="cursor-grab text-muted-foreground mt-2" />
-                    <div className="flex-grow space-y-2">
-                      <Input
-                        name="name"
-                        placeholder="Item Name"
-                        value={item.name || ""}
-                        onChange={(e) => handleItemChange(sectionIndex, itemIndex, e)}
-                      />
-                      <Textarea
-                        name="description"
-                        placeholder="Item Description"
-                        value={item.description || ""}
-                        onChange={(e) => handleItemChange(sectionIndex, itemIndex, e)}
-                        rows={2}
-                      />
-                      <Input
-                        name="price"
-                        type="number"
-                        placeholder="Price"
-                        value={item.price || 0}
-                        onChange={(e) => handleItemChange(sectionIndex, itemIndex, e)}
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeItem(sectionIndex, itemIndex)}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
-                  </div>
-                ))}
-                <Button type="button" variant="outline" onClick={() => addItem(sectionIndex)}>
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add Item
-                </Button>
-              </CardContent>
-            </Card>
+                <div className="flex items-center space-x-2">
+                  <Controller
+                    name={`sections.${sectionIndex}.product_items.${itemIndex}.requires_scan`}
+                    control={control}
+                    render={({ field }) => <Switch checked={field.value} onCheckedChange={field.onChange} />}
+                  />
+                  <Label>Requires Scan Upload</Label>
+                </div>
+              </div>
+            </ItemDndItem>
           ))}
         </div>
-        <Button type="button" variant="secondary" onClick={addSection} className="mt-6">
-          <PlusCircle className="mr-2 h-4 w-4" /> Add Section
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            append({
+              id: `new-item-${Date.now()}`,
+              name: "",
+              description: "",
+              sort_order: fields.length,
+              requires_scan: false,
+            })
+          }
+        >
+          Add Item
         </Button>
-      </div>
+      </CardContent>
+    </Card>
+  )
+}
 
-      <div className="flex justify-end items-center gap-4">
-        {state.message && <p className={state.error ? "text-red-500" : "text-green-500"}>{state.message}</p>}
-        <SubmitButton />
+function ItemDndItem({
+  sectionIndex,
+  itemIndex,
+  moveItem,
+  children,
+}: {
+  sectionIndex: number
+  itemIndex: number
+  moveItem: (from: number, to: number) => void
+  children: React.ReactNode
+}) {
+  const ref = React.useRef<HTMLDivElement>(null)
+  const [, drop] = useDrop({
+    accept: `${ItemTypes.ITEM}_${sectionIndex}`,
+    hover(item: { index: number }) {
+      if (!ref.current) return
+      if (item.index === itemIndex) return
+      moveItem(item.index, itemIndex)
+      item.index = itemIndex
+    },
+  })
+  const [{ isDragging }, drag, preview] = useDrag({
+    type: `${ItemTypes.ITEM}_${sectionIndex}`,
+    item: { index: itemIndex },
+    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+  })
+  preview(drop(ref))
+
+  return (
+    <div ref={ref} style={{ opacity: isDragging ? 0.5 : 1 }} className="flex items-center gap-2">
+      <div ref={drag} className="cursor-move">
+        <GripVertical />
       </div>
-    </form>
+      <div className="flex-grow">{children}</div>
+    </div>
   )
 }

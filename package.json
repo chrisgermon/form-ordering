@@ -9,7 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
-    "@hookform/resolvers": "^3.9.1",
+    "@hookform/resolvers": "latest",
     "@radix-ui/react-accordion": "latest",
     "@radix-ui/react-alert-dialog": "latest",
     "@radix-ui/react-aspect-ratio": "latest",
@@ -39,6 +39,7 @@
     "@radix-ui/react-tooltip": "latest",
     "@supabase/auth-helpers-nextjs": "latest",
     "@supabase/supabase-js": "latest",
+    "@types/hoist-non-react-statics": "latest",
     "@vercel/blob": "latest",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
@@ -55,6 +56,8 @@
     "nodemailer": "latest",
     "react": "^18",
     "react-day-picker": "latest",
+    "react-dnd": "latest",
+    "react-dnd-html5-backend": "latest",
     "react-dom": "^18",
     "react-hook-form": "latest",
     "react-resizable-panels": "latest",
@@ -63,7 +66,6 @@
     "sonner": "latest",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
-    "uuid": "latest",
     "vaul": "latest",
     "zod": "^3.24.1"
   },
