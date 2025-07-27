@@ -1,572 +1,91 @@
 "use client"
 
-import type React from "react"
-import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
-import { useForm, Controller } from "react-hook-form"
-import { format } from "date-fns"
+import { useState } from "react"
+import type { Brand } from "@/lib/types"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { toast } from "@/components/ui/use-toast"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
-import { Loader2, CalendarIcon, PlusCircle, X } from 'lucide-react'
-import {
-  Alert,
-  AlertTitle,
-  AlertDescription
-} from "@/components/ui/alert"
-import { cn } from "@/lib/utils"
-import type { Brand, UploadedFile, Submission, Clinic } from "@/lib/types"
-import SubmissionsTable from "./SubmissionsTable"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import BrandEditor from "./BrandEditor"
 import Link from "next/link"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import AdminActions from "./AdminActions"
-
-type FormattedSubmission = Submission & { brand_name: string }
+import Image from "next/image"
+import { PlusCircle } from "lucide-react"
 
 interface AdminDashboardProps {
-  initialBrands: Brand[]
-  initialSubmissions: FormattedSubmission[]
+  brands: Brand[]
 }
 
-export default function AdminDashboard({ initialBrands, initialSubmissions }: AdminDashboardProps) {
-  const router = useRouter()
-  const [brands, setBrands] = useState<Brand[]>(initialBrands)
-  const [submissions, setSubmissions] = useState<FormattedSubmission[]>(initialSubmissions)
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
-  const [isBrandFormOpen, setIsBrandFormOpen] = useState(false)
+export default function AdminDashboard({ brands }: AdminDashboardProps) {
+  const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
-  const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
-  const [selectedSubmission, setSelectedSubmission] = useState<FormattedSubmission | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
 
-  const refreshData = useCallback(() => {
-    router.refresh()
-  }, [router])
-
-  useEffect(() => {
-    setBrands(initialBrands)
-    setSubmissions(initialSubmissions)
-  }, [initialBrands, initialSubmissions])
-
-  useEffect(() => {
-    const fetchFiles = async () => {
-      try {
-        const res = await fetch("/api/admin/files")
-        if (!res.ok) throw new Error("Failed to fetch files")
-        const data = await res.json()
-        setUploadedFiles(data)
-      } catch (error) {
-        console.error(error)
-        toast({
-          title: "Error",
-          description: "Could not load uploaded files.",
-          variant: "destructive",
-        })
-      }
-    }
-    fetchFiles()
-  }, [])
-
-  const handleEditBrand = (brand: Brand) => {
+  const handleOpenEditor = (brand: Brand | null = null) => {
     setSelectedBrand(brand)
-    setIsBrandFormOpen(true)
+    setIsEditorOpen(true)
   }
 
-  const handleAddNewBrand = () => {
+  const handleCloseEditor = () => {
+    setIsEditorOpen(false)
     setSelectedBrand(null)
-    setIsBrandFormOpen(true)
-  }
-
-  const handleSaveBrand = async (brandData: any) => {
-    setIsLoading(true)
-    const method = brandData.id ? "PUT" : "POST"
-    const endpoint = "/api/admin/brands"
-
-    try {
-      const response = await fetch(endpoint, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(brandData),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to save brand.")
-      }
-
-      toast({
-        title: "Success",
-        description: `Brand ${brandData.id ? "updated" : "created"} successfully.`,
-      })
-      setIsBrandFormOpen(false)
-      refreshData()
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "An unknown error occurred.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleMarkComplete = (submission: FormattedSubmission) => {
-    setSelectedSubmission(submission)
-    setIsCompleteDialogOpen(true)
-  }
-
-  const onCompleted = () => {
-    setIsCompleteDialogOpen(false)
-    toast({
-      title: "Success",
-      description: "Order marked as complete.",
-    })
-    refreshData()
-  }
-
-  const handleSubmissionUpdated = (updatedSubmission: Submission) => {
-    setSubmissions((prev) =>
-      prev.map((s) => (s.id === updatedSubmission.id ? { ...s, ...updatedSubmission } : s)),
-    )
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-      </div>
-      <Tabs defaultValue="submissions">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="submissions">Submissions</TabsTrigger>
-          <TabsTrigger value="brands">Brands</TabsTrigger>
-          <TabsTrigger value="actions">Admin Actions</TabsTrigger>
-        </TabsList>
-        <TabsContent value="submissions">
-          <SubmissionsTable
-            submissions={submissions}
-            refreshSubmissions={refreshData}
-            onMarkComplete={handleMarkComplete}
-            onSubmissionUpdated={handleSubmissionUpdated}
-          />
-        </TabsContent>
-        <TabsContent value="brands">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Manage Brands</CardTitle>
-              <Button onClick={handleAddNewBrand}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Add New Brand
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                Click a brand to edit its details, or click the link icon to go to its form editor.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {brands.map((brand) => (
-                  <div
-                    key={brand.id}
-                    onClick={() => handleEditBrand(brand)}
-                    className="p-4 border rounded-lg hover:bg-gray-50 transition-colors cursor-pointer group relative"
-                  >
-                    <h3 className="font-semibold">{brand.name}</h3>
-                    <p className="text-sm text-gray-500">{brand.slug}</p>
-                    <Link
-                      href={`/admin/editor/${brand.slug}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute top-2 right-2 text-muted-foreground hover:text-primary"
-                      aria-label={`Edit form for ${brand.name}`}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="h-5 w-5"
-                      >
-                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.72" />
-                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.72-1.72" />
-                      </svg>
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="actions">
-          <AdminActions />
-        </TabsContent>
-      </Tabs>
-
-      <Dialog open={isBrandFormOpen} onOpenChange={setIsBrandFormOpen}>
-        <DialogContent className="sm:max-w-[625px]">
-          <DialogHeader>
-            <DialogTitle>{selectedBrand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
-          </DialogHeader>
-          <BrandForm
-            brand={selectedBrand}
-            uploadedFiles={uploadedFiles}
-            onSave={handleSaveBrand}
-            onCancel={() => setIsBrandFormOpen(false)}
-            isLoading={isLoading}
-          />
-        </DialogContent>
-      </Dialog>
-
-      <CompleteSubmissionDialog
-        open={isCompleteDialogOpen}
-        onOpenChange={setIsCompleteDialogOpen}
-        submission={selectedSubmission}
-        onCompleted={onCompleted}
-      />
-    </div>
-  )
-}
-
-function BrandForm({
-  brand,
-  uploadedFiles,
-  onSave,
-  onCancel,
-  isLoading,
-}: {
-  brand: Brand | null
-  uploadedFiles: UploadedFile[]
-  onSave: (brand: any) => void
-  onCancel: () => void
-  isLoading: boolean
-}) {
-  const [formData, setFormData] = useState({
-    id: brand?.id || undefined,
-    name: brand?.name || "",
-    logo: brand?.logo || "",
-    primary_color: brand?.primary_color || "",
-    email: brand?.email || "",
-    active: brand?.active ?? true,
-  })
-  const [clinics, setClinics] = useState<Clinic[]>(brand?.clinics || [])
-
-  useEffect(() => {
-    if (brand) {
-      setFormData({
-        id: brand.id,
-        name: brand.name,
-        logo: brand.logo || "",
-        primary_color: brand.primary_color || "",
-        email: brand.email || "",
-        active: brand.active,
-      })
-      setClinics(brand.clinics || [])
-    } else {
-      setFormData({
-        id: undefined,
-        name: "",
-        logo: "",
-        primary_color: "",
-        email: "",
-        active: true,
-      })
-      setClinics([])
-    }
-  }, [brand])
-
-  const handleClinicChange = (index: number, field: "name" | "address", value: string) => {
-    const newClinics = [...clinics]
-    newClinics[index] = { ...newClinics[index], [field]: value }
-    setClinics(newClinics)
-  }
-
-  const handleAddClinic = () => {
-    setClinics([...clinics, { name: "", address: "" }])
-  }
-
-  const handleRemoveClinic = (index: number) => {
-    setClinics(clinics.filter((_, i) => i !== index))
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    onSave({ ...formData, clinics })
-  }
-
-  return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="name">Brand Name</Label>
-          <Input
-            id="name"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label htmlFor="primaryColor">Primary Color</Label>
-          <Input
-            id="primaryColor"
-            placeholder="e.g., #007bff or a Tailwind color"
-            value={formData.primary_color || ""}
-            onChange={(e) => setFormData({ ...formData, primary_color: e.target.value })}
-          />
-        </div>
-      </div>
-      <div>
-        <Label htmlFor="email">Recipient Email</Label>
-        <Input
-          id="email"
-          type="email"
-          placeholder="orders@example.com"
-          value={formData.email || ""}
-          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-          required
-        />
-      </div>
-      <div>
-        <Label htmlFor="logo">Logo URL</Label>
-        <Select
-          value={formData.logo || ""}
-          onValueChange={(value) => setFormData({ ...formData, logo: value === "none" ? "" : value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select an uploaded logo" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">No logo</SelectItem>
-            {Array.isArray(uploadedFiles) &&
-              uploadedFiles.map((file) => (
-                <SelectItem key={file.id} value={file.url}>
-                  {file.original_name}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-        <Input
-          className="mt-2"
-          placeholder="Or enter custom URL"
-          value={formData.logo || ""}
-          onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
-        />
-      </div>
-      <div>
-        <Label>Clinic Locations</Label>
-        <div className="space-y-3 max-h-60 overflow-y-auto p-1">
-          {clinics.map((clinic, index) => (
-            <div key={index} className="p-3 border rounded-md space-y-2 bg-gray-50/50 relative">
-              <div className="absolute top-1 right-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleRemoveClinic(index)}
-                  className="h-7 w-7 p-0"
-                >
-                  <X className="h-4 w-4" />
-                  <span className="sr-only">Remove clinic</span>
-                </Button>
-              </div>
-              <div>
-                <Label htmlFor={`clinic-name-${index}`} className="text-xs font-medium">
-                  Clinic Name
-                </Label>
-                <Input
-                  id={`clinic-name-${index}`}
-                  value={clinic.name}
-                  onChange={(e) => handleClinicChange(index, "name", e.target.value)}
-                  placeholder="e.g. Main Street Clinic"
-                />
-              </div>
-              <div>
-                <Label htmlFor={`clinic-address-${index}`} className="text-xs font-medium">
-                  Clinic Address
-                </Label>
-                <Textarea
-                  id={`clinic-address-${index}`}
-                  value={clinic.address}
-                  onChange={(e) => handleClinicChange(index, "address", e.target.value)}
-                  rows={2}
-                  placeholder="e.g. 123 Main St, Anytown, USA 12345"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-        <Button type="button" variant="outline" size="sm" onClick={handleAddClinic} className="mt-2">
-          <PlusCircle className="mr-2 h-4 w-4" /> Add Clinic
-        </Button>
-      </div>
-      <div className="flex items-center space-x-2 pt-2">
-        <input
-          type="checkbox"
-          id="active"
-          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-          checked={formData.active}
-          onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
-        />
-        <Label htmlFor="active" className="font-medium">
-          Active
-        </Label>
-      </div>
-      <div className="flex justify-end gap-2 pt-4">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={isLoading}>
-          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Save"}
-        </Button>
-      </div>
-    </form>
-  )
-}
-
-function CompleteSubmissionDialog({
-  open,
-  onOpenChange,
-  submission,
-  onCompleted,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  submission: FormattedSubmission | null
-  onCompleted: () => void
-}) {
-  const {
-    control,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm({
-    defaultValues: {
-      delivery_details: "",
-      expected_delivery_date: new Date(),
-    },
-  })
-  const [isSaving, setIsSaving] = useState(false)
-  const [errorMessage, setErrorMessage] = useState("")
-
-  useEffect(() => {
-    if (open) {
-      reset({
-        delivery_details: submission?.delivery_details || "",
-        expected_delivery_date: submission?.expected_delivery_date
-          ? new Date(submission.expected_delivery_date)
-          : new Date(),
-      })
-      setErrorMessage("")
-    }
-  }, [open, reset, submission])
-
-  const onSubmit = async (data: any) => {
-    if (!submission) return
-    setIsSaving(true)
-    setErrorMessage("")
-    try {
-      const response = await fetch(`/api/admin/submissions/${submission.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "completed",
-          delivery_details: data.delivery_details,
-          expected_delivery_date: data.expected_delivery_date
-            ? format(data.expected_delivery_date, "yyyy-MM-dd")
-            : null,
-        }),
-      })
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to update submission.")
-      }
-      onCompleted()
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred.")
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Mark Order as Complete</DialogTitle>
-        </DialogHeader>
-        {submission && (
-          <div className="text-sm text-muted-foreground border-b pb-4">
-            <p>
-              <strong>Order ID:</strong> {submission.id.substring(0, 8)}...
-            </p>
-            <p>
-              <strong>Brand:</strong> {submission.brand_name}
-            </p>
-            <p>
-              <strong>Ordered By:</strong> {submission.ordered_by} ({submission.email})
-            </p>
-          </div>
-        )}
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <Label htmlFor="delivery_details">Delivery Details (Courier, Tracking #, etc.)</Label>
-            <Controller
-              name="delivery_details"
-              control={control}
-              render={({ field }) => <Textarea id="delivery_details" {...field} />}
-            />
+            <CardTitle>Brands</CardTitle>
+            <CardDescription>Manage your brands and their order forms.</CardDescription>
           </div>
-          <div>
-            <Label htmlFor="expected_delivery_date">Expected Delivery Date</Label>
-            <Controller
-              name="expected_delivery_date"
-              control={control}
-              rules={{ required: "Delivery date is required." }}
-              render={({ field }) => (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !field.value && "text-muted-foreground",
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+          <Button onClick={() => handleOpenEditor()}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Create Brand
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[80px]">Logo</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {brands.map((brand) => (
+                <TableRow key={brand.id}>
+                  <TableCell>
+                    <Image
+                      src={brand.logo || "/placeholder-logo.svg"}
+                      alt={`${brand.name} logo`}
+                      width={40}
+                      height={40}
+                      className="rounded-sm object-contain"
+                    />
+                  </TableCell>
+                  <TableCell className="font-medium">{brand.name}</TableCell>
+                  <TableCell>
+                    <Badge variant={brand.active ? "default" : "secondary"}>
+                      {brand.active ? "Active" : "Inactive"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href={`/admin/editor/${brand.slug}`}>Form</Link>
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
-                  </PopoverContent>
-                </Popover>
-              )}
-            />
-            {errors.expected_delivery_date && (
-              <p className="text-xs text-red-500 mt-1">{errors.expected_delivery_date.message}</p>
-            )}
-          </div>
-          {errorMessage && <Alert variant="destructive">{errorMessage}</Alert>}
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Save and Complete
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+                    <Button variant="outline" size="sm" onClick={() => handleOpenEditor(brand)}>
+                      Edit
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {isEditorOpen && <BrandEditor brand={selectedBrand} isOpen={isEditorOpen} onClose={handleCloseEditor} />}
+    </>
   )
 }

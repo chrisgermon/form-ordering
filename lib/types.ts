@@ -1,5 +1,3 @@
-// This file is the single source of truth for all data structures.
-
 export interface Clinic {
   name: string
   address: string
@@ -10,47 +8,57 @@ export interface Brand {
   name: string
   slug: string
   logo: string | null
+  active: boolean
   primary_color: string | null
   email: string | null
-  active: boolean
-  clinics: Clinic[]
+  clinics: Clinic[] | null
+  created_at: string
 }
 
-export interface UploadedFile {
+export interface ProductSection {
   id: string
-  original_name: string
-  url: string
-}
-
-export interface Section {
-  id: string
+  title: string
+  sort_order: number
   brand_id: string
-  name: string
-  position: number
-  items: Item[]
+  items: ProductItem[]
 }
 
-export interface Item {
+export interface ProductItem {
   id: string
-  section_id: string
+  code: string
   name: string
-  type: "text" | "number" | "checkbox" | "textarea"
-  position: number
+  description: string | null
+  quantities: string[]
+  sample_link: string | null
+  sort_order: number
+  section_id: string
+  brand_id: string
+}
+
+export interface OrderItem {
+  item_id: string
+  code: string
+  name: string
+  quantity: string
+  custom_quantity?: string
 }
 
 export interface Submission {
   id: string
   brand_id: string
-  ordered_by: string
-  email: string
-  bill_to: string
-  deliver_to: string
-  order_date: string | null
-  items: Record<string, any>
-  pdf_url: string | null
-  status: "pending" | "sent" | "completed" | "failed"
+  clinic_name: string
+  clinic_address: string
+  contact_name: string
+  contact_email: string
+  contact_phone: string
+  order_items: OrderItem[]
+  status: "Pending" | "In Progress" | "Completed" | "Cancelled"
   created_at: string
-  updated_at: string
-  delivery_details?: string
-  expected_delivery_date?: string
+  completed_by?: string | null
+  completed_at?: string | null
+  tracking_number?: string | null
+  brands: {
+    name: string
+    logo: string | null
+  }
 }
