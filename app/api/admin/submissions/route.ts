@@ -1,32 +1,19 @@
 import { NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createClient } from "@/lib/supabase/server"
 
 export async function GET() {
   try {
-    const supabase = createServerSupabaseClient()
-
+    const supabase = createClient()
     const { data: submissions, error } = await supabase
       .from("submissions")
-      .select(
-        `
-        *,
-        brands (
-          name
-        )
-      `,
-      )
+      .select(`*, brands (name)`)
       .order("created_at", { ascending: false })
-
     if (error) throw error
-
-    // The Supabase query returns brand as an object { name: '...' } or null.
-    // We'll flatten it for easier use on the client.
     const formattedSubmissions = submissions.map((s: any) => ({
       ...s,
       brand_name: s.brands?.name || "Unknown Brand",
-      brands: undefined, // remove the nested object
+      brands: undefined,
     }))
-
     return NextResponse.json(formattedSubmissions)
   } catch (error) {
     console.error("Error fetching submissions:", error)
