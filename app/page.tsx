@@ -3,7 +3,6 @@ import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { BrandGrid } from "@/components/brand-grid"
 import type { Brand } from "@/lib/types"
 import { Package2 } from "lucide-react"
-import { redirect } from "next/navigation"
 
 export const revalidate = 60 // Revalidate every 60 seconds
 
@@ -19,15 +18,6 @@ async function getBrands(): Promise<Brand[]> {
 }
 
 export default async function HomePage() {
-  const supabase = createServerSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (user) {
-    return redirect("/admin")
-  }
-
   let brands: Brand[] = []
   let fetchError: string | null = null
   try {

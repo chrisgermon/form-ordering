@@ -1,81 +1,80 @@
 "use server"
 
-import { revalidatePath } from "next/cache"
-import { z } from "zod"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
+import { revalidatePath } from "next/cache"
+import slugify from "slugify"
+import type { BrandType, UploadedFileType } from "@/lib/types"
 
-const brandSchema = z.object({
-  name: z.string().min(1, { message: "Must be at least 1 character" }),
-})
-
-export async function createBrand(prevState: any, formData: FormData) {
+export async function saveBrand(brandData: BrandType) {
   const supabase = createServerSupabaseClient()
+  const { id, name, logo, primary_color, email, active, clinics } = brandData
 
-  const validatedFields = brandSchema.safeParse({
-    name: formData.get("name"),
-  })
+  const slug = slugify(name, { lower: true, strict: true })
 
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Failed to create brand.",
-    }
+  const dataToUpsert = {
+    id,
+    name,
+    slug,
+    logo,
+    primary_color,
+    email,
+    active,
+    clinics,
   }
 
-  const { data, error } = await supabase.from("brands").insert({ name: validatedFields.data.name }).select().single()
+  if (!dataToUpsert.id) {
+    delete (dataToUpsert as Partial<typeof dataToUpsert>).id
+  }
+
+  const { error } = await supabase.from("brands").upsert(dataToUpsert).select()
 
   if (error) {
-    return {
-      message: "Failed to create brand.",
-    }
+    console.error("Error saving brand:", error)
+    throw new Error(error.message)
   }
 
-  revalidatePath("/admin/brands")
-  redirect("/admin/brands")
+  revalidatePath("/admin")
+  revalidatePath("/")
 }
 
-export async function updateBrand(id: string, prevState: any, formData: FormData) {
-  const supabase = createServerSupabaseClient()
-
-  const validatedFields = brandSchema.safeParse({
-    name: formData.get("name"),
-  })
-
-  if (!validatedFields.success) {
-    return {
-      errors: validatedFields.error.flatten().fieldErrors,
-      message: "Failed to update brand.",
-    }
+export async function uploadFile(formData: FormData) {
+  const file = formData.get("file") as File
+  if (!file) {
+    throw new Error("No file provided")
   }
 
-  const { data, error } = await supabase
-    .from("brands")
-    .update({ name: validatedFields.data.name })
-    .eq("id", id)
+  const supabase = createServerSupabaseClient()
+  const filePath = `public/${file.name}`
+
+  const { error: uploadError } = await supabase.storage.from("logos").upload(filePath, file, {
+    cacheControl: "3600",
+    upsert: true,
+  })
+
+  if (uploadError) {
+    console.error("Error uploading file to storage:", uploadError)
+    throw new Error(uploadError.message)
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("logos").getPublicUrl(filePath)
+
+  const { data, error: dbError } = await supabase
+    .from("uploaded_files")
+    .insert({
+      original_name: file.name,
+      storage_path: filePath,
+      url: publicUrl,
+    })
     .select()
     .single()
 
-  if (error) {
-    return {
-      message: "Failed to update brand.",
-    }
+  if (dbError) {
+    console.error("Error saving file metadata to DB:", dbError)
+    throw new Error(dbError.message)
   }
 
-  revalidatePath("/admin/brands")
-  redirect("/admin/brands")
-}
-
-export async function deleteBrand(id: string) {
-  const supabase = createServerSupabaseClient()
-
-  const { error } = await supabase.from("brands").delete().eq("id", id)
-
-  if (error) {
-    return {
-      message: "Failed to delete brand.",
-    }
-  }
-
-  revalidatePath("/admin/brands")
+  revalidatePath("/admin")
+  return data as UploadedFileType
 }
