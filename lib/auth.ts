@@ -14,7 +14,7 @@ export async function checkUserPermissions() {
   const { data: profile, error } = await supabase.from("profiles").select("role").eq("id", user.id).single()
 
   if (error || !profile) {
-    console.error("Error fetching user profile or profile not found", error)
+    console.error("Error fetching profile or profile not found:", error)
     return redirect("/login")
   }
 
