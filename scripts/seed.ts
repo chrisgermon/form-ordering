@@ -1,23 +1,36 @@
 import { createClient as _createClient } from "@supabase/supabase-js"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
-// This function creates the admin client.
-// It should only be called on the server.
-const createServerSupabaseClient = (): SupabaseClient => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+// --- Configuration & Setup ---
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+function checkEnv() {
+  console.log("--- Checking Environment Variables ---")
+  console.log("NEXT_PUBLIC_SUPABASE_URL:", supabaseUrl ? "Loaded" : "MISSING!")
+  console.log("SUPABASE_SERVICE_ROLE_KEY:", supabaseServiceKey ? "Loaded" : "MISSING!")
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error("Server-side Supabase environment variables are not configured.")
+    console.error("\nERROR: One or more Supabase environment variables are not configured.")
+    console.error("Please ensure the Supabase integration is added and configured correctly before running this script.")
+    process.exit(1)
   }
-
-  return _createClient(supabaseUrl, supabaseServiceKey)
+  console.log("--- Environment variables check passed ---\n")
 }
+
+const createServerSupabaseClient = (): SupabaseClient => {
+  checkEnv() // Check variables before creating client
+  return _createClient(supabaseUrl!, supabaseServiceKey!)
+}
+
+// --- Seeding Logic ---
 
 async function seedDatabase() {
   const supabase = createServerSupabaseClient()
+  console.log("Successfully connected to Supabase.")
 
-  // Create brands
+  console.log("\n--- Seeding Brands ---")
   const brands = [
     {
       name: "Vision Radiology",
@@ -62,12 +75,13 @@ async function seedDatabase() {
     }
   }
 
-  const { data: brandData } = await supabase.from("brands").select("id, slug")
-  if (!brandData) {
-    console.error("Could not fetch brand data after seeding.")
+  const { data: brandData, error: brandFetchError } = await supabase.from("brands").select("id, slug")
+  if (brandFetchError || !brandData) {
+    console.error("Could not fetch brand data after seeding. Aborting product seeding.", brandFetchError)
     return
   }
   const brandMap = brandData.reduce((acc, brand) => ({ ...acc, [brand.slug]: brand.id }), {} as Record<string, string>)
+  console.log("--- Brands seeded successfully ---\n")
 
   // --- SEED VISION RADIOLOGY (RESTORATION) ---
   if (brandMap["vision-radiology"]) {
@@ -258,7 +272,7 @@ async function seedDatabase() {
   // --- SEED QUANTUM MEDICAL IMAGING ---
   if (brandMap["quantum-medical-imaging"]) {
     const brand_id = brandMap["quantum-medical-imaging"]
-    console.log(`Seeding form for Quantum Medical Imaging (brand_id: ${brand_id})...`)
+    console.log(`\nSeeding form for Quantum Medical Imaging (brand_id: ${brand_id})...`)
     await supabase.from("product_items").delete().eq("brand_id", brand_id)
     await supabase.from("product_sections").delete().eq("brand_id", brand_id)
 
@@ -550,7 +564,7 @@ async function seedDatabase() {
   // --- SEED FOCUS RADIOLOGY ---
   if (brandMap["focus-radiology"]) {
     const brand_id = brandMap["focus-radiology"]
-    console.log(`Seeding form for Focus Radiology (brand_id: ${brand_id})...`)
+    console.log(`\nSeeding form for Focus Radiology (brand_id: ${brand_id})...`)
     await supabase.from("product_items").delete().eq("brand_id", brand_id)
     await supabase.from("product_sections").delete().eq("brand_id", brand_id)
 
@@ -714,17 +728,16 @@ async function seedDatabase() {
     }
     console.log("✅ Seeded Focus Radiology form data.")
   }
-
-  console.log("🎉 Database seeding completed!")
 }
+
+// --- Main Execution ---
 
 async function main() {
   try {
-    console.log("Starting database seed...")
     await seedDatabase()
-    console.log("Database seeding finished successfully.")
+    console.log("\n🎉 Database seeding completed successfully!")
   } catch (error) {
-    console.error("Failed to seed database:", error)
+    console.error("\n❌ An unexpected error occurred during the seeding process:", error)
     process.exit(1)
   }
 }
