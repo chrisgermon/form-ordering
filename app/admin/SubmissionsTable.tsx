@@ -22,12 +22,16 @@ import type { Submission } from "@/lib/types"
 type FormattedSubmission = Submission & { brand_name: string }
 
 interface SubmissionsTableProps {
-  submissions: FormattedSubmission[]
+  submissions?: FormattedSubmission[]
   refreshSubmissions: () => void
   onMarkComplete: (submission: FormattedSubmission) => void
 }
 
-export default function SubmissionsTable({ submissions, refreshSubmissions, onMarkComplete }: SubmissionsTableProps) {
+export default function SubmissionsTable({
+  submissions = [],
+  refreshSubmissions,
+  onMarkComplete,
+}: SubmissionsTableProps) {
   const [isClearing, setIsClearing] = useState(false)
 
   const handleClearAll = async () => {
