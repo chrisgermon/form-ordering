@@ -45,7 +45,6 @@ const ItemRow = ({ item }: { item: ProductItem }) => {
   }
 
   const isOtherSelected = selectedQuantity === "other"
-
   const quantities = Array.isArray(item.quantities) ? item.quantities : []
 
   return (
@@ -72,7 +71,7 @@ const ItemRow = ({ item }: { item: ProductItem }) => {
               <Checkbox
                 id={`${item.id}-${quantity}`}
                 checked={selectedQuantity === quantity}
-                onCheckedChange={(checked) => handleSelect(quantity, !!checked)}
+                onCheckedChange={(checked) => handleSelect(String(quantity), !!checked)}
               />
               <label htmlFor={`${item.id}-${quantity}`} className="text-sm font-medium text-gray-700">
                 {quantity}
@@ -152,15 +151,21 @@ export function OrderForm({ brandData }: OrderFormProps) {
   const [submissionMessage, setSubmissionMessage] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
 
+  const productSections = useMemo(
+    () => (Array.isArray(brandData.product_sections) ? brandData.product_sections : []),
+    [brandData.product_sections],
+  )
+
   const allItemsMap = useMemo(() => {
     const map = new Map<string, ProductItem>()
-    brandData.product_sections.forEach((section) => {
-      section.product_items.forEach((item) => {
+    productSections.forEach((section) => {
+      const items = Array.isArray(section.product_items) ? section.product_items : []
+      items.forEach((item) => {
         map.set(item.id, item)
       })
     })
     return map
-  }, [brandData])
+  }, [productSections])
 
   const methods = useForm<FormValues>({
     defaultValues: {
@@ -174,7 +179,6 @@ export function OrderForm({ brandData }: OrderFormProps) {
   })
 
   const {
-    control,
     handleSubmit,
     reset,
     register,
@@ -192,14 +196,15 @@ export function OrderForm({ brandData }: OrderFormProps) {
 
   const filteredSections = useMemo(() => {
     if (!searchQuery) {
-      return brandData.product_sections
+      return productSections
     }
 
     const lowercasedQuery = searchQuery.toLowerCase()
 
-    return brandData.product_sections
+    return productSections
       .map((section) => {
-        const filteredItems = section.product_items.filter(
+        const items = Array.isArray(section.product_items) ? section.product_items : []
+        const filteredItems = items.filter(
           (item) =>
             item.name.toLowerCase().includes(lowercasedQuery) || item.code.toLowerCase().includes(lowercasedQuery),
         )
@@ -209,8 +214,8 @@ export function OrderForm({ brandData }: OrderFormProps) {
         }
         return null
       })
-      .filter(Boolean) as Brand["product_sections"]
-  }, [searchQuery, brandData.product_sections])
+      .filter(Boolean) as Array<ProductSection & { product_items: ProductItem[] }>
+  }, [searchQuery, productSections])
 
   const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true)
@@ -421,7 +426,7 @@ export function OrderForm({ brandData }: OrderFormProps) {
                         <div key={section.id} className="border border-dashed border-[#293563] rounded-lg p-4">
                           <h2 className="text-lg font-semibold text-[#1aa7df] mb-4">{section.title}</h2>
                           <div className="space-y-4">
-                            {section.product_items.map((item) => (
+                            {(Array.isArray(section.product_items) ? section.product_items : []).map((item) => (
                               <ItemRow key={item.id} item={item} />
                             ))}
                           </div>
