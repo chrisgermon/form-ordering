@@ -3,9 +3,8 @@
 import { createServerSupabaseClient } from "@/lib/supabase"
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
-import type { Brand } from "@/lib/types"
 
-const formSchema = z.object({
+export const formSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1, "Brand name is required"),
   slug: z.string().min(1, "Slug is required"),
@@ -33,7 +32,7 @@ const formSchema = z.object({
   ),
 })
 
-type FormData = z.infer<typeof formSchema>
+export type FormData = z.infer<typeof formSchema>
 
 export async function saveForm(data: FormData, brandId: string | null) {
   const supabase = createServerSupabaseClient()
@@ -45,62 +44,72 @@ export async function saveForm(data: FormData, brandId: string | null) {
 
   const { id, sections, ...brandData } = validatedData.data
 
-  let savedBrand: Brand | null = null
+  // 1. Upsert Brand
+  const { data: savedBrand, error: brandError } = await supabase
+    .from("brands")
+    .upsert({ id: brandId || undefined, ...brandData })
+    .select()
+    .single()
 
-  if (brandId) {
-    // Update existing brand
-    const { data, error } = await supabase.from("brands").update(brandData).eq("id", brandId).select().single()
-    if (error) return { success: false, error: error.message }
-    savedBrand = data
-  } else {
-    // Create new brand
-    const { data, error } = await supabase.from("brands").insert(brandData).select().single()
-    if (error) return { success: false, error: error.message }
-    savedBrand = data
-  }
+  if (brandError) return { success: false, error: `Brand Error: ${brandError.message}` }
+  if (!savedBrand) return { success: false, error: "Failed to save brand." }
 
-  if (!savedBrand) {
-    return { success: false, error: "Failed to save brand." }
-  }
-
-  // Get existing sections and items to determine what to delete
-  const { data: existingSections } = await supabase
-    .from("product_sections")
-    .select("id, product_items(id)")
-    .eq("brand_id", savedBrand.id)
-  const existingSectionIds = existingSections?.map((s) => s.id) || []
-  const existingItemIds = existingSections?.flatMap((s) => s.product_items.map((i) => i.id)) || []
-
+  // 2. Handle Sections and Items
   const incomingSectionIds = sections.map((s) => s.id)
   const incomingItemIds = sections.flatMap((s) => s.product_items.map((i) => i.id))
 
+  // Delete sections that are no longer present
+  const { data: existingSections } = await supabase.from("product_sections").select("id").eq("brand_id", savedBrand.id)
+  if (existingSections) {
+    const sectionsToDelete = existingSections.filter((s) => !incomingSectionIds.includes(s.id)).map((s) => s.id)
+    if (sectionsToDelete.length > 0) {
+      await supabase.from("product_sections").delete().in("id", sectionsToDelete)
+    }
+  }
+
   // Upsert sections
   const sectionsToUpsert = sections.map((section, index) => ({
-    id: section.id.startsWith("new-") ? undefined : section.id,
-    brand_id: savedBrand!.id,
+    id: section.id.includes("new-") || section.id.length < 36 ? undefined : section.id, // Handle temp IDs
+    brand_id: savedBrand.id,
     name: section.name,
     description: section.description,
     sort_order: index,
   }))
 
-  const { error: sectionsError } = await supabase.from("product_sections").upsert(sectionsToUpsert)
-  if (sectionsError) return { success: false, error: sectionsError.message }
-
-  // After upserting, we need the actual IDs for new sections
-  const { data: updatedSections } = await supabase
+  const { data: upsertedSections, error: sectionsError } = await supabase
     .from("product_sections")
-    .select("id, name")
-    .eq("brand_id", savedBrand.id)
+    .upsert(sectionsToUpsert)
+    .select()
+  if (sectionsError) return { success: false, error: `Section Error: ${sectionsError.message}` }
+
+  // Create a map from temp/old ID to new DB ID for items
+  const sectionIdMap = new Map<string, string>()
+  sections.forEach((formSection, index) => {
+    const dbSection = upsertedSections.find((s) => s.name === formSection.name && s.brand_id === savedBrand.id)
+    if (dbSection) {
+      sectionIdMap.set(formSection.id, dbSection.id)
+    }
+  })
+
+  // Delete items that are no longer present
+  const { data: existingItems } = await supabase
+    .from("product_items")
+    .select("id")
+    .in("section_id", [...sectionIdMap.values()])
+  if (existingItems) {
+    const itemsToDelete = existingItems.filter((i) => !incomingItemIds.includes(i.id)).map((i) => i.id)
+    if (itemsToDelete.length > 0) {
+      await supabase.from("product_items").delete().in("id", itemsToDelete)
+    }
+  }
 
   // Upsert items
   const itemsToUpsert = sections.flatMap((section, sectionIndex) => {
-    // Find the corresponding section ID from the database
-    const dbSection = updatedSections?.find((s) => s.name === section.name)
-    if (!dbSection) return []
-
+    const dbSectionId = sectionIdMap.get(section.id)
+    if (!dbSectionId) return []
     return section.product_items.map((item, itemIndex) => ({
-      id: item.id.startsWith("new-") ? undefined : item.id,
-      section_id: dbSection.id,
+      id: item.id.includes("new-") || item.id.length < 36 ? undefined : item.id,
+      section_id: dbSectionId,
       name: item.name,
       description: item.description,
       requires_scan: item.requires_scan,
@@ -110,18 +119,7 @@ export async function saveForm(data: FormData, brandId: string | null) {
 
   if (itemsToUpsert.length > 0) {
     const { error: itemsError } = await supabase.from("product_items").upsert(itemsToUpsert)
-    if (itemsError) return { success: false, error: itemsError.message }
-  }
-
-  // Delete old sections and items
-  const sectionsToDelete = existingSectionIds.filter((id) => !incomingSectionIds.includes(id))
-  if (sectionsToDelete.length > 0) {
-    await supabase.from("product_sections").delete().in("id", sectionsToDelete)
-  }
-
-  const itemsToDelete = existingItemIds.filter((id) => !incomingItemIds.includes(id))
-  if (itemsToDelete.length > 0) {
-    await supabase.from("product_items").delete().in("id", itemsToDelete)
+    if (itemsError) return { success: false, error: `Item Error: ${itemsError.message}` }
   }
 
   revalidatePath("/admin")

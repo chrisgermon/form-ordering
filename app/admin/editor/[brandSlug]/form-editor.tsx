@@ -1,16 +1,14 @@
 "use client"
 
-import React from "react"
-
-import { useState, useEffect } from "react"
+import type React from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { useForm, useFieldArray, Controller, register } from "react-hook-form"
+import { useForm, useFieldArray, Controller, type Control } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-import { DndProvider, useDrag, useDrop } from "react-dnd"
+import { DndProvider, useDrag, useDrop, type XYCoord } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
 import { toast } from "sonner"
-import { saveForm } from "./actions"
+import { saveForm, formSchema, type FormData } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,39 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { GripVertical, Trash2 } from "lucide-react"
 import type { Brand, ProductSection, ProductItem, UploadedFile } from "@/lib/types"
 
-type SectionWithItems = ProductSection & {
-  product_items: ProductItem[]
-}
-
-const formSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().min(1, "Brand name is required"),
-  slug: z.string().min(1, "Slug is required"),
-  logo: z.string().nullable(),
-  primary_color: z.string().nullable(),
-  email: z.string().email("Invalid email address"),
-  active: z.boolean(),
-  clinics: z.array(z.string()).optional(),
-  sections: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string().min(1, "Section name is required"),
-      description: z.string().nullable(),
-      sort_order: z.number(),
-      product_items: z.array(
-        z.object({
-          id: z.string(),
-          name: z.string().min(1, "Item name is required"),
-          description: z.string().nullable(),
-          sort_order: z.number(),
-          requires_scan: z.boolean(),
-        }),
-      ),
-    }),
-  ),
-})
-
-type FormData = z.infer<typeof formSchema>
+type SectionWithItems = ProductSection & { product_items: ProductItem[] }
 
 type FormEditorProps = {
   initialBrand: Brand | null
@@ -74,9 +40,13 @@ export function FormEditor({ initialBrand, initialSections, uploadedFiles }: For
     email: initialBrand?.email || "",
     active: initialBrand?.active ?? true,
     clinics: initialBrand?.clinics || [],
-    sections: initialSections.map((s) => ({
+    sections: initialSections.map((s, index) => ({
       ...s,
-      product_items: s.product_items || [],
+      sort_order: s.sort_order ?? index,
+      product_items: (s.product_items || []).map((pi, piIndex) => ({
+        ...pi,
+        sort_order: pi.sort_order ?? piIndex,
+      })),
     })),
   }
 
@@ -86,6 +56,7 @@ export function FormEditor({ initialBrand, initialSections, uploadedFiles }: For
     formState: { errors },
     watch,
     setValue,
+    register,
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues,
@@ -165,15 +136,15 @@ export function FormEditor({ initialBrand, initialSections, uploadedFiles }: For
                   name="logo"
                   control={control}
                   render={({ field }) => (
-                    <Select onValueChange={field.onChange} defaultValue={field.value || "default-logo-url"}>
+                    <Select onValueChange={field.onChange} value={field.value || "none"}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a logo" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
                         {uploadedFiles.map((file) => (
                           <SelectItem key={file.id} value={file.url}>
-                            {file.file_name}
+                            {file.original_name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -207,7 +178,7 @@ export function FormEditor({ initialBrand, initialSections, uploadedFiles }: For
           <div className="space-y-4">
             {sections.map((section, index) => (
               <SectionDndItem key={section.id} index={index} moveSection={moveSection}>
-                <SectionForm control={control} sectionIndex={index} removeSection={removeSection} />
+                <SectionForm control={control} register={register} sectionIndex={index} removeSection={removeSection} />
               </SectionDndItem>
             ))}
           </div>
@@ -217,7 +188,7 @@ export function FormEditor({ initialBrand, initialSections, uploadedFiles }: For
             className="mt-4 bg-transparent"
             onClick={() =>
               appendSection({
-                id: `new-section-${Date.now()}`,
+                id: crypto.randomUUID(),
                 name: "",
                 description: "",
                 sort_order: sections.length,
@@ -237,10 +208,11 @@ export function FormEditor({ initialBrand, initialSections, uploadedFiles }: For
   )
 }
 
-// Drag and Drop Components
-const ItemTypes = {
-  SECTION: "section",
-  ITEM: "item",
+const ItemTypes = { SECTION: "section", ITEM: "item" }
+interface DragItem {
+  index: number
+  id: string
+  type: string
 }
 
 function SectionDndItem({
@@ -248,26 +220,34 @@ function SectionDndItem({
   moveSection,
   children,
 }: { index: number; moveSection: (from: number, to: number) => void; children: React.ReactNode }) {
-  const ref = React.useRef<HTMLDivElement>(null)
-  const [, drop] = useDrop({
+  const ref = useRef<HTMLDivElement>(null)
+  const [, drop] = useDrop<DragItem, void, { handlerId: string | symbol | null }>({
     accept: ItemTypes.SECTION,
-    hover(item: { index: number }) {
+    hover(item: DragItem, monitor) {
       if (!ref.current) return
-      if (item.index === index) return
-      moveSection(item.index, index)
-      item.index = index
+      const dragIndex = item.index
+      const hoverIndex = index
+      if (dragIndex === hoverIndex) return
+      const hoverBoundingRect = ref.current?.getBoundingClientRect()
+      const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2
+      const clientOffset = monitor.getClientOffset()
+      const hoverClientY = (clientOffset as XYCoord).y - hoverBoundingRect.top
+      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) return
+      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) return
+      moveSection(dragIndex, hoverIndex)
+      item.index = hoverIndex
     },
   })
-  const [{ isDragging }, drag, preview] = useDrag({
+  const [{ isDragging }, drag] = useDrag({
     type: ItemTypes.SECTION,
-    item: { index },
+    item: () => ({ id: `section-${index}`, index, type: ItemTypes.SECTION }),
     collect: (monitor) => ({ isDragging: monitor.isDragging() }),
   })
-  preview(drop(ref))
+  drag(drop(ref))
 
   return (
     <div ref={ref} style={{ opacity: isDragging ? 0.5 : 1 }} className="flex items-start gap-2">
-      <div ref={drag} className="cursor-move pt-10">
+      <div className="cursor-move pt-10">
         <GripVertical />
       </div>
       <div className="flex-grow">{children}</div>
@@ -277,9 +257,15 @@ function SectionDndItem({
 
 function SectionForm({
   control,
+  register,
   sectionIndex,
   removeSection,
-}: { control: any; sectionIndex: number; removeSection: (index: number) => void }) {
+}: {
+  control: Control<FormData>
+  register: any
+  sectionIndex: number
+  removeSection: (index: number) => void
+}) {
   const { fields, append, remove, move } = useFieldArray({
     control,
     name: `sections.${sectionIndex}.product_items`,
@@ -339,7 +325,7 @@ function SectionForm({
           size="sm"
           onClick={() =>
             append({
-              id: `new-item-${Date.now()}`,
+              id: crypto.randomUUID(),
               name: "",
               description: "",
               sort_order: fields.length,
@@ -365,26 +351,35 @@ function ItemDndItem({
   moveItem: (from: number, to: number) => void
   children: React.ReactNode
 }) {
-  const ref = React.useRef<HTMLDivElement>(null)
-  const [, drop] = useDrop({
-    accept: `${ItemTypes.ITEM}_${sectionIndex}`,
-    hover(item: { index: number }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const itemType = `${ItemTypes.ITEM}_${sectionIndex}`
+  const [, drop] = useDrop<DragItem, void, { handlerId: string | symbol | null }>({
+    accept: itemType,
+    hover(item: DragItem, monitor) {
       if (!ref.current) return
-      if (item.index === itemIndex) return
-      moveItem(item.index, itemIndex)
-      item.index = itemIndex
+      const dragIndex = item.index
+      const hoverIndex = itemIndex
+      if (dragIndex === hoverIndex) return
+      const hoverBoundingRect = ref.current?.getBoundingClientRect()
+      const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2
+      const clientOffset = monitor.getClientOffset()
+      const hoverClientY = (clientOffset as XYCoord).y - hoverBoundingRect.top
+      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) return
+      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) return
+      moveItem(dragIndex, hoverIndex)
+      item.index = hoverIndex
     },
   })
-  const [{ isDragging }, drag, preview] = useDrag({
-    type: `${ItemTypes.ITEM}_${sectionIndex}`,
-    item: { index: itemIndex },
+  const [{ isDragging }, drag] = useDrag({
+    type: itemType,
+    item: () => ({ id: `item-${sectionIndex}-${itemIndex}`, index: itemIndex, type: itemType }),
     collect: (monitor) => ({ isDragging: monitor.isDragging() }),
   })
-  preview(drop(ref))
+  drag(drop(ref))
 
   return (
     <div ref={ref} style={{ opacity: isDragging ? 0.5 : 1 }} className="flex items-center gap-2">
-      <div ref={drag} className="cursor-move">
+      <div className="cursor-move">
         <GripVertical />
       </div>
       <div className="flex-grow">{children}</div>
