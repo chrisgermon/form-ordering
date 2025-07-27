@@ -1,60 +1,176 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
 import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, CalendarIcon } from "lucide-react"
-import { Alert } from "@/components/ui/alert"
-import type { Brand, UploadedFile, Submission } from "@/lib/types"
 import { Textarea } from "@/components/ui/textarea"
+import { toast } from "@/components/ui/use-toast"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
+import { Loader2, CalendarIcon } from "lucide-react"
+import { Alert } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
-import AdminDashboard from "./AdminDashboard"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import type { Brand, UploadedFile, Submission } from "@/lib/types"
+import BrandGrid from "@/components/brand-grid"
+import SubmissionsTable from "./SubmissionsTable"
 
-// This forces the page to be re-rendered on every request, ensuring fresh data.
-export const dynamic = "force-dynamic"
+type FormattedSubmission = Submission & { brand_name: string }
 
-// This is now a pure Server Component. It fetches data and passes it to the client.
-export default async function AdminPage() {
-  const supabase = createServerSupabaseClient()
+interface AdminDashboardProps {
+  initialBrands: Brand[]
+  initialSubmissions: FormattedSubmission[]
+}
 
-  // Fetch initial data on the server
-  const { data: brands, error: brandsError } = await supabase.from("brands").select("*").order("name")
+export default function AdminDashboard({ initialBrands, initialSubmissions }: AdminDashboardProps) {
+  const router = useRouter()
+  const [brands, setBrands] = useState<Brand[]>(initialBrands)
+  const [submissions, setSubmissions] = useState<FormattedSubmission[]>(initialSubmissions)
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
+  const [isBrandFormOpen, setIsBrandFormOpen] = useState(false)
+  const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null)
+  const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
+  const [selectedSubmission, setSelectedSubmission] = useState<FormattedSubmission | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
-  const { data: submissions, error: submissionsError } = await supabase
-    .from("submissions")
-    .select("*, brands(name)")
-    .order("created_at", { ascending: false })
+  const refreshData = useCallback(() => {
+    router.refresh()
+  }, [router])
 
-  // Handle errors gracefully
-  if (brandsError) {
-    return <p className="text-red-500 p-8">Error loading brands: {brandsError.message}</p>
+  useEffect(() => {
+    setBrands(initialBrands)
+    setSubmissions(initialSubmissions)
+  }, [initialBrands, initialSubmissions])
+
+  useEffect(() => {
+    const fetchFiles = async () => {
+      try {
+        const res = await fetch("/api/admin/files")
+        if (!res.ok) throw new Error("Failed to fetch files")
+        const data = await res.json()
+        setUploadedFiles(data)
+      } catch (error) {
+        console.error(error)
+        toast({
+          title: "Error",
+          description: "Could not load uploaded files.",
+          variant: "destructive",
+        })
+      }
+    }
+    fetchFiles()
+  }, [])
+
+  const handleEditBrand = (brand: Brand) => {
+    setSelectedBrand(brand)
+    setIsBrandFormOpen(true)
   }
-  if (submissionsError) {
-    return <p className="text-red-500 p-8">Error loading submissions: {submissionsError.message}</p>
+
+  const handleAddNewBrand = () => {
+    setSelectedBrand(null)
+    setIsBrandFormOpen(true)
   }
 
-  // Format submissions data on the server
-  const formattedSubmissions =
-    submissions?.map((s: any) => ({
-      ...s,
-      brand_name: s.brands?.name || "Unknown Brand",
-    })) || []
+  const handleSaveBrand = async (brandData: any) => {
+    setIsLoading(true)
+    const method = brandData.id ? "PUT" : "POST"
+    const endpoint = brandData.id ? `/api/admin/brands/${brandData.id}` : "/api/admin/brands"
 
-  // Pass server-fetched data to the client component
+    try {
+      const response = await fetch(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(brandData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to save brand.")
+      }
+
+      toast({
+        title: "Success",
+        description: `Brand ${brandData.id ? "updated" : "created"} successfully.`,
+      })
+      setIsBrandFormOpen(false)
+      refreshData()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "An unknown error occurred.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleMarkComplete = (submission: FormattedSubmission) => {
+    setSelectedSubmission(submission)
+    setIsCompleteDialogOpen(true)
+  }
+
+  const onCompleted = () => {
+    setIsCompleteDialogOpen(false)
+    toast({
+      title: "Success",
+      description: "Order marked as complete.",
+    })
+    refreshData()
+  }
+
   return (
-    <AdminDashboard
-      initialBrands={brands as Brand[]}
-      initialSubmissions={formattedSubmissions as (Submission & { brand_name: string })[]}
-    />
+    <div className="container mx-auto p-4 md:p-8">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+        <Button onClick={handleAddNewBrand}>Add New Brand</Button>
+      </div>
+      <Tabs defaultValue="submissions">
+        <TabsList>
+          <TabsTrigger value="submissions">Submissions</TabsTrigger>
+          <TabsTrigger value="brands">Brands</TabsTrigger>
+        </TabsList>
+        <TabsContent value="submissions">
+          <SubmissionsTable
+            submissions={submissions}
+            refreshSubmissions={refreshData}
+            onMarkComplete={handleMarkComplete}
+          />
+        </TabsContent>
+        <TabsContent value="brands">
+          <BrandGrid brands={brands} onEdit={handleEditBrand} />
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={isBrandFormOpen} onOpenChange={setIsBrandFormOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{selectedBrand ? "Edit Brand" : "Add New Brand"}</DialogTitle>
+          </DialogHeader>
+          <BrandForm
+            brand={selectedBrand}
+            uploadedFiles={uploadedFiles}
+            onSave={handleSaveBrand}
+            onCancel={() => setIsBrandFormOpen(false)}
+            isLoading={isLoading}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <CompleteSubmissionDialog
+        open={isCompleteDialogOpen}
+        onOpenChange={setIsCompleteDialogOpen}
+        submission={selectedSubmission}
+        onCompleted={onCompleted}
+      />
+    </div>
   )
 }
 
@@ -63,17 +179,19 @@ function BrandForm({
   uploadedFiles,
   onSave,
   onCancel,
+  isLoading,
 }: {
   brand: Brand | null
   uploadedFiles: UploadedFile[]
   onSave: (brand: any) => void
   onCancel: () => void
+  isLoading: boolean
 }) {
   const [formData, setFormData] = useState({
     id: brand?.id || undefined,
     name: brand?.name || "",
     logo: brand?.logo || "",
-    primaryColor: brand?.primary_color || "",
+    primary_color: brand?.primary_color || "",
     email: brand?.email || "",
     active: brand?.active ?? true,
   })
@@ -85,7 +203,7 @@ function BrandForm({
         id: brand.id,
         name: brand.name,
         logo: brand.logo || "",
-        primaryColor: brand.primary_color || "",
+        primary_color: brand.primary_color || "",
         email: brand.email,
         active: brand.active,
       })
@@ -95,7 +213,7 @@ function BrandForm({
         id: undefined,
         name: "",
         logo: "",
-        primaryColor: "",
+        primary_color: "",
         email: "",
         active: true,
       })
@@ -128,8 +246,8 @@ function BrandForm({
         <Input
           id="primaryColor"
           placeholder="e.g., #007bff or a Tailwind color"
-          value={formData.primaryColor}
-          onChange={(e) => setFormData({ ...formData, primaryColor: e.target.value })}
+          value={formData.primary_color}
+          onChange={(e) => setFormData({ ...formData, primary_color: e.target.value })}
         />
       </div>
       <div>
@@ -192,10 +310,12 @@ function BrandForm({
         </Label>
       </div>
       <div className="flex justify-end gap-2 pt-4">
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
           Cancel
         </Button>
-        <Button type="submit">Save</Button>
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Save"}
+        </Button>
       </div>
     </form>
   )
@@ -209,7 +329,7 @@ function CompleteSubmissionDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  submission: Submission | null
+  submission: FormattedSubmission | null
   onCompleted: () => void
 }) {
   const {
@@ -229,12 +349,14 @@ function CompleteSubmissionDialog({
   useEffect(() => {
     if (open) {
       reset({
-        delivery_details: "",
-        expected_delivery_date: new Date(),
+        delivery_details: submission?.delivery_details || "",
+        expected_delivery_date: submission?.expected_delivery_date
+          ? new Date(submission.expected_delivery_date)
+          : new Date(),
       })
       setErrorMessage("")
     }
-  }, [open, reset])
+  }, [open, reset, submission])
 
   const onSubmit = async (data: any) => {
     if (!submission) return
@@ -245,6 +367,7 @@ function CompleteSubmissionDialog({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          status: "completed",
           delivery_details: data.delivery_details,
           expected_delivery_date: data.expected_delivery_date
             ? format(data.expected_delivery_date, "yyyy-MM-dd")
