@@ -1,124 +1,160 @@
-import type { z } from "zod"
-import type { orderFormSchema } from "./schemas"
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
-// This is based on the database schema and should be the source of truth
-export type Brand = {
-  id: string
-  name: string
-  slug: string
-  logo_url: string | null
-  created_at: string
-  active: boolean
-  order_sequence: number
-  order_prefix: string | null
-  initials: string | null
-  header_image_url: string | null
-  form_title: string | null
-  form_subtitle: string | null
-  to_emails: string[] | null
-  cc_emails: string[] | null
-  bcc_emails: string[] | null
-  subject_line: string | null
-  clinic_locations: ClinicLocation[] | null
+export interface Database {
+  public: {
+    Tables: {
+      brands: {
+        Row: {
+          id: number
+          created_at: string
+          name: string
+          slug: string
+          logo_url: string | null
+          recipient_email: string
+          clinics: Json | null
+        }
+        Insert: {
+          id?: number
+          created_at?: string
+          name: string
+          slug: string
+          logo_url?: string | null
+          recipient_email: string
+          clinics?: Json | null
+        }
+        Update: {
+          id?: number
+          created_at?: string
+          name?: string
+          slug?: string
+          logo_url?: string | null
+          recipient_email?: string
+          clinics?: Json | null
+        }
+      }
+      items: {
+        Row: {
+          id: number
+          created_at: string
+          section_id: number
+          code: string
+          name: string
+          description: string | null
+          quantities: string[] | null
+          sort_order: number
+          sample_link: string | null
+        }
+        Insert: {
+          id?: number
+          created_at?: string
+          section_id: number
+          code: string
+          name: string
+          description?: string | null
+          quantities?: string[] | null
+          sort_order?: number
+          sample_link?: string | null
+        }
+        Update: {
+          id?: number
+          created_at?: string
+          section_id?: number
+          code?: string
+          name?: string
+          description?: string | null
+          quantities?: string[] | null
+          sort_order?: number
+          sample_link?: string | null
+        }
+      }
+      sections: {
+        Row: {
+          id: number
+          created_at: string
+          brand_id: number
+          title: string
+          sort_order: number
+        }
+        Insert: {
+          id?: number
+          created_at?: string
+          brand_id: number
+          title: string
+          sort_order?: number
+        }
+        Update: {
+          id?: number
+          created_at?: string
+          brand_id?: number
+          title?: string
+          sort_order?: number
+        }
+      }
+      submissions: {
+        Row: {
+          id: number
+          created_at: string
+          brand_id: number
+          clinic_name: string
+          contact_person: string
+          contact_email: string
+          order_details: Json
+          is_completed: boolean
+          completed_at: string | null
+          completed_by: string | null
+        }
+        Insert: {
+          id?: number
+          created_at?: string
+          brand_id: number
+          clinic_name: string
+          contact_person: string
+          contact_email: string
+          order_details: Json
+          is_completed?: boolean
+          completed_at?: string | null
+          completed_by?: string | null
+        }
+        Update: {
+          id?: number
+          created_at?: string
+          brand_id?: number
+          clinic_name?: string
+          contact_person?: string
+          contact_email?: string
+          order_details?: Json
+          is_completed?: boolean
+          completed_at?: string | null
+          completed_by?: string | null
+        }
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
 
-export type ProductItem = {
-  id: string
-  section_id: string
-  name: string
-  description: string | null
-  price: number
-  sort_order: number
-  active: boolean
-  item_type: "checkbox" | "quantity" | "text"
-  item_options: string[] | null
+export type Brand = Database["public"]["Tables"]["brands"]["Row"] & {
+  sections: Section[]
 }
-
-export type ProductSection = {
-  id: string
-  brand_id: string
-  title: string
-  description: string | null
-  sort_order: number
-  product_items: ProductItem[]
+export type Section = Database["public"]["Tables"]["sections"]["Row"] & {
+  items: Item[]
 }
-
-export type BrandData = Brand & {
-  product_sections: ProductSection[]
+export type Item = Database["public"]["Tables"]["items"]["Row"]
+export type Submission = Database["public"]["Tables"]["submissions"]["Row"] & {
+  brands: { name: string }
 }
-
-export type OrderItem = {
-  id: string
-  name: string
-  quantity?: number
-  value?: string
-}
-
-export type OrderSection = {
-  title: string
-  items: OrderItem[]
-}
-
-export type Order = {
-  brandName: string
-  sections: OrderSection[]
-}
-
-export type Submission = {
-  id: string
-  created_at: string
-  ordered_by: string
-  email: string
-  status: string | null
-  pdf_url: string | null
-  ip_address: string | null
-  order_data: z.infer<typeof orderFormSchema> | null
-  brands: { name: string } | null
-  order_number?: string
-  dispatch_date?: string | null
-  tracking_link?: string | null
-  dispatch_notes?: string | null
-}
-
-export type UploadedFile = {
-  id: string
-  pathname: string
-  original_name: string
-  url: string
-  uploaded_at: string
-  size: number
-  content_type: string | null
-  brand_id?: string | null
-}
-
-export interface ClinicLocation {
+export type Clinic = {
   name: string
   address: string
-  phone: string
-  email: string
-}
-
-export interface OrderInfo {
-  orderNumber: string
-  orderedBy: string
-  email: string
-  billTo?: ClinicLocation
-  deliverTo?: ClinicLocation
-  notes?: string
-  date?: Date | string
-}
-
-export interface OrderPayload {
-  brandId: string
-  orderInfo: OrderInfo
-  items: Record<string, any>
-}
-
-export type BrandType = Brand
-
-export type AllowedIp = {
-  id: string
-  ip_address: string
-  description: string | null
-  created_at: string
 }

@@ -1,77 +1,107 @@
-import { createAdminClient } from "@/lib/supabase/admin"
-import { NextResponse } from "next/server"
-import { revalidatePath } from "next/cache"
+import { type NextRequest, NextResponse } from "next/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
 
-export async function POST(request: Request) {
-  const supabase = createAdminClient()
+export async function GET() {
   try {
-    const { brand_id, title } = await request.json()
+    const supabase = createServerSupabaseClient()
 
-    if (!brand_id || !title) {
-      return NextResponse.json({ error: "Brand ID and title are required" }, { status: 400 })
-    }
+    const { data: sections, error } = await supabase
+      .from("product_sections")
+      .select(`
+        *,
+        product_items (*)
+      `)
+      .order("sort_order")
 
-    const { data: maxSortOrderData, error: maxSortOrderError } = await supabase
+    if (error) throw error
+
+    return NextResponse.json(sections)
+  } catch (error) {
+    console.error("Error fetching sections:", error)
+    return NextResponse.json({ error: "Failed to fetch sections" }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = createServerSupabaseClient()
+    const body = await request.json()
+
+    const { data: maxSortOrderData, error: maxSortError } = await supabase
       .from("product_sections")
       .select("sort_order")
-      .eq("brand_id", brand_id)
+      .eq("brand_id", body.brandId)
       .order("sort_order", { ascending: false })
       .limit(1)
       .single()
 
-    if (maxSortOrderError && maxSortOrderError.code !== "PGRST116") {
-      throw maxSortOrderError
+    if (maxSortError && maxSortError.code !== "PGRST116") {
+      // Ignore 'No rows found' error
+      throw maxSortError
     }
 
-    const newSortOrder = maxSortOrderData ? maxSortOrderData.sort_order + 1 : 0
+    const newSortOrder = (maxSortOrderData?.sort_order ?? -1) + 1
 
-    const { data, error } = await supabase
+    const { data: section, error } = await supabase
       .from("product_sections")
-      .insert([{ brand_id, title, sort_order: newSortOrder }])
+      .insert({
+        title: body.title,
+        brand_id: body.brandId,
+        sort_order: newSortOrder,
+      })
       .select()
       .single()
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    const { data: brand } = await supabase.from("brands").select("slug").eq("id", brand_id).single()
-    if (brand) {
-      revalidatePath(`/admin/editor/${brand.slug}`)
-      revalidatePath(`/forms/${brand.slug}`)
-    }
-
-    return NextResponse.json(data)
-  } catch (error: any) {
+    return NextResponse.json(section)
+  } catch (error) {
     console.error("Error creating section:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: "Failed to create section" }, { status: 500 })
   }
 }
 
-export async function PUT(request: Request) {
-  const supabase = createAdminClient()
+export async function PUT(request: NextRequest) {
   try {
-    const { id, title } = await request.json()
+    const supabase = createServerSupabaseClient()
+    const body = await request.json()
 
-    if (!id || !title) {
-      return NextResponse.json({ error: "Section ID and title are required" }, { status: 400 })
-    }
+    const { data: section, error } = await supabase
+      .from("product_sections")
+      .update({
+        title: body.title,
+        brand_id: body.brandId,
+      })
+      .eq("id", body.id)
+      .select()
+      .single()
 
-    const { data, error } = await supabase.from("product_sections").update({ title }).eq("id", id).select().single()
+    if (error) throw error
 
-    if (error) {
-      throw error
-    }
-
-    const { data: brand } = await supabase.from("brands").select("slug").eq("id", data.brand_id).single()
-    if (brand) {
-      revalidatePath(`/admin/editor/${brand.slug}`)
-      revalidatePath(`/forms/${brand.slug}`)
-    }
-
-    return NextResponse.json(data)
-  } catch (error: any) {
+    return NextResponse.json(section)
+  } catch (error) {
     console.error("Error updating section:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: "Failed to update section" }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = createServerSupabaseClient()
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get("id")
+
+    if (!id) {
+      return NextResponse.json({ error: "Section ID is required" }, { status: 400 })
+    }
+
+    const { error } = await supabase.from("product_sections").delete().eq("id", id)
+
+    if (error) throw error
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error deleting section:", error)
+    return NextResponse.json({ error: "Failed to delete section" }, { status: 500 })
   }
 }

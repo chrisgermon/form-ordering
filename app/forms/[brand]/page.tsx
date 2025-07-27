@@ -1,80 +1,84 @@
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import { OrderForm } from "@/components/order-form"
-import type { BrandData } from "@/lib/types"
-import { Toaster } from "sonner"
+import Image from "next/image"
+import type { Brand, Item } from "@/lib/types"
 
-export const revalidate = 0 // Revalidate data on every request
+export default async function BrandFormPage({
+  params,
+}: {
+  params: { brand: string }
+}) {
+  const supabase = createClient()
 
-async function getBrandData(slug: string): Promise<BrandData | null> {
-  const supabase = createAdminClient()
-
-  // Step 1: Fetch the brand by slug, ensuring it's active
-  const { data: brand, error: brandError } = await supabase
+  // Step 1: Fetch the brand by its slug.
+  const { data: brandData, error: brandError } = await supabase
     .from("brands")
-    .select("id, name, slug, logo_url, clinic_locations, active, order_prefix")
-    .eq("slug", slug)
-    .eq("active", true)
+    .select("*")
+    .eq("slug", params.brand)
     .single()
 
-  // If no active brand is found, or there's an error, return null
-  if (brandError || !brand) {
-    if (brandError) {
-      console.error(`Error fetching brand:`, JSON.stringify(brandError, null, 2))
-    }
-    return null
-  }
-
-  // Step 2: Fetch all product sections for this brand
-  const { data: sections, error: sectionsError } = await supabase
-    .from("product_sections")
-    .select("*")
-    .eq("brand_id", brand.id)
-    .order("sort_order")
-
-  if (sectionsError) {
-    console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
-    // Return the brand but with empty sections, preventing a 404
-    return { ...brand, product_sections: [] } as BrandData
-  }
-
-  // Step 3: For each section, fetch its product items
-  const sectionsWithItems = await Promise.all(
-    (sections || []).map(async (section) => {
-      const { data: items, error: itemsError } = await supabase
-        .from("product_items")
-        .select("*")
-        .eq("section_id", section.id)
-        .order("sort_order")
-
-      if (itemsError) {
-        console.error(`Error fetching items for section '${section.title}':`, itemsError.message)
-        // If items fail to load, return the section with an empty item list
-        return { ...section, product_items: [] }
-      }
-      return { ...section, product_items: items || [] }
-    }),
-  )
-
-  // Step 4: Assemble and return the final BrandData object
-  return {
-    ...brand,
-    product_sections: sectionsWithItems,
-  } as BrandData
-}
-
-// This is a dynamic route handler
-export default async function BrandFormPage({ params }: { params: { brand: string } }) {
-  const brandData = await getBrandData(params.brand)
-
-  if (!brandData) {
+  if (brandError || !brandData) {
+    console.error(`Error fetching brand with slug '${params.brand}':`, brandError)
     notFound()
   }
 
+  // Step 2: Fetch all sections related to this brand, ordered correctly.
+  const { data: sectionsData, error: sectionsError } = await supabase
+    .from("sections")
+    .select("*")
+    .eq("brand_id", brandData.id)
+    .order("sort_order", { ascending: true })
+
+  let finalBrand: Brand
+
+  if (sectionsError) {
+    console.error(`Error fetching sections for brand ID ${brandData.id}:`, sectionsError)
+    // If sections fail, proceed with an empty sections array.
+    finalBrand = { ...brandData, sections: [] }
+  } else {
+    const sectionIds = sectionsData.map((s) => s.id)
+    let allItems: Item[] = []
+
+    // Step 3: Fetch all items for all sections in a single query if sections exist.
+    if (sectionIds.length > 0) {
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("items")
+        .select("*")
+        .in("section_id", sectionIds)
+        .order("sort_order", { ascending: true })
+
+      if (itemsError) {
+        console.error(`Error fetching items for sections ${sectionIds.join(", ")}:`, itemsError)
+      } else {
+        allItems = itemsData || []
+      }
+    }
+
+    // Step 4: Map items back to their respective sections.
+    const sectionsWithItems = sectionsData.map((section) => ({
+      ...section,
+      items: allItems.filter((item) => item.section_id === section.id),
+    }))
+
+    finalBrand = { ...brandData, sections: sectionsWithItems }
+  }
+
   return (
-    <>
-      <OrderForm brandData={brandData} />
-      <Toaster richColors />
-    </>
+    <div className="container mx-auto p-4 md:p-8">
+      <div className="mb-8 flex flex-col items-center text-center">
+        {finalBrand.logo_url && (
+          <Image
+            src={finalBrand.logo_url || "/placeholder.svg"}
+            alt={`${finalBrand.name} Logo`}
+            width={200}
+            height={100}
+            className="mb-4 h-auto w-auto max-h-24 object-contain"
+          />
+        )}
+        <h1 className="text-3xl font-bold">{finalBrand.name} Order Form</h1>
+      </div>
+      <OrderForm brand={finalBrand} />
+    </div>
   )
 }

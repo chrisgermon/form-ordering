@@ -3,7 +3,6 @@ import type { Metadata } from "next"
 import { Inter, Work_Sans } from "next/font/google"
 import "./globals.css"
 import { cn } from "@/lib/utils"
-import Providers from "./providers"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -16,12 +15,9 @@ const work_sans = Work_Sans({
 })
 
 export const metadata: Metadata = {
-  title: "VRG Form Ordering System",
-  description: "Printing order forms for the Vision Radiology Group.",
-  icons: {
-    icon: "/favicon.png",
-  },
-    generator: 'v0.dev'
+  title: "v0 App",
+  description: "Created with v0",
+  generator: "v0.dev",
 }
 
 export default function RootLayout({
@@ -31,9 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={cn(inter.variable, work_sans.variable, "font-sans")}>
-        <Providers>{children}</Providers>
-      </body>
+      <body className={cn(inter.variable, work_sans.variable, "font-sans")}>{children}</body>
     </html>
   )
 }
