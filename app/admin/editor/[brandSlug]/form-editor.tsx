@@ -4,7 +4,6 @@ import React from "react"
 
 import { useEffect } from "react"
 import { useForm, useFieldArray, Controller } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
 import { DndProvider, useDrag, useDrop } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
 import { Button } from "@/components/ui/button"
@@ -14,7 +13,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Trash2, GripVertical, PlusCircle } from "lucide-react"
-import { formSchema, saveForm, type FormData } from "./actions"
+import { saveForm, type FormData } from "./actions"
 import { useFormState } from "react-dom"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
@@ -30,7 +29,6 @@ export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
   const [state, formAction] = useFormState(saveForm, { success: false, error: null, brand: null })
 
   const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
     defaultValues: {
       ...initialData,
       sections: initialData.product_sections.map((s) => ({

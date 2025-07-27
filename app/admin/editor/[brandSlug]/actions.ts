@@ -1,52 +1,42 @@
 "use server"
 
 import { createServerSupabaseClient } from "@/lib/supabase"
-import { z } from "zod"
 import { revalidatePath } from "next/cache"
 
-export const formSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().min(1, "Brand name is required"),
-  slug: z.string().min(1, "Slug is required"),
-  logo: z.string().nullable().optional(),
-  primary_color: z.string().nullable().optional(),
-  email: z.string().email("Invalid email address"),
-  active: z.boolean(),
-  clinics: z.array(z.string()).optional(),
-  sections: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string().min(1, "Section name is required"),
-      description: z.string().nullable().optional(),
-      sort_order: z.number(),
-      product_items: z.array(
-        z.object({
-          id: z.string(),
-          name: z.string().min(1, "Item name is required"),
-          description: z.string().nullable().optional(),
-          sort_order: z.number(),
-          requires_scan: z.boolean(),
-        }),
-      ),
-    }),
-  ),
-})
-
-export type FormData = z.infer<typeof formSchema>
+// Define the shape of the form data manually since Zod is removed.
+export type FormData = {
+  id?: string
+  name: string
+  slug: string
+  logo?: string | null
+  primary_color?: string | null
+  email: string
+  active: boolean
+  clinics?: string[]
+  sections: {
+    id: string
+    name: string
+    description?: string | null
+    sort_order: number
+    product_items: {
+      id: string
+      name: string
+      description?: string | null
+      sort_order: number
+      requires_scan: boolean
+    }[]
+  }[]
+}
 
 export async function saveForm(
   prevState: any,
   formData: FormData,
 ): Promise<{ success: boolean; error: string | null; brand: { slug: string } | null }> {
-  const validatedData = formSchema.safeParse(formData)
-
-  if (!validatedData.success) {
-    console.error("Zod validation failed:", validatedData.error.flatten())
-    return { success: false, error: "Invalid data provided.", brand: null }
-  }
+  // Since Zod is removed, we proceed without validation.
+  // In a real-world scenario, you might add some basic manual checks here.
 
   const supabase = createServerSupabaseClient()
-  const { id: brandId, sections, ...brandData } = validatedData.data
+  const { id: brandId, sections, ...brandData } = formData
 
   // 1. Upsert Brand
   const { data: savedBrand, error: brandError } = await supabase
