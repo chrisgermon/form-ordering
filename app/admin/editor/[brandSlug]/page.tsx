@@ -24,6 +24,7 @@ async function getBrandForEditor(slug: string): Promise<BrandForEditor | null> {
       submission_recipients: [],
       active: true,
       clinics: [],
+      email: "",
       product_sections: [],
     }
   }
@@ -43,8 +44,8 @@ async function getBrandForEditor(slug: string): Promise<BrandForEditor | null> {
     `,
     )
     .eq("slug", slug)
-    .order("sort_order", { foreignTable: "product_sections" })
-    .order("sort_order", { foreignTable: "product_sections.product_items" })
+    .order("sort_order", { foreignTable: "product_sections", ascending: true })
+    .order("sort_order", { foreignTable: "product_sections.product_items", ascending: true })
     .single()
 
   if (error) {
