@@ -9,19 +9,58 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
   const supabase = createAdminClient()
 
   // Step 1: Fetch the brand by slug, ensuring it's active
-  const { data: brand, error: brandError } = await supabase
+  let brand: any
+  let brandError: any
+
+  // Try fetching with the ideal schema first (plural 'emails')
+  ;({ data: brand, error: brandError } = await supabase
     .from("brands")
     .select("id, name, slug, logo, emails, clinic_locations, active")
     .eq("slug", slug)
     .eq("active", true)
-    .maybeSingle()
+    .maybeSingle())
 
-  // If no active brand is found, or there's an error, return null
-  if (brandError || !brand) {
-    if (brandError) {
-      console.error(`Error fetching brand:`, JSON.stringify(brandError, null, 2))
+  // If that fails due to a missing column, try a fallback
+  if (brandError && brandError.code === "42703") {
+    console.warn("Fallback initiated for getBrandData due to schema error:", brandError.message)
+
+    // This query attempts to select legacy column names
+    const { data: fallbackBrand, error: fallbackError } = await supabase
+      .from("brands")
+      .select("id, name, slug, logo, email, clinic_locations, active") // Note: 'email' (singular)
+      .eq("slug", slug)
+      .eq("active", true)
+      .maybeSingle()
+
+    if (fallbackError) {
+      // If even the fallback fails, log the error and exit
+      console.error(`Error fetching brand with fallback:`, JSON.stringify(fallbackError, null, 2))
+      return null
     }
+
+    brand = fallbackBrand
+
+    // Normalize the data: ensure 'emails' property exists and is an array
+    if (brand && brand.email) {
+      brand.emails = Array.isArray(brand.email) ? brand.email : [brand.email]
+      delete brand.email // remove the old property
+    } else if (brand) {
+      brand.emails = [] // ensure it's at least an empty array
+    }
+  } else if (brandError) {
+    // If there was an error other than missing column, log it and exit
+    console.error(`Error fetching brand:`, JSON.stringify(brandError, null, 2))
     return null
+  }
+
+  // If no active brand is found after all attempts, return null
+  if (!brand) {
+    return null
+  }
+
+  // Ensure clinic_locations is an array if it's null
+  if (!brand.clinic_locations) {
+    brand.clinic_locations = []
   }
 
   // Step 2: Fetch all product sections for this brand
