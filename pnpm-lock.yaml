@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@hookform/resolvers':
-        specifier: ^3.9.1
-        version: 3.9.1(react-hook-form@7.61.1(react@18.0.0))
+        specifier: latest
+        version: 5.2.0(react-hook-form@7.61.1(react@18.0.0))
       '@radix-ui/react-accordion':
         specifier: latest
         version: 1.2.11(@types/react-dom@18.0.0)(@types/react@18.0.0)(react-dom@18.0.0(react@18.0.0))(react@18.0.0)
@@ -237,10 +237,10 @@ packages:
   '@floating-ui/utils@0.2.10':
     resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
 
-  '@hookform/resolvers@3.9.1':
-    resolution: {integrity: sha512-ud2HqmGBM0P0IABqoskKWI6PEf6ZDDBZkFqe2Vnl+mTHCEHzr3ISjjZyCwTjC/qpL25JC9aIDkloQejvMeq0ug==}
+  '@hookform/resolvers@5.2.0':
+    resolution: {integrity: sha512-3YI+VqxJQH6ryRWG+j3k+M19Wf37LeSKJDg6Vdjq6makLOqZGYn77iTaYLMLpVi/uHc1N6OTCmcxJwhOQV979g==}
     peerDependencies:
-      react-hook-form: ^7.0.0
+      react-hook-form: ^7.55.0
 
   '@isaacs/cliui@8.0.2':
     resolution: {integrity: sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==}
@@ -1983,8 +1983,9 @@ snapshots:
 
   '@floating-ui/utils@0.2.10': {}
 
-  '@hookform/resolvers@3.9.1(react-hook-form@7.61.1(react@18.0.0))':
+  '@hookform/resolvers@5.2.0(react-hook-form@7.61.1(react@18.0.0))':
     dependencies:
+      '@standard-schema/utils': 0.3.0
       react-hook-form: 7.61.1(react@18.0.0)
 
   '@isaacs/cliui@8.0.2':

@@ -1,439 +1,312 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Search, ShoppingCart, User, ExternalLink, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import type { BrandWithSections, OrderItem, Clinic } from "@/lib/types"
+import type { Brand, ProductSection, Item } from "@/lib/types"
+import Image from "next/image"
+
+const formSchema = z.object({
+  orderedBy: z.string().min(1, "Your name is required"),
+  email: z.string().email("Invalid email address"),
+  phone: z.string().optional(),
+  billTo: z.string().min(1, "Billing address is required"),
+  deliverTo: z.string().min(1, "Delivery address is required"),
+  items: z
+    .record(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        quantity: z.string(),
+        customQuantity: z.string().optional(),
+      }),
+    )
+    .optional(),
+  specialInstructions: z.string().optional(),
+})
+
+type FormValues = z.infer<typeof formSchema>
 
 interface OrderFormProps {
-  brandData: BrandWithSections
+  brand: Brand & {
+    product_sections: (ProductSection & {
+      product_items: Item[]
+    })[]
+  }
 }
 
-export default function OrderForm({ brandData }: OrderFormProps) {
-  const [searchTerm, setSearchTerm] = useState("")
+export default function OrderForm({ brand }: OrderFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [formData, setFormData] = useState({
-    orderedBy: "",
-    email: "",
-    phone: "",
-    billTo: "",
-    deliverTo: "",
-    specialInstructions: "",
-    items: {} as Record<string, OrderItem>,
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    watch,
+    formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      orderedBy: "",
+      email: "",
+      phone: "",
+      billTo: "",
+      deliverTo: "",
+      items: {},
+      specialInstructions: "",
+    },
   })
 
-  const clinics: Clinic[] = Array.isArray(brandData?.clinics)
-    ? brandData.clinics
-        .map((c) => {
-          if (typeof c === "string") return { name: c.trim() }
-          if (typeof c === "object" && c !== null && c.name) return { ...c, name: c.name.trim() }
-          return null
-        })
-        .filter((c): c is Clinic => c !== null && c.name !== "")
-    : []
+  const watchedItems = watch("items")
 
-  const productSections = Array.isArray(brandData?.product_sections) ? brandData.product_sections : []
-
-  const filteredSections = productSections
-    .map((section) => ({
-      ...section,
-      product_items: (section.product_items || []).filter(
-        (item) =>
-          item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase())),
-      ),
-    }))
-    .filter((section) => section.product_items.length > 0)
-
-  const selectedItemsCount = Object.keys(formData.items).length
-  const selectedItems = Object.values(formData.items)
-
-  const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const handleItemToggle = (itemId: string, itemName: string, quantity: string, customQuantity?: string) => {
-    const itemKey = `${itemId}-${quantity}`
-    setFormData((prev) => {
-      const newItems = { ...prev.items }
-      if (newItems[itemKey]) {
-        delete newItems[itemKey]
-      } else {
-        newItems[itemKey] = {
-          name: itemName,
-          quantity,
-          customQuantity,
-        }
-      }
-      return { ...prev, items: newItems }
-    })
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!formData.orderedBy || !formData.email || !formData.billTo || !formData.deliverTo) {
-      toast.error("Please fill in all required fields.")
-      return
-    }
-
-    if (selectedItemsCount === 0) {
-      toast.error("Please select at least one item.")
-      return
-    }
-
+  const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true)
+    const toastId = toast.loading("Submitting your order...")
+
+    const itemsToSubmit = Object.fromEntries(
+      Object.entries(data.items || {}).filter(
+        ([, item]) => (item.quantity && item.quantity !== "0") || (item.quantity === "other" && item.customQuantity),
+      ),
+    )
+
+    const payload = {
+      ...data,
+      items: itemsToSubmit,
+      brandId: brand.id,
+      brandName: brand.name,
+      brandEmail: brand.email,
+    }
 
     try {
       const response = await fetch("/api/submit-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          brandId: brandData.id,
-          brandName: brandData.name,
-          brandEmail: brandData.email,
-          ...formData,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const result = await response.json()
 
-      if (response.ok && result.success) {
-        toast.success(result.message || "Order submitted successfully!")
-        setFormData({
-          orderedBy: "",
-          email: "",
-          phone: "",
-          billTo: "",
-          deliverTo: "",
-          specialInstructions: "",
-          items: {},
-        })
-      } else {
-        console.error("Submission failed:", result)
-        toast.error(result.error || "Failed to submit order", {
-          description: result.details || "An unexpected error occurred. Please try again.",
-        })
+      if (!response.ok || !result.success) {
+        throw new Error(result.details || result.error || "An unknown error occurred.")
       }
+
+      toast.success("Order submitted successfully!", {
+        id: toastId,
+        description: "You will receive a confirmation email shortly.",
+        action: {
+          label: "View PDF",
+          onClick: () => window.open(result.pdfUrl, "_blank"),
+        },
+      })
     } catch (error) {
-      console.error("Error submitting order:", error)
-      toast.error("An error occurred while submitting your order. Please try again.")
+      console.error("Submission failed:", error)
+      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred."
+      toast.error("Submission failed", {
+        id: toastId,
+        description: errorMessage,
+      })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  if (!brandData) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="mx-auto h-12 w-12 animate-spin text-gray-400" />
-          <p className="mt-4 text-gray-600">Loading Form...</p>
-        </div>
-      </div>
-    )
-  }
+  const validClinics =
+    brand.clinics?.filter((c) => {
+      if (typeof c === "string") return c.trim() !== ""
+      if (typeof c === "object" && c !== null) return c.name && c.name.trim() !== ""
+      return false
+    }) || []
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 text-center">
-          {brandData.logo && (
-            <img
-              src={brandData.logo || "/placeholder.svg"}
-              alt={`${brandData.name} logo`}
-              className="mx-auto mb-4 h-20 w-auto object-contain"
+    <div className="container mx-auto p-4 md:p-8">
+      <Card className="max-w-4xl mx-auto">
+        <CardHeader className="text-center">
+          {brand.logo && (
+            <Image
+              src={brand.logo || "/placeholder.svg"}
+              alt={`${brand.name} Logo`}
+              width={200}
+              height={100}
+              className="mx-auto mb-4 object-contain h-24"
             />
           )}
-          <h1 className="text-3xl font-bold text-gray-900">{brandData.name}</h1>
-          <p className="text-gray-600">Printing Order Form</p>
-        </div>
+          <CardTitle className="text-3xl font-bold">{brand.name} Order Form</CardTitle>
+          <CardDescription>Please fill out the form below to place your order.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="orderedBy">Your Name</Label>
+                <Input id="orderedBy" {...register("orderedBy")} />
+                {errors.orderedBy && <p className="text-red-500 text-sm">{errors.orderedBy.message}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Your Email</Label>
+                <Input id="email" type="email" {...register("email")} />
+                {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number (Optional)</Label>
+                <Input id="phone" type="tel" {...register("phone")} />
+              </div>
+            </div>
 
-        <div className="grid gap-8 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Order Details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <Label htmlFor="orderedBy">Ordered By *</Label>
-                    <Input
-                      id="orderedBy"
-                      value={formData.orderedBy}
-                      onChange={(e) => handleInputChange("orderedBy", e.target.value)}
-                      placeholder="Your full name"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="email">Email *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => handleInputChange("email", e.target.value)}
-                      placeholder="your.email@example.com"
-                      required
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => handleInputChange("phone", e.target.value)}
-                    placeholder="Your phone number"
-                  />
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <Label htmlFor="billTo">Bill To Clinic *</Label>
-                    {clinics.length > 0 ? (
-                      <Select value={formData.billTo} onValueChange={(value) => handleInputChange("billTo", value)}>
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="billTo">Bill To</Label>
+                {validClinics.length > 0 ? (
+                  <Controller
+                    name="billTo"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select clinic" />
+                          <SelectValue placeholder="Select a clinic or enter address" />
                         </SelectTrigger>
                         <SelectContent>
-                          {clinics.map((clinic, index) => (
-                            <SelectItem key={`bill-${index}`} value={clinic.name}>
-                              {clinic.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input
-                        placeholder="No clinics configured - enter manually"
-                        value={formData.billTo}
-                        onChange={(e) => handleInputChange("billTo", e.target.value)}
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor="deliverTo">Deliver To Clinic *</Label>
-                    {clinics.length > 0 ? (
-                      <Select
-                        value={formData.deliverTo}
-                        onValueChange={(value) => handleInputChange("deliverTo", value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select delivery location" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clinics.map((clinic, index) => {
-                            const deliveryValue = clinic.address ? `${clinic.name} - ${clinic.address}` : clinic.name
+                          {validClinics.map((clinic, index) => {
+                            const clinicName = typeof clinic === "string" ? clinic : clinic.name
+                            const clinicValue =
+                              typeof clinic === "string" ? clinic : `${clinic.name}\n${clinic.address}`
                             return (
-                              <SelectItem key={`deliver-${index}`} value={deliveryValue}>
-                                <div className="flex flex-col">
-                                  <span>{clinic.name}</span>
-                                  {clinic.address && (
-                                    <span className="text-sm text-muted-foreground">{clinic.address}</span>
-                                  )}
-                                </div>
+                              <SelectItem key={index} value={clinicValue}>
+                                {clinicName}
                               </SelectItem>
                             )
                           })}
                         </SelectContent>
                       </Select>
-                    ) : (
-                      <Input
-                        placeholder="No clinics configured - enter delivery address manually"
-                        value={formData.deliverTo}
-                        onChange={(e) => handleInputChange("deliverTo", e.target.value)}
-                      />
                     )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ShoppingCart className="h-5 w-5" />
-                  Select Items
-                </CardTitle>
-                <CardDescription>Choose the items you need for your order</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-6">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                    <Input
-                      placeholder="Search items..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  {filteredSections.length > 0 ? (
-                    filteredSections.map((section) => (
-                      <div key={section.id}>
-                        <h3 className="mb-4 text-lg font-semibold text-gray-900">{section.name}</h3>
-                        <div className="grid gap-4">
-                          {section.product_items?.map((item) => {
-                            const quantities = (item as any).quantities || ["1", "5", "10", "25", "50", "100", "other"]
+                  />
+                ) : (
+                  <Textarea id="billTo" {...register("billTo")} placeholder="Enter billing address" />
+                )}
+                {errors.billTo && <p className="text-red-500 text-sm">{errors.billTo.message}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="deliverTo">Deliver To</Label>
+                {validClinics.length > 0 ? (
+                  <Controller
+                    name="deliverTo"
+                    control={control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a clinic or enter address" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {validClinics.map((clinic, index) => {
+                            const clinicName = typeof clinic === "string" ? clinic : clinic.name
+                            const clinicValue =
+                              typeof clinic === "string" ? clinic : `${clinic.name}\n${clinic.address}`
                             return (
-                              <Card key={item.id} className="p-4">
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <h4 className="font-medium">{item.name}</h4>
-                                      {(item as any).sample_link && (
-                                        <a
-                                          href={(item as any).sample_link}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="text-blue-600 hover:text-blue-800"
-                                        >
-                                          <ExternalLink className="h-4 w-4" />
-                                        </a>
-                                      )}
-                                    </div>
-                                    {item.description && (
-                                      <p className="text-sm text-gray-600 mb-3">{item.description}</p>
-                                    )}
-                                    <div className="flex flex-wrap gap-2">
-                                      {quantities.map((quantity: string) => {
-                                        const itemKey = `${item.id}-${quantity}`
-                                        const isSelected = !!formData.items[itemKey]
-
-                                        if (quantity === "other") {
-                                          return (
-                                            <div key={quantity} className="flex items-center gap-2">
-                                              <Checkbox
-                                                id={itemKey}
-                                                checked={isSelected}
-                                                onCheckedChange={(checked) => {
-                                                  if (checked) {
-                                                    const customQuantity = prompt("Enter custom quantity:")
-                                                    if (customQuantity) {
-                                                      handleItemToggle(item.id, item.name, quantity, customQuantity)
-                                                    }
-                                                  } else {
-                                                    handleItemToggle(item.id, item.name, quantity)
-                                                  }
-                                                }}
-                                              />
-                                              <Label htmlFor={itemKey} className="text-sm">
-                                                Other
-                                                {isSelected && formData.items[itemKey].customQuantity && (
-                                                  <span className="ml-1 text-gray-500">
-                                                    ({formData.items[itemKey].customQuantity})
-                                                  </span>
-                                                )}
-                                              </Label>
-                                            </div>
-                                          )
-                                        }
-
-                                        return (
-                                          <div key={quantity} className="flex items-center gap-2">
-                                            <Checkbox
-                                              id={itemKey}
-                                              checked={isSelected}
-                                              onCheckedChange={() => handleItemToggle(item.id, item.name, quantity)}
-                                            />
-                                            <Label htmlFor={itemKey} className="text-sm">
-                                              {quantity}
-                                            </Label>
-                                          </div>
-                                        )
-                                      })}
-                                    </div>
-                                  </div>
-                                </div>
-                              </Card>
+                              <SelectItem key={index} value={clinicValue}>
+                                {clinicName}
+                              </SelectItem>
                             )
                           })}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8">
-                      <p className="text-gray-500">
-                        {searchTerm ? `No items found matching "${searchTerm}"` : "No items available"}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="lg:col-span-1">
-            <Card className="sticky top-4">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ShoppingCart className="h-5 w-5" />
-                  Order Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-4">
-                  <Badge variant="secondary" className="text-sm">
-                    {selectedItemsCount} item{selectedItemsCount !== 1 ? "s" : ""} selected
-                  </Badge>
-                </div>
-
-                {selectedItems.length > 0 && (
-                  <div className="space-y-2 mb-6">
-                    {selectedItems.map((item, index) => (
-                      <div key={index} className="flex justify-between text-sm">
-                        <span className="truncate">{item.name}</span>
-                        <span className="text-gray-500">
-                          {item.quantity === "other" ? item.customQuantity : item.quantity}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <Separator className="my-4" />
-
-                <form onSubmit={handleSubmit}>
-                  <Button type="submit" className="w-full" disabled={isSubmitting || selectedItemsCount === 0}>
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Submitting...
-                      </>
-                    ) : (
-                      "Submit Order"
+                        </SelectContent>
+                      </Select>
                     )}
-                  </Button>
-                </form>
+                  />
+                ) : (
+                  <Textarea id="deliverTo" {...register("deliverTo")} placeholder="Enter delivery address" />
+                )}
+                {errors.deliverTo && <p className="text-red-500 text-sm">{errors.deliverTo.message}</p>}
+              </div>
+            </div>
 
-                <div className="mt-4 text-xs text-gray-500">
-                  <p>
-                    Orders will be sent to {brandData.email} for processing. You will receive a confirmation email once
-                    submitted.
-                  </p>
+            <div className="space-y-6">
+              {brand.product_sections.map((section) => (
+                <div key={section.id}>
+                  <h3 className="text-xl font-semibold mb-4 border-b pb-2">{section.title}</h3>
+                  <div className="space-y-4">
+                    {section.product_items.map((item) => {
+                      const itemKey = `items.${item.id}`
+                      const watchedQuantity = watchedItems?.[item.id]?.quantity
+
+                      return (
+                        <div key={item.id} className="grid md:grid-cols-3 gap-4 items-center">
+                          <div className="md:col-span-2">
+                            <Label htmlFor={itemKey}>{item.name}</Label>
+                            <p className="text-sm text-muted-foreground">{item.description}</p>
+                            {item.sample_link && (
+                              <a
+                                href={item.sample_link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-blue-600 hover:underline"
+                              >
+                                View Sample
+                              </a>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Controller
+                              name={`${itemKey}.quantity` as const}
+                              control={control}
+                              render={({ field }) => (
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select quantity" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="0">0</SelectItem>
+                                    {item.quantities.map((q) => (
+                                      <SelectItem key={q} value={String(q)}>
+                                        {q}
+                                      </SelectItem>
+                                    ))}
+                                    <SelectItem value="other">Other</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            />
+                            {watchedQuantity === "other" && (
+                              <Input
+                                type="number"
+                                placeholder="Qty"
+                                {...register(`${itemKey}.customQuantity` as const)}
+                                className="w-24"
+                              />
+                            )}
+                            <input type="hidden" {...register(`${itemKey}.id` as const)} value={item.id} />
+                            <input type="hidden" {...register(`${itemKey}.name` as const)} value={item.name} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
+              ))}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="specialInstructions">Special Instructions</Label>
+              <Textarea
+                id="specialInstructions"
+                {...register("specialInstructions")}
+                placeholder="Any special requests or notes for your order..."
+              />
+            </div>
+
+            <CardFooter className="p-0 pt-6">
+              <Button type="submit" disabled={isSubmitting} className="w-full">
+                {isSubmitting ? "Submitting..." : "Submit Order"}
+              </Button>
+            </CardFooter>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }

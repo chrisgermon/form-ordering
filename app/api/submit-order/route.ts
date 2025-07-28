@@ -6,6 +6,24 @@ import { revalidatePath } from "next/cache"
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib"
 
 export async function POST(request: NextRequest) {
+  // 1. Environment Variable Check: Fail fast if configuration is missing.
+  const requiredEnvVars = [
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "BLOB_READ_WRITE_TOKEN",
+    "MAILGUN_SMTP_HOST",
+    "MAILGUN_SMTP_PORT",
+    "MAILGUN_SMTP_USERNAME",
+    "MAILGUN_SMTP_PASSWORD",
+    "FROM_EMAIL",
+  ]
+  const missingEnvVars = requiredEnvVars.filter((v) => !process.env[v])
+  if (missingEnvVars.length > 0) {
+    const message = `Missing critical environment variables on the server: ${missingEnvVars.join(", ")}`
+    console.error(message)
+    return NextResponse.json({ success: false, error: "Server Configuration Error", details: message }, { status: 500 })
+  }
+
   try {
     const formData = await request.json()
     console.log("Processing order for brand:", formData.brandName)
@@ -17,6 +35,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 2. PDF Generation
     let pdfBuffer: Buffer
     try {
       console.log("Step 1: Generating PDF...")
@@ -73,6 +92,7 @@ export async function POST(request: NextRequest) {
       throw new Error("Failed to generate PDF for the order.")
     }
 
+    // 3. Blob Storage Upload
     let blobUrl: string
     try {
       console.log("Step 2: Uploading PDF to blob storage...")
@@ -85,6 +105,7 @@ export async function POST(request: NextRequest) {
       throw new Error("Failed to upload order PDF.")
     }
 
+    // 4. Database Insertion
     let submissionId: string
     try {
       console.log("Step 3: Saving submission to database...")
@@ -117,6 +138,7 @@ export async function POST(request: NextRequest) {
     revalidatePath("/admin")
     console.log("Revalidated /admin path.")
 
+    // 5. Email Sending
     try {
       console.log("Step 4: Sending order email...")
       await sendOrderEmail({
