@@ -1,14 +1,45 @@
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+
+export interface Database {
+  public: {
+    Tables: {
+      brands: {
+        Row: Brand
+        Insert: Omit<Brand, "id" | "created_at" | "updated_at">
+        Update: Partial<Brand>
+      }
+      submissions: {
+        Row: Submission
+        Insert: Omit<Submission, "id" | "created_at" | "updated_at">
+        Update: Partial<Submission>
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
 export interface Brand {
   id: string
   name: string
   slug: string
-  email: string
   logo?: string
+  email: string
   active: boolean
-  clinics?: Clinic[]
-  product_sections?: ProductSection[]
+  clinics?: Clinic[] | string[]
   created_at: string
   updated_at: string
+  product_sections?: ProductSection[]
 }
 
 export interface Clinic {
@@ -23,9 +54,9 @@ export interface ProductSection {
   name: string
   description?: string
   sort_order: number
-  product_items?: ProductItem[]
   created_at: string
   updated_at: string
+  product_items?: ProductItem[]
 }
 
 export interface ProductItem {
@@ -33,35 +64,46 @@ export interface ProductItem {
   section_id: string
   name: string
   description?: string
-  code?: string
-  sample_link?: string
-  quantities?: string[]
   sort_order: number
   created_at: string
   updated_at: string
 }
 
-export interface OrderSubmission {
+export interface Submission {
   id: string
   brand_id: string
   ordered_by: string
   email: string
-  phone?: string
+  phone: string
   bill_to: string
   deliver_to: string
   special_instructions?: string
-  items: Record<string, OrderItem>
-  pdf_url?: string
-  status: "pending" | "processing" | "completed" | "cancelled"
+  items: OrderItem[] | Record<string, OrderItem>
+  pdf_url: string
+  status: "pending" | "in_progress" | "completed" | "cancelled"
   created_at: string
   updated_at: string
+  brand?: { name: string }
 }
 
 export interface OrderItem {
   name: string
-  quantity: string
+  quantity: number | string
+  notes?: string
   customQuantity?: string
-  description?: string
+}
+
+export interface OrderSubmission {
+  brandId: string
+  brandName: string
+  brandEmail: string
+  orderedBy: string
+  email: string
+  phone: string
+  billTo: string
+  deliverTo: string
+  items: OrderItem[]
+  specialInstructions?: string
 }
 
 export type BrandWithSections = Brand & {

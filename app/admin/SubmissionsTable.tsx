@@ -25,7 +25,7 @@ interface SubmissionsTableProps {
 export default function SubmissionsTable({ submissions = [], onStatusUpdate }: SubmissionsTableProps) {
   const [statusFilter, setStatusFilter] = useState<string>("all")
 
-  const filteredSubmissions = submissions.filter(
+  const filteredSubmissions = (submissions || []).filter(
     (submission) => statusFilter === "all" || submission.status === statusFilter,
   )
 
@@ -54,15 +54,10 @@ export default function SubmissionsTable({ submissions = [], onStatusUpdate }: S
     })
   }
 
-  const getItemsCount = (items: OrderItem[] | Record<string, OrderItem>): number => {
-    if (!items) return 0
-    if (Array.isArray(items)) {
-      return items.length
-    }
-    if (typeof items === "object") {
-      return Object.keys(items).length
-    }
-    return 0
+  const getItemsArray = (items: OrderItem[] | Record<string, OrderItem> | undefined): OrderItem[] => {
+    if (!items) return []
+    if (Array.isArray(items)) return items
+    return Object.values(items)
   }
 
   return (
@@ -124,7 +119,8 @@ export default function SubmissionsTable({ submissions = [], onStatusUpdate }: S
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">
-                      {getItemsCount(submission.items)} item{getItemsCount(submission.items) !== 1 ? "s" : ""}
+                      {getItemsArray(submission.items).length} item
+                      {getItemsArray(submission.items).length !== 1 ? "s" : ""}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -200,24 +196,19 @@ export default function SubmissionsTable({ submissions = [], onStatusUpdate }: S
                               </CardHeader>
                               <CardContent>
                                 <div className="space-y-3">
-                                  {(() => {
-                                    const itemsArray = Array.isArray(submission.items)
-                                      ? submission.items
-                                      : Object.values(submission.items || {})
-                                    return itemsArray.map((item, index) => (
-                                      <div key={index} className="border rounded-lg p-3">
-                                        <div className="flex items-center justify-between mb-2">
-                                          <span className="font-medium">{item.name}</span>
-                                          <Badge variant="secondary">Qty: {item.quantity}</Badge>
-                                        </div>
-                                        {item.notes && (
-                                          <p className="text-sm text-gray-600">
-                                            <span className="font-medium">Notes:</span> {item.notes}
-                                          </p>
-                                        )}
+                                  {getItemsArray(submission.items).map((item, index) => (
+                                    <div key={index} className="border rounded-lg p-3">
+                                      <div className="flex items-center justify-between mb-2">
+                                        <span className="font-medium">{item.name}</span>
+                                        <Badge variant="secondary">Qty: {item.quantity}</Badge>
                                       </div>
-                                    ))
-                                  })()}
+                                      {item.notes && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">Notes:</span> {item.notes}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
                                 </div>
                               </CardContent>
                             </Card>
