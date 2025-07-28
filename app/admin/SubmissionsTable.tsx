@@ -1,264 +1,223 @@
 "use client"
 
 import { useState } from "react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Eye, ExternalLink } from "lucide-react"
-
-interface Submission {
-  id: string
-  brand_id: string
-  ordered_by: string
-  email: string
-  bill_to: string
-  deliver_to: string
-  order_date: string | null
-  items: Record<string, any>
-  pdf_url: string
-  ip_address: string
-  status: "pending" | "sent" | "failed" | "completed"
-  created_at: string
-  brands: {
-    name: string
-    slug: string
-  }
-}
+import { Eye, Download, RefreshCw } from "lucide-react"
+import { toast } from "sonner"
+import type { OrderSubmission } from "@/lib/types"
 
 interface SubmissionsTableProps {
-  submissions: Submission[]
+  initialSubmissions: OrderSubmission[]
 }
 
-function ViewDetailsDialog({ submission }: { submission: Submission }) {
-  const items = Object.values(submission.items || {})
+export default function SubmissionsTable({ initialSubmissions }: SubmissionsTableProps) {
+  const [submissions, setSubmissions] = useState<OrderSubmission[]>(initialSubmissions)
+  const [isLoading, setIsLoading] = useState(false)
+  const [selectedSubmission, setSelectedSubmission] = useState<OrderSubmission | null>(null)
 
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Eye className="h-4 w-4 mr-2" />
-          View Details
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Submission Details</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <h3 className="font-semibold mb-2">Order Information</h3>
-              <div className="space-y-1 text-sm">
-                <p>
-                  <strong>Brand:</strong> {submission.brands.name}
-                </p>
-                <p>
-                  <strong>Ordered By:</strong> {submission.ordered_by}
-                </p>
-                <p>
-                  <strong>Email:</strong> {submission.email}
-                </p>
-                <p>
-                  <strong>Bill To:</strong> {submission.bill_to}
-                </p>
-                <p>
-                  <strong>Deliver To:</strong> {submission.deliver_to}
-                </p>
-                <p>
-                  <strong>Order Date:</strong>{" "}
-                  {submission.order_date ? new Date(submission.order_date).toLocaleDateString() : "Not specified"}
-                </p>
-                <p>
-                  <strong>Submitted:</strong> {new Date(submission.created_at).toLocaleString()}
-                </p>
-                <p>
-                  <strong>Status:</strong>
-                  <Badge
-                    variant={
-                      submission.status === "completed"
-                        ? "default"
-                        : submission.status === "sent"
-                          ? "secondary"
-                          : submission.status === "failed"
-                            ? "destructive"
-                            : "outline"
-                    }
-                    className="ml-2"
-                  >
-                    {submission.status}
-                  </Badge>
-                </p>
-              </div>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-2">Technical Details</h3>
-              <div className="space-y-1 text-sm">
-                <p>
-                  <strong>Submission ID:</strong> {submission.id}
-                </p>
-                <p>
-                  <strong>IP Address:</strong> {submission.ip_address}
-                </p>
-                <p>
-                  <strong>PDF:</strong>
-                  {submission.pdf_url ? (
-                    <a
-                      href={submission.pdf_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline ml-2 inline-flex items-center"
-                    >
-                      View PDF <ExternalLink className="h-3 w-3 ml-1" />
-                    </a>
-                  ) : (
-                    <span className="ml-2 text-gray-500">Not available</span>
-                  )}
-                </p>
-              </div>
-            </div>
-          </div>
+  const refreshSubmissions = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch("/api/admin/submissions")
+      const data = await response.json()
+      if (data.success) {
+        setSubmissions(data.submissions)
+      }
+    } catch (error) {
+      console.error("Error refreshing submissions:", error)
+      toast.error("Failed to refresh submissions")
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
-          <div>
-            <h3 className="font-semibold mb-2">Ordered Items</h3>
-            {items.length > 0 ? (
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item Name</TableHead>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Quantity</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {items.map((item: any, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{item.name || "Unknown Item"}</TableCell>
-                        <TableCell>{item.code || "N/A"}</TableCell>
-                        <TableCell>
-                          {item.quantity === "other"
-                            ? `${item.customQuantity || "N/A"} (custom)`
-                            : item.quantity || "N/A"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : (
-              <p className="text-gray-500">No items found</p>
-            )}
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
+  const updateSubmissionStatus = async (id: string, status: string) => {
+    try {
+      const response = await fetch(`/api/admin/submissions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
 
-export default function SubmissionsTable({ submissions }: SubmissionsTableProps) {
-  const [selectedStatus, setSelectedStatus] = useState<string>("all")
+      const result = await response.json()
+      if (result.success) {
+        setSubmissions((prev) => prev.map((sub) => (sub.id === id ? { ...sub, status } : sub)))
+        toast.success("Status updated successfully")
+      } else {
+        toast.error("Failed to update status")
+      }
+    } catch (error) {
+      console.error("Error updating status:", error)
+      toast.error("Failed to update status")
+    }
+  }
 
-  const filteredSubmissions = submissions.filter(
-    (submission) => selectedStatus === "all" || submission.status === selectedStatus,
-  )
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "pending":
+        return "bg-yellow-100 text-yellow-800"
+      case "processing":
+        return "bg-blue-100 text-blue-800"
+      case "completed":
+        return "bg-green-100 text-green-800"
+      case "cancelled":
+        return "bg-red-100 text-red-800"
+      default:
+        return "bg-gray-100 text-gray-800"
+    }
+  }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Recent Submissions</CardTitle>
-        <div className="flex gap-2">
-          <Button
-            variant={selectedStatus === "all" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedStatus("all")}
-          >
-            All
-          </Button>
-          <Button
-            variant={selectedStatus === "pending" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedStatus("pending")}
-          >
-            Pending
-          </Button>
-          <Button
-            variant={selectedStatus === "sent" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedStatus("sent")}
-          >
-            Sent
-          </Button>
-          <Button
-            variant={selectedStatus === "failed" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedStatus("failed")}
-          >
-            Failed
-          </Button>
-          <Button
-            variant={selectedStatus === "completed" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedStatus("completed")}
-          >
-            Completed
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Order Submissions</CardTitle>
+            <CardDescription>Manage and track all order submissions</CardDescription>
+          </div>
+          <Button onClick={refreshSubmissions} disabled={isLoading} variant="outline" size="sm">
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
           </Button>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Brand</TableHead>
-                <TableHead>Ordered By</TableHead>
-                <TableHead>Deliver To</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredSubmissions.length === 0 ? (
+        {submissions.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-gray-500">No submissions found</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                    No submissions found
-                  </TableCell>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Ordered By</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Bill To</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ) : (
-                filteredSubmissions.map((submission) => (
+              </TableHeader>
+              <TableBody>
+                {submissions.map((submission) => (
                   <TableRow key={submission.id}>
-                    <TableCell className="font-medium">{submission.brands.name}</TableCell>
-                    <TableCell>{submission.ordered_by}</TableCell>
-                    <TableCell>{submission.deliver_to}</TableCell>
-                    <TableCell>{Object.keys(submission.items || {}).length} items</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          submission.status === "completed"
-                            ? "default"
-                            : submission.status === "sent"
-                              ? "secondary"
-                              : submission.status === "failed"
-                                ? "destructive"
-                                : "outline"
-                        }
-                      >
-                        {submission.status}
-                      </Badge>
-                    </TableCell>
                     <TableCell>{new Date(submission.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell>{submission.ordered_by}</TableCell>
+                    <TableCell>{submission.email}</TableCell>
+                    <TableCell>{submission.bill_to}</TableCell>
                     <TableCell>
-                      <ViewDetailsDialog submission={submission} />
+                      <Select
+                        value={submission.status}
+                        onValueChange={(value) => updateSubmissionStatus(submission.id, value)}
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="processing">Processing</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm" onClick={() => setSelectedSubmission(submission)}>
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                            <DialogHeader>
+                              <DialogTitle>Order Details</DialogTitle>
+                              <DialogDescription>
+                                Submission from {selectedSubmission?.ordered_by} on{" "}
+                                {selectedSubmission && new Date(selectedSubmission.created_at).toLocaleDateString()}
+                              </DialogDescription>
+                            </DialogHeader>
+                            {selectedSubmission && (
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <h4 className="font-semibold">Contact Information</h4>
+                                    <p>Name: {selectedSubmission.ordered_by}</p>
+                                    <p>Email: {selectedSubmission.email}</p>
+                                    {selectedSubmission.phone && <p>Phone: {selectedSubmission.phone}</p>}
+                                  </div>
+                                  <div>
+                                    <h4 className="font-semibold">Delivery Information</h4>
+                                    <p>Bill To: {selectedSubmission.bill_to}</p>
+                                    <p>Deliver To: {selectedSubmission.deliver_to}</p>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <h4 className="font-semibold mb-2">Items Ordered</h4>
+                                  <div className="space-y-2">
+                                    {Object.entries(selectedSubmission.items || {}).map(
+                                      ([key, item]: [string, any]) => (
+                                        <div
+                                          key={key}
+                                          className="flex justify-between items-center p-2 bg-gray-50 rounded"
+                                        >
+                                          <span>{item.name}</span>
+                                          <Badge variant="secondary">
+                                            {item.quantity === "other" ? item.customQuantity : item.quantity}
+                                          </Badge>
+                                        </div>
+                                      ),
+                                    )}
+                                  </div>
+                                </div>
+
+                                {selectedSubmission.special_instructions && (
+                                  <div>
+                                    <h4 className="font-semibold">Special Instructions</h4>
+                                    <p className="text-gray-600">{selectedSubmission.special_instructions}</p>
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-2">
+                                  <Badge className={getStatusColor(selectedSubmission.status)}>
+                                    {selectedSubmission.status}
+                                  </Badge>
+                                  {selectedSubmission.pdf_url && (
+                                    <Button variant="outline" size="sm" asChild>
+                                      <a href={selectedSubmission.pdf_url} target="_blank" rel="noopener noreferrer">
+                                        <Download className="h-4 w-4 mr-1" />
+                                        Download PDF
+                                      </a>
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </DialogContent>
+                        </Dialog>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

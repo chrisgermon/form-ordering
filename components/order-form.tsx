@@ -4,102 +4,101 @@ import type React from "react"
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { CalendarIcon, Loader2 } from "lucide-react"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { format } from "date-fns"
-import { cn } from "@/lib/utils"
-import type { Brand } from "@/lib/types"
+import { Separator } from "@/components/ui/separator"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Search, ShoppingCart, User, ExternalLink, Loader2 } from "lucide-react"
+import { toast } from "sonner"
+import type { BrandWithSections, OrderItem } from "@/lib/types"
 
 interface OrderFormProps {
-  brandData: Brand
+  brandData: BrandWithSections
 }
 
 export default function OrderForm({ brandData }: OrderFormProps) {
+  const [searchTerm, setSearchTerm] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState({
     orderedBy: "",
     email: "",
+    phone: "",
     billTo: "",
     deliverTo: "",
-    date: null as Date | null,
-    items: {} as Record<string, { name: string; code: string; quantity: string; customQuantity?: string }>,
+    specialInstructions: "",
+    items: {} as Record<string, OrderItem>,
   })
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submitMessage, setSubmitMessage] = useState("")
 
-  if (!brandData) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <Card>
-          <CardContent className="p-8 text-center">
-            <p>Loading brand information...</p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  // Safely access clinics - handle both string array and object array
+  const clinics = Array.isArray(brandData?.clinics)
+    ? brandData.clinics.filter((clinic) => {
+        if (typeof clinic === "string") {
+          return clinic.trim() !== ""
+        }
+        return clinic && clinic.name && clinic.name.trim() !== ""
+      })
+    : []
 
-  const clinics = brandData.clinics || []
-  const sections = brandData.product_sections || []
+  const productSections = Array.isArray(brandData?.product_sections) ? brandData.product_sections : []
 
-  const handleItemChange = (
-    itemId: string,
-    itemName: string,
-    itemCode: string,
-    quantity: string,
-    customQuantity?: string,
-  ) => {
-    setFormData((prev) => ({
-      ...prev,
-      items: {
-        ...prev.items,
-        [itemId]: {
-          name: itemName,
-          code: itemCode,
-          quantity,
-          customQuantity,
-        },
-      },
+  const filteredSections = productSections
+    .map((section) => ({
+      ...section,
+      product_items: (section.product_items || []).filter(
+        (item) =>
+          item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase())),
+      ),
     }))
+    .filter((section) => section.product_items.length > 0)
+
+  const selectedItemsCount = Object.keys(formData.items).length
+  const selectedItems = Object.values(formData.items)
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleItemRemove = (itemId: string) => {
+  const handleItemToggle = (itemId: string, itemName: string, quantity: string, customQuantity?: string) => {
+    const itemKey = `${itemId}-${quantity}`
     setFormData((prev) => {
       const newItems = { ...prev.items }
-      delete newItems[itemId]
-      return {
-        ...prev,
-        items: newItems,
+      if (newItems[itemKey]) {
+        delete newItems[itemKey]
+      } else {
+        newItems[itemKey] = {
+          name: itemName,
+          quantity,
+          customQuantity,
+        }
       }
+      return { ...prev, items: newItems }
     })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!formData.orderedBy || !formData.email || !formData.billTo || !formData.deliverTo) {
+      toast.error("Please fill in all required fields.")
+      return
+    }
+
+    if (selectedItemsCount === 0) {
+      toast.error("Please select at least one item.")
+      return
+    }
+
     setIsSubmitting(true)
-    setSubmitMessage("")
 
     try {
-      // Validate required fields
-      if (!formData.orderedBy || !formData.email || !formData.billTo || !formData.deliverTo) {
-        throw new Error("Please fill in all required fields")
-      }
-
-      if (Object.keys(formData.items).length === 0) {
-        throw new Error("Please select at least one item")
-      }
-
       const response = await fetch("/api/submit-order", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           brandId: brandData.id,
           brandName: brandData.name,
@@ -111,293 +110,350 @@ export default function OrderForm({ brandData }: OrderFormProps) {
       const result = await response.json()
 
       if (result.success) {
-        setSubmitMessage("Order submitted successfully!")
-        // Reset form
+        toast.success(result.message)
         setFormData({
           orderedBy: "",
           email: "",
+          phone: "",
           billTo: "",
           deliverTo: "",
-          date: null,
+          specialInstructions: "",
           items: {},
         })
       } else {
-        throw new Error(result.message || "Failed to submit order")
+        toast.error(result.message || "Failed to submit order")
       }
     } catch (error) {
       console.error("Error submitting order:", error)
-      setSubmitMessage(error instanceof Error ? error.message : "Failed to submit order")
+      toast.error("An error occurred while submitting your order. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  // Show loading state if brandData is not available
+  if (!brandData) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">{brandData.name}</h1>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8 text-center">
+          {brandData.logo && (
+            <img
+              src={brandData.logo || "/placeholder.svg"}
+              alt={`${brandData.name} logo`}
+              className="mx-auto mb-4 h-20 w-auto object-contain"
+            />
+          )}
+          <h1 className="text-3xl font-bold text-gray-900">{brandData.name}</h1>
           <p className="text-gray-600">Printing Order Form</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Order Information</CardTitle>
-              <CardDescription>Please fill in your details and select the items you need.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="orderedBy">Ordered By *</Label>
-                  <Input
-                    id="orderedBy"
-                    value={formData.orderedBy}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, orderedBy: e.target.value }))}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="email">Email *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="billTo">Bill to Clinic *</Label>
-                  {clinics.length > 0 ? (
-                    <Select
-                      value={formData.billTo}
-                      onValueChange={(value) => setFormData((prev) => ({ ...prev, billTo: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select clinic" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clinics
-                          .filter((clinic) => clinic && clinic.trim() !== "")
-                          .map((clinic, index) => (
-                            <SelectItem key={`bill-${index}`} value={clinic}>
-                              {clinic}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
+        <div className="grid gap-8 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Order Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <Label htmlFor="orderedBy">Ordered By *</Label>
                     <Input
-                      id="billTo"
-                      value={formData.billTo}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, billTo: e.target.value }))}
-                      placeholder="Enter clinic name"
+                      id="orderedBy"
+                      value={formData.orderedBy}
+                      onChange={(e) => handleInputChange("orderedBy", e.target.value)}
+                      placeholder="Your full name"
                       required
                     />
-                  )}
-                </div>
-                <div>
-                  <Label htmlFor="deliverTo">Deliver to Clinic *</Label>
-                  {clinics.length > 0 ? (
-                    <Select
-                      value={formData.deliverTo}
-                      onValueChange={(value) => setFormData((prev) => ({ ...prev, deliverTo: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select clinic" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clinics
-                          .filter((clinic) => clinic && clinic.trim() !== "")
-                          .map((clinic, index) => (
-                            <SelectItem key={`deliver-${index}`} value={clinic}>
-                              {clinic}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
+                  </div>
+                  <div>
+                    <Label htmlFor="email">Email *</Label>
                     <Input
-                      id="deliverTo"
-                      value={formData.deliverTo}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, deliverTo: e.target.value }))}
-                      placeholder="Enter clinic name"
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => handleInputChange("email", e.target.value)}
+                      placeholder="your.email@example.com"
                       required
                     />
-                  )}
+                  </div>
                 </div>
-              </div>
-
-              <div>
-                <Label>Order Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !formData.date && "text-muted-foreground",
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {formData.date ? format(formData.date, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={formData.date}
-                      onSelect={(date) => setFormData((prev) => ({ ...prev, date }))}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </CardContent>
-          </Card>
-
-          {sections.length > 0 ? (
-            sections.map((section) => (
-              <Card key={section.id}>
-                <CardHeader>
-                  <CardTitle>{section.name}</CardTitle>
-                  {section.description && <CardDescription>{section.description}</CardDescription>}
-                </CardHeader>
-                <CardContent>
-                  {section.items && section.items.length > 0 ? (
-                    <div className="space-y-4">
-                      {section.items.map((item) => {
-                        const isSelected = formData.items[item.id]
-                        return (
-                          <div key={item.id} className="flex items-center space-x-4 p-4 border rounded-lg">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  handleItemChange(item.id, item.name, item.code || "", "1")
-                                } else {
-                                  handleItemRemove(item.id)
-                                }
-                              }}
-                            />
-                            <div className="flex-1">
-                              <div className="font-medium">{item.name}</div>
-                              {item.code && <div className="text-sm text-gray-500">Code: {item.code}</div>}
-                              {item.description && <div className="text-sm text-gray-600">{item.description}</div>}
-                              {item.sample_link && (
-                                <a
-                                  href={item.sample_link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-blue-600 hover:underline"
-                                >
-                                  View Sample
-                                </a>
-                              )}
-                            </div>
-                            {isSelected && (
-                              <div className="flex items-center space-x-2">
-                                <Label htmlFor={`quantity-${item.id}`} className="text-sm">
-                                  Quantity:
-                                </Label>
-                                <Select
-                                  value={formData.items[item.id]?.quantity || "1"}
-                                  onValueChange={(value) => {
-                                    handleItemChange(item.id, item.name, item.code || "", value)
-                                  }}
-                                >
-                                  <SelectTrigger className="w-24">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="1">1</SelectItem>
-                                    <SelectItem value="2">2</SelectItem>
-                                    <SelectItem value="3">3</SelectItem>
-                                    <SelectItem value="4">4</SelectItem>
-                                    <SelectItem value="5">5</SelectItem>
-                                    <SelectItem value="other">Other</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                {formData.items[item.id]?.quantity === "other" && (
-                                  <Input
-                                    type="number"
-                                    placeholder="Enter quantity"
-                                    className="w-32"
-                                    value={formData.items[item.id]?.customQuantity || ""}
-                                    onChange={(e) => {
-                                      handleItemChange(item.id, item.name, item.code || "", "other", e.target.value)
-                                    }}
-                                  />
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500">No items available in this section.</p>
-                  )}
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-gray-500">No product sections configured for this brand.</p>
+                <div>
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(e) => handleInputChange("phone", e.target.value)}
+                    placeholder="Your phone number"
+                  />
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <Label htmlFor="billTo">Bill To Clinic *</Label>
+                    {clinics.length > 0 ? (
+                      <Select value={formData.billTo} onValueChange={(value) => handleInputChange("billTo", value)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select clinic" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clinics.map((clinic, index) => {
+                            const clinicName = typeof clinic === "string" ? clinic : clinic.name
+                            return (
+                              <SelectItem key={`bill-${index}`} value={clinicName}>
+                                {clinicName}
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        placeholder="No clinics configured - enter manually"
+                        value={formData.billTo}
+                        onChange={(e) => handleInputChange("billTo", e.target.value)}
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="deliverTo">Deliver To Clinic *</Label>
+                    {clinics.length > 0 ? (
+                      <Select
+                        value={formData.deliverTo}
+                        onValueChange={(value) => handleInputChange("deliverTo", value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select delivery location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clinics.map((clinic, index) => {
+                            const clinicName = typeof clinic === "string" ? clinic : clinic.name
+                            const clinicAddress = typeof clinic === "object" ? clinic.address : undefined
+                            const deliveryValue = clinicAddress ? `${clinicName} - ${clinicAddress}` : clinicName
+                            return (
+                              <SelectItem key={`deliver-${index}`} value={deliveryValue}>
+                                <div className="flex flex-col">
+                                  <span>{clinicName}</span>
+                                  {clinicAddress && (
+                                    <span className="text-sm text-muted-foreground">{clinicAddress}</span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        placeholder="No clinics configured - enter delivery address manually"
+                        value={formData.deliverTo}
+                        onChange={(e) => handleInputChange("deliverTo", e.target.value)}
+                      />
+                    )}
+                  </div>
+                </div>
               </CardContent>
             </Card>
-          )}
 
-          {Object.keys(formData.items).length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Selected Items</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <ShoppingCart className="h-5 w-5" />
+                  Select Items
+                </CardTitle>
+                <CardDescription>Choose the items you need for your order</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  {Object.entries(formData.items).map(([itemId, item]) => (
-                    <div key={itemId} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                      <span>{item.name}</span>
-                      <Badge variant="secondary">
-                        {item.quantity === "other" ? `${item.customQuantity} (custom)` : item.quantity}
-                      </Badge>
+                <div className="mb-6">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <Input
+                      placeholder="Search items..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {filteredSections.length > 0 ? (
+                    filteredSections.map((section) => (
+                      <div key={section.id}>
+                        <h3 className="mb-4 text-lg font-semibold text-gray-900">{section.name}</h3>
+                        <div className="grid gap-4">
+                          {section.product_items.map((item) => {
+                            const quantities = Array.isArray(item.quantities)
+                              ? item.quantities
+                              : ["1", "5", "10", "25", "50", "100", "other"]
+                            return (
+                              <Card key={item.id} className="p-4">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <h4 className="font-medium">{item.name}</h4>
+                                      {item.sample_link && (
+                                        <a
+                                          href={item.sample_link}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-blue-600 hover:text-blue-800"
+                                        >
+                                          <ExternalLink className="h-4 w-4" />
+                                        </a>
+                                      )}
+                                    </div>
+                                    {item.description && (
+                                      <p className="text-sm text-gray-600 mb-3">{item.description}</p>
+                                    )}
+                                    <div className="flex flex-wrap gap-2">
+                                      {quantities.map((quantity) => {
+                                        const itemKey = `${item.id}-${quantity}`
+                                        const isSelected = !!formData.items[itemKey]
+
+                                        if (quantity === "other") {
+                                          return (
+                                            <div key={quantity} className="flex items-center gap-2">
+                                              <Checkbox
+                                                id={itemKey}
+                                                checked={isSelected}
+                                                onCheckedChange={(checked) => {
+                                                  if (checked) {
+                                                    const customQuantity = prompt("Enter custom quantity:")
+                                                    if (customQuantity) {
+                                                      handleItemToggle(item.id, item.name, quantity, customQuantity)
+                                                    }
+                                                  } else {
+                                                    handleItemToggle(item.id, item.name, quantity)
+                                                  }
+                                                }}
+                                              />
+                                              <Label htmlFor={itemKey} className="text-sm">
+                                                Other
+                                                {isSelected && formData.items[itemKey].customQuantity && (
+                                                  <span className="ml-1 text-gray-500">
+                                                    ({formData.items[itemKey].customQuantity})
+                                                  </span>
+                                                )}
+                                              </Label>
+                                            </div>
+                                          )
+                                        }
+
+                                        return (
+                                          <div key={quantity} className="flex items-center gap-2">
+                                            <Checkbox
+                                              id={itemKey}
+                                              checked={isSelected}
+                                              onCheckedChange={() => handleItemToggle(item.id, item.name, quantity)}
+                                            />
+                                            <Label htmlFor={itemKey} className="text-sm">
+                                              {quantity}
+                                            </Label>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              </Card>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">
+                        {searchTerm ? `No items found matching "${searchTerm}"` : "No items available"}
+                      </p>
                     </div>
-                  ))}
+                  )}
                 </div>
               </CardContent>
             </Card>
-          )}
 
-          <div className="flex justify-end space-x-4">
-            <Button
-              type="submit"
-              disabled={isSubmitting || Object.keys(formData.items).length === 0}
-              className="min-w-32"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                "Submit Order"
-              )}
-            </Button>
+            <Card>
+              <CardHeader>
+                <CardTitle>Special Instructions</CardTitle>
+                <CardDescription>Any additional notes or requirements</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={formData.specialInstructions}
+                  onChange={(e) => handleInputChange("specialInstructions", e.target.value)}
+                  placeholder="Enter any special instructions or notes..."
+                  rows={4}
+                />
+              </CardContent>
+            </Card>
           </div>
 
-          {submitMessage && (
-            <div
-              className={`p-4 rounded-lg ${submitMessage.includes("successfully") ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}
-            >
-              {submitMessage}
-            </div>
-          )}
-        </form>
+          <div className="lg:col-span-1">
+            <Card className="sticky top-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShoppingCart className="h-5 w-5" />
+                  Order Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4">
+                  <Badge variant="secondary" className="text-sm">
+                    {selectedItemsCount} item{selectedItemsCount !== 1 ? "s" : ""} selected
+                  </Badge>
+                </div>
+
+                {selectedItems.length > 0 && (
+                  <div className="space-y-2 mb-6">
+                    {selectedItems.map((item, index) => (
+                      <div key={index} className="flex justify-between text-sm">
+                        <span className="truncate">{item.name}</span>
+                        <span className="text-gray-500">
+                          {item.quantity === "other" ? item.customQuantity : item.quantity}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Separator className="my-4" />
+
+                <form onSubmit={handleSubmit}>
+                  <Button type="submit" className="w-full" disabled={isSubmitting || selectedItemsCount === 0}>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      "Submit Order"
+                    )}
+                  </Button>
+                </form>
+
+                <div className="mt-4 text-xs text-gray-500">
+                  <p>
+                    Orders will be sent to {brandData.email} for processing. You will receive a confirmation email once
+                    submitted.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   )

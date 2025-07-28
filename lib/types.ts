@@ -3,73 +3,71 @@ export interface Brand {
   name: string
   slug: string
   email: string
-  logo: string | null
-  clinics: string[] | null
+  logo?: string
+  active: boolean
+  clinics?: Clinic[]
+  product_sections?: ProductSection[]
   created_at: string
   updated_at: string
-  product_sections?: ProductSection[]
+}
+
+export interface Clinic {
+  name: string
+  email?: string
+  address?: string
 }
 
 export interface ProductSection {
   id: string
   brand_id: string
   name: string
-  description: string | null
-  order_index: number
+  description?: string
+  sort_order: number
+  product_items?: ProductItem[]
   created_at: string
   updated_at: string
-  items?: ProductItem[]
 }
 
 export interface ProductItem {
   id: string
   section_id: string
   name: string
-  description: string | null
-  code: string | null
-  sample_link: string | null
-  order_index: number
+  description?: string
+  code?: string
+  sample_link?: string
+  quantities?: string[]
+  sort_order: number
   created_at: string
   updated_at: string
 }
 
 export interface OrderSubmission {
-  id?: string
-  brand_id: string
-  brand_name: string
-  ordered_by: string
-  email: string
-  bill_to: string
-  deliver_to: string
-  clinic_name?: string
-  submitted_by?: string
-  order_date: string | null
-  items: Record<string, any> | Array<{ name: string; quantity: string }>
-  pdf_url?: string
-  ip_address?: string
-  status: "pending" | "sent" | "failed" | "completed"
-  created_at: string
-  updated_at?: string
-}
-
-export interface Submission {
   id: string
   brand_id: string
   ordered_by: string
   email: string
+  phone?: string
   bill_to: string
   deliver_to: string
-  order_date: string | null
-  items: Record<string, any>
-  pdf_url: string
-  ip_address: string
-  status: "pending" | "sent" | "failed" | "completed"
+  special_instructions?: string
+  items: Record<string, OrderItem>
+  pdf_url?: string
+  status: "pending" | "processing" | "completed" | "cancelled"
   created_at: string
   updated_at: string
-  brands: {
-    id: string
-    name: string
-    slug: string
-    email: string
-  }
+}
+
+export interface OrderItem {
+  name: string
+  quantity: string
+  customQuantity?: string
+  description?: string
+}
+
+export type BrandWithSections = Brand & {
+  product_sections: Array<
+    ProductSection & {
+      product_items: ProductItem[]
+    }
+  >
 }

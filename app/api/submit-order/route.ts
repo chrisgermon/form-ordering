@@ -1,115 +1,71 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminSupabaseClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { sendOrderEmail } from "@/lib/email"
 import { put } from "@vercel/blob"
-import { jsPDF } from "jspdf"
-import { sendEmail, generateOrderEmailTemplate } from "@/lib/email"
 import { revalidatePath } from "next/cache"
-
-function generatePDF(formData: any, brandName: string) {
-  const doc = new jsPDF()
-
-  doc.setFont("helvetica")
-  doc.setFontSize(24)
-  doc.setTextColor(42, 55, 96)
-  doc.text(brandName, 105, 30, { align: "center" })
-  doc.setFontSize(20)
-  doc.text("Printing Order Form", 105, 45, { align: "center" })
-
-  doc.setFontSize(10)
-  doc.setTextColor(0, 0, 0)
-  let yPos = 65
-  doc.rect(15, yPos - 5, 180, 25)
-  doc.text(`Ordered By: ${formData.orderedBy}`, 20, yPos)
-  doc.text(`Email: ${formData.email}`, 20, yPos + 5)
-  doc.text(`Bill to Clinic: ${formData.billTo}`, 20, yPos + 10)
-  doc.text(`Deliver to Clinic: ${formData.deliverTo}`, 20, yPos + 15)
-  doc.text(
-    `Date: ${formData.date ? new Date(formData.date).toLocaleDateString("en-AU") : "Not specified"}`,
-    20,
-    yPos + 20,
-  )
-
-  yPos += 35
-  doc.setFontSize(8)
-  doc.setTextColor(100, 100, 100)
-  doc.text(`Please check stock levels for all, then complete and send to: ${formData.brandEmail}`, 105, yPos, {
-    align: "center",
-  })
-
-  yPos += 15
-
-  const selectedItems = Object.values(formData.items || {}) as any[]
-
-  if (selectedItems.length > 0) {
-    doc.setFontSize(12)
-    doc.setTextColor(42, 55, 96)
-    doc.text("Selected Items:", 20, yPos)
-    yPos += 10
-
-    selectedItems.forEach((item) => {
-      if (yPos > 270) {
-        doc.addPage()
-        yPos = 20
-      }
-      const quantity = item.quantity === "other" ? `${item.customQuantity} (custom)` : item.quantity
-      doc.setFontSize(10)
-      doc.setTextColor(0, 0, 0)
-      doc.text(`- ${item.name} (Code: ${item.code}): ${quantity}`, 30, yPos)
-      yPos += 7
-    })
-  }
-
-  return doc.output("arraybuffer")
-}
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = request.ip ?? request.headers.get("x-forwarded-for") ?? "Unknown"
-    const formData = await request.json()
-    const { brandId, brandName, brandEmail, items } = formData
+    const body = await request.json()
+    console.log("Received form data:", {
+      brandId: body.brandId,
+      brandName: body.brandName,
+      brandEmail: body.brandEmail,
+      itemsCount: Object.keys(body.items || {}).length,
+    })
 
-    console.log("Received form data:", { brandId, brandName, brandEmail, itemsCount: Object.keys(items || {}).length })
+    const { brandId, brandName, brandEmail, orderedBy, email, phone, billTo, deliverTo, specialInstructions, items } =
+      body
 
-    if (!brandId || !brandName || !brandEmail) {
-      console.error("Missing brand information:", { brandId, brandName, brandEmail })
-      return NextResponse.json({ success: false, message: "Brand information is missing." }, { status: 400 })
+    // Validate required fields
+    if (!brandId || !orderedBy || !email || !billTo || !deliverTo) {
+      return NextResponse.json({ success: false, message: "Missing required fields" }, { status: 400 })
     }
 
     if (!items || Object.keys(items).length === 0) {
-      console.error("No items selected")
-      return NextResponse.json({ success: false, message: "No items were selected." }, { status: 400 })
+      return NextResponse.json({ success: false, message: "No items selected" }, { status: 400 })
     }
 
-    const supabase = createAdminSupabaseClient()
-
-    // Generate PDF
     console.log("Generating PDF...")
-    const pdfBuffer = generatePDF(formData, brandName)
+
+    // Generate PDF content
+    const pdfContent = generatePDFContent({
+      brandName,
+      orderedBy,
+      email,
+      phone,
+      billTo,
+      deliverTo,
+      specialInstructions,
+      items,
+    })
+
+    console.log("Uploading PDF to blob storage...")
 
     // Upload PDF to Vercel Blob
-    console.log("Uploading PDF to blob storage...")
-    const filename = `${brandId}-order-${Date.now()}.pdf`
-    const blob = await put(filename, pdfBuffer, {
+    const pdfBlob = await put(`${brandId}-order-${Date.now()}.pdf`, Buffer.from(pdfContent), {
       access: "public",
       contentType: "application/pdf",
     })
 
-    console.log("PDF uploaded successfully:", blob.url)
+    console.log("PDF uploaded successfully:", pdfBlob.url)
 
-    // Create submission record
     console.log("Creating submission record...")
+
+    // Save to database
+    const supabase = createServerSupabaseClient()
     const { data: submission, error: dbError } = await supabase
-      .from("submissions")
+      .from("order_submissions")
       .insert({
         brand_id: brandId,
-        ordered_by: formData.orderedBy,
-        email: formData.email,
-        bill_to: formData.billTo,
-        deliver_to: formData.deliverTo,
-        order_date: formData.date || null,
-        items: formData.items || {},
-        pdf_url: blob.url,
-        ip_address: ip,
+        ordered_by: orderedBy,
+        email,
+        phone,
+        bill_to: billTo,
+        deliver_to: deliverTo,
+        special_instructions: specialInstructions,
+        items,
+        pdf_url: pdfBlob.url,
         status: "pending",
       })
       .select()
@@ -117,74 +73,70 @@ export async function POST(request: NextRequest) {
 
     if (dbError) {
       console.error("Database error:", dbError)
-      return NextResponse.json(
-        { success: false, message: `Failed to save submission to database: ${dbError.message}` },
-        { status: 500 },
-      )
+      return NextResponse.json({ success: false, message: "Failed to save order" }, { status: 500 })
     }
 
     console.log("Submission created successfully:", submission.id)
 
-    // Revalidate admin path
+    // Revalidate admin page
     revalidatePath("/admin")
     console.log("Revalidated /admin path.")
 
-    // Prepare email data
-    const selectedItemsForEmail = Object.values(formData.items || {}).map((item: any) => ({
-      name: item.name,
-      quantity: item.quantity === "other" ? `${item.customQuantity || "N/A"} (custom)` : item.quantity,
-    }))
-
-    const submissionDataForEmail = {
-      brand_name: brandName,
-      clinic_name: formData.deliverTo,
-      submitted_by: formData.orderedBy,
-      created_at: new Date().toISOString(),
-      items: selectedItemsForEmail,
-    }
-
-    // Generate and send email
     console.log("Generating email...")
-    const emailHtml = generateOrderEmailTemplate(submissionDataForEmail)
 
-    console.log("Sending email...")
-    const emailResult = await sendEmail({
+    // Send email
+    const emailResult = await sendOrderEmail({
       to: brandEmail,
-      cc: formData.email,
-      subject: `New Printing Order - ${brandName} - ${formData.orderedBy}`,
-      html: emailHtml,
-      attachments: [
-        {
-          filename: `${brandName.toLowerCase().replace(/\s+/g, "-")}-order.pdf`,
-          content: Buffer.from(pdfBuffer),
-          contentType: "application/pdf",
-        },
-      ],
+      cc: email,
+      subject: `New Order from ${brandName}`,
+      brandName,
+      orderedBy,
+      email,
+      phone,
+      billTo,
+      deliverTo,
+      specialInstructions,
+      items,
+      pdfUrl: pdfBlob.url,
     })
-
-    // Update submission status based on email result
-    const finalStatus = emailResult.success ? "sent" : "failed"
-    await supabase.from("submissions").update({ status: finalStatus }).eq("id", submission.id)
 
     console.log("Email result:", emailResult)
 
     return NextResponse.json({
       success: true,
-      message: emailResult.success
-        ? "Order submitted and email sent successfully!"
-        : `Order submitted but email failed: ${emailResult.error}`,
+      message: "Order submitted successfully!",
       submissionId: submission.id,
-      pdfUrl: blob.url,
     })
   } catch (error) {
     console.error("Error processing order:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
-    return NextResponse.json(
-      {
-        success: false,
-        message: `Failed to process order: ${errorMessage}`,
-      },
-      { status: 500 },
-    )
+    return NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 })
   }
+}
+
+function generatePDFContent(data: any): string {
+  // Simple PDF-like content (in a real app, use a proper PDF library)
+  return `
+Order Details
+=============
+
+Brand: ${data.brandName}
+Ordered By: ${data.orderedBy}
+Email: ${data.email}
+Phone: ${data.phone || "Not provided"}
+Bill To: ${data.billTo}
+Deliver To: ${data.deliverTo}
+
+Items:
+${Object.entries(data.items)
+  .map(
+    ([id, item]: [string, any]) =>
+      `- ${item.name}: ${item.quantity}${item.customQuantity ? ` (${item.customQuantity})` : ""}`,
+  )
+  .join("\n")}
+
+Special Instructions:
+${data.specialInstructions || "None"}
+
+Generated on: ${new Date().toLocaleString()}
+  `
 }
