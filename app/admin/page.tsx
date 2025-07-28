@@ -102,6 +102,8 @@ export default function AdminDashboard() {
   const [testEmail, setTestEmail] = useState("")
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false)
 
+  const isDevelopment = process.env.NODE_ENV === "development"
+
   useEffect(() => {
     loadAllData()
   }, [])
@@ -441,12 +443,12 @@ export default function AdminDashboard() {
         )}
 
         <Tabs defaultValue="brands" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className={`grid w-full ${isDevelopment ? "grid-cols-5" : "grid-cols-4"}`}>
             <TabsTrigger value="brands">Brands</TabsTrigger>
             <TabsTrigger value="submissions">Submissions</TabsTrigger>
             <TabsTrigger value="files">Files</TabsTrigger>
             <TabsTrigger value="actions">System Actions</TabsTrigger>
-            <TabsTrigger value="tests">System Tests</TabsTrigger>
+            {isDevelopment && <TabsTrigger value="tests">System Tests</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="brands">
@@ -859,46 +861,48 @@ export default function AdminDashboard() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="tests">
-            <Card>
-              <CardHeader>
-                <CardTitle>System Tests</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Use these tools to verify that key system components are working correctly.
-                </p>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card className="p-4 flex flex-col justify-between">
-                  <div>
-                    <h3 className="font-semibold">Send Test Email</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Verify that your email configuration (Mailgun SMTP) is working correctly by sending a test email
-                      to an address of your choice.
-                    </p>
-                  </div>
-                  <form onSubmit={handleSendTestEmail} className="mt-4 flex items-center gap-2">
-                    <Input
-                      type="email"
-                      placeholder="recipient@example.com"
-                      value={testEmail}
-                      onChange={(e) => setTestEmail(e.target.value)}
-                      required
-                      className="max-w-xs"
-                      disabled={isSendingTestEmail}
-                    />
-                    <Button type="submit" disabled={isSendingTestEmail || !testEmail}>
-                      {isSendingTestEmail ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="mr-2 h-4 w-4" />
-                      )}
-                      Send Email
-                    </Button>
-                  </form>
-                </Card>
-              </CardContent>
-            </Card>
-          </TabsContent>
+          {isDevelopment && (
+            <TabsContent value="tests">
+              <Card>
+                <CardHeader>
+                  <CardTitle>System Tests</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Use these tools to verify that key system components are working correctly.
+                  </p>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card className="p-4 flex flex-col justify-between">
+                    <div>
+                      <h3 className="font-semibold">Send Test Email</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Verify that your email configuration (Mailgun SMTP) is working correctly by sending a test email
+                        to an address of your choice.
+                      </p>
+                    </div>
+                    <form onSubmit={handleSendTestEmail} className="mt-4 flex items-center gap-2">
+                      <Input
+                        type="email"
+                        placeholder="recipient@example.com"
+                        value={testEmail}
+                        onChange={(e) => setTestEmail(e.target.value)}
+                        required
+                        className="max-w-xs"
+                        disabled={isSendingTestEmail}
+                      />
+                      <Button type="submit" disabled={isSendingTestEmail || !testEmail}>
+                        {isSendingTestEmail ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="mr-2 h-4 w-4" />
+                        )}
+                        Send Email
+                      </Button>
+                    </form>
+                  </Card>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </div>
