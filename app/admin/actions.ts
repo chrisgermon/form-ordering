@@ -3,57 +3,9 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import initializeDatabaseFunction from "@/lib/seed-database"
 import { revalidatePath } from "next/cache"
-import * as cheerio from "cheerio"
 import type { ProductItem } from "./editor/[brandSlug]/types"
 import nodemailer from "nodemailer"
-import { generateText } from "ai"
-import { openai } from "@ai-sdk/openai"
-
-export async function scrapeLocationsFromUrl(url: string) {
-  if (!process.env.OPENAI_API_KEY) {
-    return { success: false, message: "OpenAI API key is not configured in environment variables." }
-  }
-
-  if (!url) {
-    return { success: false, message: "URL cannot be empty." }
-  }
-
-  try {
-    const response = await fetch(url)
-    if (!response.ok) {
-      return { success: false, message: `Failed to fetch URL. Status: ${response.status}` }
-    }
-    const html = await response.text()
-    const $ = cheerio.load(html)
-    // Remove script and style tags to clean up the text and reduce token usage
-    $("script, style, nav, footer, header").remove()
-    const textContent = $("body").text().replace(/\s\s+/g, " ").trim()
-
-    if (!textContent) {
-      return { success: false, message: "Could not extract text content from the URL." }
-    }
-
-    const { text } = await generateText({
-      model: openai("gpt-4o-mini"), // Using a cost-effective and fast model for this task
-      system:
-        "You are an expert web scraper and data extractor. Your task is to analyze the text content of a webpage and identify all clinic locations mentioned. For each location, you must extract only the suburb or city name.",
-      prompt: `From the following website text, please list all the unique clinic suburbs you can find. The output should be a single line of comma-separated values with no extra text or explanation. For example, if you find "Focus Radiology Haymarket" and "Vision Radiology Chatswood", you should return "Haymarket,Chatswood". If you cannot find any locations, return an empty string.\n\nWebsite Text:\n"""${textContent.substring(
-        0,
-        8000,
-      )}"""`,
-    })
-
-    const locations = text
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-    return { success: true, locations }
-  } catch (error) {
-    console.error("Error scraping locations:", error)
-    const message = error instanceof Error ? error.message : "An unknown error occurred."
-    return { success: false, message: `Scraping failed: ${message}` }
-  }
-}
+import cheerio from "cheerio" // Import cheerio here
 
 async function executeSql(sql: string) {
   const supabase = createAdminClient()
