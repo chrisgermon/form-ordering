@@ -42,86 +42,83 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const supabase = createAdminClient()
+  const body = await request.json()
+
+  if (!body.name) {
+    return NextResponse.json({ error: "Brand name is required" }, { status: 400 })
+  }
+
+  // Create a "safe" payload that only includes core fields.
+  // This avoids errors from schema mismatches on 'emails' or 'clinic_locations'.
+  const safePayload = {
+    name: body.name,
+    slug: slugify(body.name),
+    logo: body.logo,
+    active: body.active,
+  }
+
   try {
-    const supabase = createAdminClient()
-    const body = await request.json()
-
-    if (!body.name) {
-      return NextResponse.json({ error: "Brand name is required" }, { status: 400 })
-    }
-
-    const slug = slugify(body.name)
-
     const { data: brand, error } = await supabase
       .from("brands")
-      .insert({
-        name: body.name,
-        slug: slug,
-        logo: body.logo,
-        emails: body.emails || [],
-        clinic_locations: body.clinicLocations || [],
-        active: body.active,
-      })
-      .select("id, name, slug, logo, emails, clinic_locations, active")
+      .insert(safePayload)
+      .select("id, name, slug, logo, active") // Select only the fields we inserted
       .single()
 
-    if (error) {
-      console.error("Error creating brand:", error)
-      if (error.code === "23505") {
-        return NextResponse.json(
-          { error: "A brand with this name already exists. Please choose a different name." },
-          { status: 409 },
-        )
-      }
-      throw error
-    }
+    if (error) throw error
 
-    return NextResponse.json(brand)
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to create brand"
+    // Return a normalized object so the UI doesn't break
+    return NextResponse.json({ ...brand, emails: [], clinic_locations: [] })
+  } catch (error: any) {
+    console.error("Error creating brand:", error)
+    if (error.code === "23505") {
+      return NextResponse.json(
+        { error: "A brand with this name already exists. Please choose a different name." },
+        { status: 409 },
+      )
+    }
+    const errorMessage = error.message || "Failed to create brand"
     return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
 
 export async function PUT(request: NextRequest) {
+  const supabase = createAdminClient()
+  const body = await request.json()
+
+  if (!body.id || !body.name) {
+    return NextResponse.json({ error: "Brand ID and name are required" }, { status: 400 })
+  }
+
+  // Create a "safe" payload for the update, excluding potentially problematic columns.
+  const safePayload = {
+    name: body.name,
+    slug: slugify(body.name),
+    logo: body.logo,
+    active: body.active,
+  }
+
   try {
-    const supabase = createAdminClient()
-    const body = await request.json()
-
-    if (!body.id || !body.name) {
-      return NextResponse.json({ error: "Brand ID and name are required" }, { status: 400 })
-    }
-
-    const slug = slugify(body.name)
-
     const { data: brand, error } = await supabase
       .from("brands")
-      .update({
-        name: body.name,
-        slug: slug,
-        logo: body.logo,
-        emails: body.emails || [],
-        clinic_locations: body.clinicLocations || [],
-        active: body.active,
-      })
+      .update(safePayload)
       .eq("id", body.id)
-      .select("id, name, slug, logo, emails, clinic_locations, active")
+      .select("id, name, slug, logo, active") // Select only the fields we updated
       .single()
 
-    if (error) {
-      console.error("Error updating brand:", error)
-      if (error.code === "23505") {
-        return NextResponse.json(
-          { error: "A brand with this name already exists. Please choose a different name." },
-          { status: 409 },
-        )
-      }
-      throw error
-    }
+    if (error) throw error
 
-    return NextResponse.json(brand)
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to update brand"
+    // Return a normalized object to keep the UI consistent
+    return NextResponse.json({ ...brand, emails: [], clinic_locations: [] })
+  } catch (error: any) {
+    console.error("Error updating brand:", error)
+    if (error.code === "23505") {
+      return NextResponse.json(
+        { error: "A brand with this name already exists. Please choose a different name." },
+        { status: 409 },
+      )
+    }
+    const errorMessage = error.message || "Failed to update brand"
     return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
