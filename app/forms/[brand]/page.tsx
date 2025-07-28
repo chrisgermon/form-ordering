@@ -4,25 +4,25 @@ import OrderForm from "@/components/order-form"
 import type { Brand } from "@/lib/types"
 
 interface PageProps {
-  params: Promise<{ brand: string }>
+  params: {
+    brand: string
+  }
 }
 
 export default async function BrandFormPage({ params }: PageProps) {
-  const { brand: brandSlug } = await params
-
   const supabase = createServerSupabaseClient()
 
-  // Fetch brand with nested sections and items
+  // Fetch brand data with nested sections and items
   const { data: brandData, error } = await supabase
     .from("brands")
     .select(`
       *,
       product_sections (
         *,
-        items:product_items (*)
+        items (*)
       )
     `)
-    .eq("slug", brandSlug)
+    .eq("slug", params.brand)
     .single()
 
   if (error || !brandData) {
@@ -31,18 +31,16 @@ export default async function BrandFormPage({ params }: PageProps) {
   }
 
   // Sort sections and items by order_index
-  if (brandData.product_sections) {
-    brandData.product_sections.sort((a: any, b: any) => a.order_index - b.order_index)
-    brandData.product_sections.forEach((section: any) => {
-      if (section.items) {
-        section.items.sort((a: any, b: any) => a.order_index - b.order_index)
-      }
-    })
+  const sortedBrand: Brand = {
+    ...brandData,
+    product_sections:
+      brandData.product_sections
+        ?.sort((a, b) => a.order_index - b.order_index)
+        .map((section) => ({
+          ...section,
+          items: section.items?.sort((a, b) => a.order_index - b.order_index) || [],
+        })) || [],
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <OrderForm brandData={brandData as Brand} />
-    </div>
-  )
+  return <OrderForm brandData={sortedBrand} />
 }

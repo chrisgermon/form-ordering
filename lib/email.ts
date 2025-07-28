@@ -13,7 +13,7 @@ if (!MAILGUN_SMTP_HOST || !MAILGUN_SMTP_PORT || !MAILGUN_SMTP_USERNAME || !MAILG
 
 const transporter =
   MAILGUN_SMTP_HOST && MAILGUN_SMTP_PORT && MAILGUN_SMTP_USERNAME && MAILGUN_SMTP_PASSWORD
-    ? nodemailer.createTransporter({
+    ? nodemailer.createTransport({
         host: MAILGUN_SMTP_HOST,
         port: Number.parseInt(MAILGUN_SMTP_PORT, 10),
         secure: false, // Use STARTTLS
