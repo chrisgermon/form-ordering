@@ -49,8 +49,6 @@ function CompleteSubmissionDialog({
       expected_delivery_date: expectedDeliveryDate,
     })
     onOpenChange(false)
-    setDeliveryDetails("")
-    setExpectedDeliveryDate("")
   }
 
   return (

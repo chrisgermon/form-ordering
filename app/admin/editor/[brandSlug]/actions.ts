@@ -39,86 +39,85 @@ export async function saveForm(
     const brandData = {
       name: formData.name,
       slug: formData.slug,
-      logo: formData.logo,
+      logo: formData.logo || null,
       email: formData.email,
       active: formData.active,
-      clinics: formData.clinics,
+      clinics: formData.clinics || [],
     }
 
-    let brandId: string
+    let brand: Brand
 
     if (formData.id) {
       // Update existing brand
-      const { data: updatedBrand, error: brandError } = await supabase
-        .from("brands")
-        .update(brandData)
-        .eq("id", formData.id)
-        .select()
-        .single()
+      const { data, error } = await supabase.from("brands").update(brandData).eq("id", formData.id).select().single()
 
-      if (brandError) throw brandError
-      brandId = updatedBrand.id
+      if (error) throw error
+      brand = data
     } else {
       // Create new brand
-      const { data: newBrand, error: brandError } = await supabase.from("brands").insert(brandData).select().single()
+      const { data, error } = await supabase.from("brands").insert(brandData).select().single()
 
-      if (brandError) throw brandError
-      brandId = newBrand.id
+      if (error) throw error
+      brand = data
     }
 
-    // Delete existing sections and items for this brand
-    await supabase.from("product_sections").delete().eq("brand_id", brandId)
+    // Handle sections
+    if (formData.sections && formData.sections.length > 0) {
+      // Delete existing sections for this brand
+      await supabase.from("product_sections").delete().eq("brand_id", brand.id)
 
-    // Insert new sections and items
-    for (const [sectionIndex, section] of formData.sections.entries()) {
-      const { data: newSection, error: sectionError } = await supabase
-        .from("product_sections")
-        .insert({
-          brand_id: brandId,
+      // Insert new sections
+      for (const [index, section] of formData.sections.entries()) {
+        const sectionData = {
+          brand_id: brand.id,
           title: section.name,
-          description: section.description || "",
-          sort_order: sectionIndex,
-        })
-        .select()
-        .single()
+          description: section.description || null,
+          sort_order: index,
+        }
 
-      if (sectionError) throw sectionError
+        const { data: sectionResult, error: sectionError } = await supabase
+          .from("product_sections")
+          .insert(sectionData)
+          .select()
+          .single()
 
-      // Insert items for this section
-      for (const [itemIndex, item] of section.product_items.entries()) {
-        const quantities = item.quantities
-          ? item.quantities
-              .split(",")
-              .map((q) => q.trim())
-              .filter(Boolean)
-          : []
+        if (sectionError) throw sectionError
 
-        const { error: itemError } = await supabase.from("product_items").insert({
-          section_id: newSection.id,
-          name: item.name,
-          description: item.description || "",
-          sample_link: item.sample_link || "",
-          quantities,
-          sort_order: itemIndex,
-        })
+        // Insert items for this section
+        if (section.product_items && section.product_items.length > 0) {
+          for (const [itemIndex, item] of section.product_items.entries()) {
+            const quantities = item.quantities
+              ? item.quantities
+                  .split(",")
+                  .map((q) => q.trim())
+                  .filter(Boolean)
+              : []
 
-        if (itemError) throw itemError
+            const itemData = {
+              product_section_id: sectionResult.id,
+              name: item.name,
+              description: item.description || null,
+              sample_link: item.sample_link || null,
+              quantities,
+              sort_order: itemIndex,
+            }
+
+            const { error: itemError } = await supabase.from("product_items").insert(itemData)
+
+            if (itemError) throw itemError
+          }
+        }
       }
     }
 
-    // Fetch the updated brand data
-    const { data: finalBrand, error: fetchError } = await supabase.from("brands").select().eq("id", brandId).single()
-
-    if (fetchError) throw fetchError
-
     revalidatePath("/admin")
-    revalidatePath(`/admin/editor/${formData.slug}`)
-    revalidatePath(`/forms/${formData.slug}`)
+    revalidatePath(`/admin/editor/${brand.slug}`)
+    revalidatePath(`/forms/${brand.slug}`)
 
     return {
       success: true,
       error: null,
-      brand: finalBrand,
+      brand,
     }
   } catch (error) {
     console.error("Error saving form:", error)

@@ -20,10 +20,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     if (error) {
       console.error("Error updating submission:", error)
-      return NextResponse.json({ error: "Failed to update submission" }, { status: 500 })
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, data })
+    return NextResponse.json(data)
   } catch (error) {
     console.error("Error in PUT /api/admin/submissions/[id]:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
