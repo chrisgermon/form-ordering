@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -12,23 +14,26 @@ import { toast } from "sonner"
 import type { Brand, ProductSection, Item } from "@/lib/types"
 import Image from "next/image"
 
-type FormValues = {
-  orderedBy: string
-  email: string
-  phone?: string
-  billTo: string
-  deliverTo: string
-  items?: Record<
-    string,
-    {
-      id: string
-      name: string
-      quantity: string
-      customQuantity?: string
-    }
-  >
-  specialInstructions?: string
-}
+const formSchema = z.object({
+  orderedBy: z.string().min(1, "Your name is required"),
+  email: z.string().email("Invalid email address"),
+  phone: z.string().optional(),
+  billTo: z.string().min(1, "Billing address is required"),
+  deliverTo: z.string().min(1, "Delivery address is required"),
+  items: z
+    .record(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        quantity: z.string(),
+        customQuantity: z.string().optional(),
+      }),
+    )
+    .optional(),
+  specialInstructions: z.string().optional(),
+})
+
+type FormValues = z.infer<typeof formSchema>
 
 interface OrderFormProps {
   brand: Brand & {
@@ -48,6 +53,7 @@ export default function OrderForm({ brand }: OrderFormProps) {
     watch,
     formState: { errors },
   } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
     defaultValues: {
       orderedBy: "",
       email: "",
@@ -140,22 +146,12 @@ export default function OrderForm({ brand }: OrderFormProps) {
             <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label htmlFor="orderedBy">Your Name</Label>
-                <Input id="orderedBy" {...register("orderedBy", { required: "Your name is required" })} />
+                <Input id="orderedBy" {...register("orderedBy")} />
                 {errors.orderedBy && <p className="text-red-500 text-sm">{errors.orderedBy.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Your Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  {...register("email", {
-                    required: "Email is required",
-                    pattern: {
-                      value: /^\S+@\S+$/i,
-                      message: "Invalid email address",
-                    },
-                  })}
-                />
+                <Input id="email" type="email" {...register("email")} />
                 {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
               </div>
               <div className="space-y-2">
@@ -171,7 +167,6 @@ export default function OrderForm({ brand }: OrderFormProps) {
                   <Controller
                     name="billTo"
                     control={control}
-                    rules={{ required: "Billing address is required" }}
                     render={({ field }) => (
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <SelectTrigger>
@@ -193,11 +188,7 @@ export default function OrderForm({ brand }: OrderFormProps) {
                     )}
                   />
                 ) : (
-                  <Textarea
-                    id="billTo"
-                    {...register("billTo", { required: "Billing address is required" })}
-                    placeholder="Enter billing address"
-                  />
+                  <Textarea id="billTo" {...register("billTo")} placeholder="Enter billing address" />
                 )}
                 {errors.billTo && <p className="text-red-500 text-sm">{errors.billTo.message}</p>}
               </div>
@@ -207,7 +198,6 @@ export default function OrderForm({ brand }: OrderFormProps) {
                   <Controller
                     name="deliverTo"
                     control={control}
-                    rules={{ required: "Delivery address is required" }}
                     render={({ field }) => (
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <SelectTrigger>
@@ -229,11 +219,7 @@ export default function OrderForm({ brand }: OrderFormProps) {
                     )}
                   />
                 ) : (
-                  <Textarea
-                    id="deliverTo"
-                    {...register("deliverTo", { required: "Delivery address is required" })}
-                    placeholder="Enter delivery address"
-                  />
+                  <Textarea id="deliverTo" {...register("deliverTo")} placeholder="Enter delivery address" />
                 )}
                 {errors.deliverTo && <p className="text-red-500 text-sm">{errors.deliverTo.message}</p>}
               </div>
