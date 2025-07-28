@@ -43,7 +43,7 @@
     "shadcn": "2.8.0",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
-    "zod": "4.0.2"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22",
