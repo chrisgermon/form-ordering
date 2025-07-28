@@ -13,7 +13,7 @@ export default function LoginPage({ searchParams }: { searchParams: { message: s
           <CardDescription>
             Enter your credentials to access the admin panel.
             <br />
-            Use <strong>admin@example.com</strong> and password <strong>admin</strong>.
+            Use <strong>chris@crowdit.com.au</strong> and password <strong>password</strong>.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -24,14 +24,14 @@ export default function LoginPage({ searchParams }: { searchParams: { message: s
                 id="email"
                 name="email"
                 type="email"
-                placeholder="admin@example.com"
+                placeholder="chris@crowdit.com.au"
                 required
-                defaultValue="admin@example.com"
+                defaultValue="chris@crowdit.com.au"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" name="password" type="password" required defaultValue="admin" />
+              <Input id="password" name="password" type="password" required defaultValue="password" />
             </div>
             <Button type="submit" className="w-full">
               Sign In

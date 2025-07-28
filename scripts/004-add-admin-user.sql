@@ -1,17 +1,24 @@
 -- This script adds a default admin user with credentials:
--- Email: admin@example.com
--- Password: admin
+-- Email: chris@crowdit.com.au
+-- Password: password
 -- It's highly recommended to change this password in a production environment.
+
+-- First, delete the old admin users if they exist to avoid conflicts.
+DELETE FROM auth.users WHERE email = 'admin@example.com';
+DELETE FROM auth.users WHERE email = 'chris@crowdit.com.au';
 
 DO $$
 DECLARE
     user_id uuid := gen_random_uuid();
-    -- You might need to replace this with your actual instance_id if it's not the default.
-    -- You can find it in your Supabase project settings or by querying the auth.instances table.
-    instance_id uuid := '00000000-0000-0000-0000-000000000000';
-    user_email text := 'admin@example.com';
-    user_password text := 'admin';
+    -- Dynamically get the instance_id from the auth.instances table.
+    -- This makes the script portable across different Supabase projects.
+    instance_id uuid;
+    user_email text := 'chris@crowdit.com.au';
+    user_password text := 'password';
 BEGIN
+    -- Fetch the single instance_id from the auth.instances table.
+    SELECT id INTO instance_id FROM auth.instances LIMIT 1;
+
     -- Insert the user into auth.users
     INSERT INTO auth.users (
         instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
