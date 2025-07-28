@@ -1,7 +1,12 @@
--- This script updates the 'Focus Radiology' brand with its clinic locations
--- scraped from https://focusrad.com.au.
+-- This script first ensures the 'brands' table has the 'clinic_locations' column,
+-- then updates the 'Focus Radiology' brand with its clinic locations.
 -- Run this script once from your Supabase SQL Editor to apply the changes.
 
+-- Step 1: Ensure the clinic_locations column exists.
+-- This command is safe to run multiple times and will only add the column if it's missing.
+ALTER TABLE brands ADD COLUMN IF NOT EXISTS clinic_locations JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- Step 2: Update the data for Focus Radiology.
 UPDATE brands
 SET clinic_locations = '[
   {"name": "Berwick", "address": "Ground Floor, 76-80 Clyde Road, Berwick VIC 3806", "phone": "(03) 9707 3888"},
@@ -17,5 +22,5 @@ SET clinic_locations = '[
 ]'::jsonb
 WHERE slug = 'focus-radiology';
 
--- Notify the API to reload its schema cache to see the changes immediately.
+-- Step 3: Notify the API to reload its schema cache to see the changes immediately.
 NOTIFY pgrst, 'reload schema';
