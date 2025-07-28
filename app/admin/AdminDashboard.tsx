@@ -9,8 +9,6 @@ import SubmissionsTable from "./SubmissionsTable"
 import { toast } from "sonner"
 import type { Submission, Brand } from "@/lib/types"
 
-type FormattedSubmission = Submission & { brand_name: string }
-
 interface AdminDashboardProps {
   initialSubmissions: Submission[]
   initialBrands: Brand[]
@@ -25,7 +23,11 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
       const response = await fetch("/api/admin/submissions")
       if (!response.ok) throw new Error("Failed to fetch submissions")
       const data = await response.json()
-      setSubmissions(data)
+      if (data.success) {
+        setSubmissions(data.submissions)
+      } else {
+        throw new Error(data.error || "API returned unsuccessful status")
+      }
     } catch (error) {
       toast.error("Could not refresh submissions.")
     }
@@ -43,9 +45,10 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
         throw new Error(errorData.error || "Failed to update status")
       }
       toast.success(`Submission status updated to ${status.replace("_", " ")}.`)
-      // Optimistically update UI or refresh
       setSubmissions((prevSubmissions) =>
-        prevSubmissions.map((sub) => (sub.id === submissionId ? { ...sub, status: status } : sub)),
+        prevSubmissions.map((sub) =>
+          sub.id === submissionId ? { ...sub, status: status as Submission["status"] } : sub,
+        ),
       )
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
