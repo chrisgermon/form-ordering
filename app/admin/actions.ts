@@ -414,10 +414,8 @@ export async function sendTestEmail(recipientEmail: string) {
   }
 
   const transporter = nodemailer.createTransport({
+    service: "Mailgun",
     pool: true,
-    host: "smtp.mailgun.org",
-    port: 587,
-    secure: false, // true for 465, false for other ports
     auth: {
       user: process.env.MAILGUN_SMTP_USERNAME,
       pass: process.env.MAILGUN_SMTP_PASSWORD,
