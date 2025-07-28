@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
-export async function signIn(formData: FormData) {
+export async function signIn(prevState: { error: string } | undefined, formData: FormData) {
   const email = formData.get("email") as string
   const password = formData.get("password") as string
   const supabase = createServerSupabaseClient()
@@ -16,15 +16,17 @@ export async function signIn(formData: FormData) {
 
   if (error) {
     console.error("Sign in error:", error.message)
-    return redirect(`/login?message=${encodeURIComponent(error.message)}`)
+    return {
+      error: `Sign in error: ${error.message}`,
+    }
   }
 
-  revalidatePath("/admin", "layout")
-  return redirect("/admin")
+  revalidatePath("/", "layout")
+  redirect("/admin")
 }
 
 export async function signOut() {
   const supabase = createServerSupabaseClient()
   await supabase.auth.signOut()
-  return redirect("/login")
+  redirect("/login")
 }
