@@ -125,11 +125,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Generate a more unique order number to prevent filename collisions.
+    const uniqueSuffix = Math.random().toString(36).substring(2, 8).toUpperCase()
+    const orderNumber = `ORD-${Date.now()}-${uniqueSuffix}`
     const orderPayload: OrderPayload = {
       brandId: flatBody.brandId,
       items: flatBody.items,
       orderInfo: {
-        orderNumber: flatBody.orderNumber || `ORD-${Date.now()}`,
+        orderNumber: orderNumber,
         orderedBy: flatBody.orderedBy,
         email: flatBody.email,
         billTo: flatBody.billTo,
@@ -144,6 +147,7 @@ export async function POST(request: NextRequest) {
     const blob = await put(`orders/order-${orderPayload.orderInfo.orderNumber}.pdf`, pdfBuffer, {
       access: "public",
       contentType: "application/pdf",
+      addRandomSuffix: true,
     })
 
     const emailResult = await sendOrderEmail(orderPayload, brand, pdfBuffer, logoUrl)
