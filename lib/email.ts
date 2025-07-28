@@ -21,7 +21,7 @@ export async function sendOrderEmail(data: EmailData) {
     const transporter = nodemailer.createTransport({
       host: process.env.MAILGUN_SMTP_HOST,
       port: Number.parseInt(process.env.MAILGUN_SMTP_PORT || "587"),
-      secure: false, // true for 465, false for other ports
+      secure: false,
       auth: {
         user: process.env.MAILGUN_SMTP_USERNAME,
         pass: process.env.MAILGUN_SMTP_PASSWORD,
@@ -34,7 +34,7 @@ export async function sendOrderEmail(data: EmailData) {
     console.log(`Fetching PDF for attachment from ${data.pdfUrl}`)
     const pdfResponse = await fetch(data.pdfUrl)
     if (!pdfResponse.ok) {
-      throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`)
+      throw new Error(`Failed to fetch PDF for email attachment: ${pdfResponse.statusText}`)
     }
     const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer())
 

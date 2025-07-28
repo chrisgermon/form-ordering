@@ -32,19 +32,14 @@ export default function OrderForm({ brandData }: OrderFormProps) {
     items: {} as Record<string, OrderItem>,
   })
 
-  // Robustly process clinics data, filtering out any empty or invalid entries.
   const clinics: Clinic[] = Array.isArray(brandData?.clinics)
     ? brandData.clinics
         .map((c) => {
-          if (typeof c === "string") {
-            return { name: c.trim() }
-          }
-          if (typeof c === "object" && c !== null && c.name) {
-            return { ...c, name: c.name.trim() }
-          }
-          return null // Mark invalid entries for removal
+          if (typeof c === "string") return { name: c.trim() }
+          if (typeof c === "object" && c !== null && c.name) return { ...c, name: c.name.trim() }
+          return null
         })
-        .filter((c): c is Clinic => c !== null && c.name !== "") // Filter out nulls and empty names
+        .filter((c): c is Clinic => c !== null && c.name !== "")
     : []
 
   const productSections = Array.isArray(brandData?.product_sections) ? brandData.product_sections : []
@@ -113,8 +108,8 @@ export default function OrderForm({ brandData }: OrderFormProps) {
 
       const result = await response.json()
 
-      if (result.success) {
-        toast.success(result.message)
+      if (response.ok && result.success) {
+        toast.success(result.message || "Order submitted successfully!")
         setFormData({
           orderedBy: "",
           email: "",
@@ -125,8 +120,9 @@ export default function OrderForm({ brandData }: OrderFormProps) {
           items: {},
         })
       } else {
+        console.error("Submission failed:", result)
         toast.error(result.error || "Failed to submit order", {
-          description: result.details,
+          description: result.details || "An unexpected error occurred. Please try again.",
         })
       }
     } catch (error) {

@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     // --- 1. Generate PDF using pdf-lib ---
     console.log("Generating PDF...")
     const pdfDoc = await PDFDocument.create()
-    const page = pdfDoc.addPage()
+    let page = pdfDoc.addPage() // Use 'let' so it can be reassigned
     const { width, height } = page.getSize()
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
@@ -26,10 +26,9 @@ export async function POST(request: NextRequest) {
 
     const drawText = (text: string, x: number, isBold = false, size = 12) => {
       if (y < 50) {
-        // Add new page if content overflows
-        const newPage = pdfDoc.addPage()
-        page.moveTo(0, 0) // This seems wrong, should be newPage.
-        y = newPage.getHeight() - 50
+        // Correctly handle page breaks
+        page = pdfDoc.addPage()
+        y = page.getHeight() - 50
       }
       page.drawText(text, {
         x,
@@ -38,7 +37,7 @@ export async function POST(request: NextRequest) {
         size,
         color: rgb(0, 0, 0),
       })
-      y -= size * 1.5 // Move y position down
+      y -= size * 1.5 // Move y position down for the next line
     }
 
     drawText(`Order Form - ${formData.brandName}`, 50, true, 20)
@@ -77,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     if (formData.specialInstructions) {
       drawText("Special Instructions:", 50, true, 16)
-      // Simple text wrapping
+      // Simple text wrapping for long instructions
       const lines = formData.specialInstructions.match(/.{1,80}/g) || []
       lines.forEach((line: string) => drawText(line, 55))
     }
@@ -107,7 +106,7 @@ export async function POST(request: NextRequest) {
         bill_to: formData.billTo,
         deliver_to: formData.deliverTo,
         special_instructions: formData.specialInstructions,
-        items: formData.items, // Storing as JSONB
+        items: formData.items,
         pdf_url: blob.url,
         status: "pending",
       })
@@ -120,7 +119,6 @@ export async function POST(request: NextRequest) {
     }
     console.log("Submission created successfully:", submission.id)
 
-    // Revalidate admin page to show new submission
     revalidatePath("/admin")
     console.log("Revalidated /admin path.")
 
@@ -128,7 +126,7 @@ export async function POST(request: NextRequest) {
     console.log("Sending order email...")
     const emailResult = await sendOrderEmail({
       to: formData.brandEmail,
-      cc: formData.email, // Also send a copy to the person who ordered
+      cc: formData.email,
       subject: `New Order Received for ${formData.brandName}`,
       brandName: formData.brandName,
       orderedBy: formData.orderedBy,
@@ -149,7 +147,7 @@ export async function POST(request: NextRequest) {
       pdfUrl: blob.url,
     })
   } catch (error) {
-    console.error("Error processing order:", error)
+    console.error("[API_SUBMIT_ORDER_ERROR]", error)
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
     return NextResponse.json(
       { success: false, error: "Failed to process order", details: errorMessage },
