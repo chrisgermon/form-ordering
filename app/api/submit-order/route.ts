@@ -8,149 +8,149 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib"
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.json()
-    console.log("Received form data:", {
-      brandId: formData.brandId,
-      brandName: formData.brandName,
-      itemsCount: formData.items ? Object.keys(formData.items).length : 0,
-    })
+    console.log("Processing order for brand:", formData.brandName)
 
-    // --- 1. Generate PDF using pdf-lib ---
-    console.log("Generating PDF...")
-    const pdfDoc = await PDFDocument.create()
-    let page = pdfDoc.addPage() // Use 'let' so it can be reassigned
-    const { width, height } = page.getSize()
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+    if (!formData.brandId || !formData.orderedBy || !formData.email || !formData.billTo || !formData.deliverTo) {
+      return NextResponse.json(
+        { success: false, error: "Validation Error", details: "Missing required fields." },
+        { status: 400 },
+      )
+    }
 
-    let y = height - 50
+    let pdfBuffer: Buffer
+    try {
+      console.log("Step 1: Generating PDF...")
+      const pdfDoc = await PDFDocument.create()
+      let page = pdfDoc.addPage()
+      const { height } = page.getSize()
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+      let y = height - 50
 
-    const drawText = (text: string, x: number, isBold = false, size = 12) => {
-      if (y < 50) {
-        // Correctly handle page breaks
-        page = pdfDoc.addPage()
-        y = page.getHeight() - 50
+      const drawText = (text: string, x: number, isBold = false, size = 12) => {
+        if (y < 50) {
+          page = pdfDoc.addPage()
+          y = page.getHeight() - 50
+        }
+        page.drawText(text, { x, y, font: isBold ? boldFont : font, size, color: rgb(0, 0, 0) })
+        y -= size * 1.5
       }
-      page.drawText(text, {
-        x,
-        y,
-        font: isBold ? boldFont : font,
-        size,
-        color: rgb(0, 0, 0),
-      })
-      y -= size * 1.5 // Move y position down for the next line
+
+      drawText(`Order Form - ${formData.brandName}`, 50, true, 20)
+      y -= 20
+      drawText("Order Details", 50, true, 16)
+      drawText(`Ordered by: ${formData.orderedBy}`, 55)
+      drawText(`Email: ${formData.email}`, 55)
+      if (formData.phone) drawText(`Phone: ${formData.phone}`, 55)
+      y -= 10
+      drawText("Billing Address:", 50, true, 16)
+      drawText(formData.billTo, 55)
+      y -= 10
+      drawText("Delivery Address:", 50, true, 16)
+      drawText(formData.deliverTo, 55)
+      y -= 10
+      drawText("Items:", 50, true, 16)
+      if (formData.items && Object.keys(formData.items).length > 0) {
+        Object.values(formData.items).forEach((item: any) => {
+          const itemText = `${item.name} - Quantity: ${item.quantity === "other" ? item.customQuantity : item.quantity}`
+          drawText(itemText, 55)
+        })
+      } else {
+        drawText("No items selected.", 55)
+      }
+      y -= 10
+      if (formData.specialInstructions) {
+        drawText("Special Instructions:", 50, true, 16)
+        const lines = formData.specialInstructions.match(/.{1,80}/g) || []
+        lines.forEach((line: string) => drawText(line, 55))
+      }
+
+      const pdfBytes = await pdfDoc.save()
+      pdfBuffer = Buffer.from(pdfBytes)
+      console.log("PDF generated successfully.")
+    } catch (error) {
+      console.error("PDF Generation Error:", error)
+      throw new Error("Failed to generate PDF for the order.")
     }
 
-    drawText(`Order Form - ${formData.brandName}`, 50, true, 20)
-    y -= 20
-
-    drawText("Order Details", 50, true, 16)
-    drawText(`Ordered by: ${formData.orderedBy}`, 55)
-    drawText(`Email: ${formData.email}`, 55)
-    if (formData.phone) drawText(`Phone: ${formData.phone}`, 55)
-    y -= 10
-
-    drawText("Billing Address:", 50, true, 16)
-    drawText(formData.billTo, 55)
-    y -= 10
-
-    drawText("Delivery Address:", 50, true, 16)
-    drawText(formData.deliverTo, 55)
-    y -= 10
-
-    drawText("Items:", 50, true, 16)
-    if (formData.items && Object.keys(formData.items).length > 0) {
-      Object.values(formData.items).forEach((item: any) => {
-        let itemText = `${item.name} - Quantity: ${item.quantity}`
-        if (item.customQuantity) {
-          itemText += ` (${item.customQuantity})`
-        }
-        drawText(itemText, 55)
-        if (item.notes) {
-          drawText(`  Notes: ${item.notes}`, 65, false, 10)
-        }
-      })
-    } else {
-      drawText("No items selected.", 55)
-    }
-    y -= 10
-
-    if (formData.specialInstructions) {
-      drawText("Special Instructions:", 50, true, 16)
-      // Simple text wrapping for long instructions
-      const lines = formData.specialInstructions.match(/.{1,80}/g) || []
-      lines.forEach((line: string) => drawText(line, 55))
+    let blobUrl: string
+    try {
+      console.log("Step 2: Uploading PDF to blob storage...")
+      const filename = `${formData.brandId}-order-${Date.now()}.pdf`
+      const blob = await put(filename, pdfBuffer, { access: "public", contentType: "application/pdf" })
+      blobUrl = blob.url
+      console.log("PDF uploaded successfully:", blobUrl)
+    } catch (error) {
+      console.error("Blob Upload Error:", error)
+      throw new Error("Failed to upload order PDF.")
     }
 
-    const pdfBytes = await pdfDoc.save()
-    const pdfBuffer = Buffer.from(pdfBytes)
+    let submissionId: string
+    try {
+      console.log("Step 3: Saving submission to database...")
+      const supabase = createServerSupabaseClient()
+      const { data: submission, error: dbError } = await supabase
+        .from("submissions")
+        .insert({
+          brand_id: formData.brandId,
+          ordered_by: formData.orderedBy,
+          email: formData.email,
+          phone: formData.phone,
+          bill_to: formData.billTo,
+          deliver_to: formData.deliverTo,
+          special_instructions: formData.specialInstructions,
+          items: formData.items,
+          pdf_url: blobUrl,
+          status: "pending",
+        })
+        .select("id")
+        .single()
 
-    // --- 2. Upload PDF to blob storage ---
-    console.log("Uploading PDF to blob storage...")
-    const filename = `${formData.brandId}-order-${Date.now()}.pdf`
-    const blob = await put(filename, pdfBuffer, {
-      access: "public",
-      contentType: "application/pdf",
-    })
-    console.log("PDF uploaded successfully:", blob.url)
-
-    // --- 3. Save to database ---
-    console.log("Creating submission record...")
-    const supabase = createServerSupabaseClient()
-    const { data: submission, error: dbError } = await supabase
-      .from("submissions")
-      .insert({
-        brand_id: formData.brandId,
-        ordered_by: formData.orderedBy,
-        email: formData.email,
-        phone: formData.phone,
-        bill_to: formData.billTo,
-        deliver_to: formData.deliverTo,
-        special_instructions: formData.specialInstructions,
-        items: formData.items,
-        pdf_url: blob.url,
-        status: "pending",
-      })
-      .select()
-      .single()
-
-    if (dbError) {
-      console.error("Database error:", dbError)
-      throw new Error(`Failed to save submission: ${dbError.message}`)
+      if (dbError) throw dbError
+      submissionId = submission.id
+      console.log("Submission created successfully:", submissionId)
+    } catch (error) {
+      console.error("Database Insertion Error:", error)
+      throw new Error(`Failed to save submission to database: ${(error as Error).message}`)
     }
-    console.log("Submission created successfully:", submission.id)
 
     revalidatePath("/admin")
     console.log("Revalidated /admin path.")
 
-    // --- 4. Send email ---
-    console.log("Sending order email...")
-    const emailResult = await sendOrderEmail({
-      to: formData.brandEmail,
-      cc: formData.email,
-      subject: `New Order Received for ${formData.brandName}`,
-      brandName: formData.brandName,
-      orderedBy: formData.orderedBy,
-      email: formData.email,
-      phone: formData.phone,
-      billTo: formData.billTo,
-      deliverTo: formData.deliverTo,
-      items: formData.items,
-      specialInstructions: formData.specialInstructions,
-      pdfUrl: blob.url,
-    })
-    console.log("Email result:", emailResult)
+    try {
+      console.log("Step 4: Sending order email...")
+      await sendOrderEmail({
+        to: formData.brandEmail,
+        cc: formData.email,
+        subject: `New Order Received for ${formData.brandName}`,
+        brandName: formData.brandName,
+        orderedBy: formData.orderedBy,
+        email: formData.email,
+        phone: formData.phone,
+        billTo: formData.billTo,
+        deliverTo: formData.deliverTo,
+        items: formData.items,
+        specialInstructions: formData.specialInstructions,
+        pdfBuffer: pdfBuffer,
+        pdfUrl: blobUrl,
+      })
+      console.log("Email sent successfully.")
+    } catch (error) {
+      console.error("Email Sending Error:", error)
+      // Log the error but don't fail the request, as the order is already saved.
+    }
 
     return NextResponse.json({
       success: true,
       message: "Order submitted successfully!",
-      submissionId: submission.id,
-      pdfUrl: blob.url,
+      submissionId: submissionId,
+      pdfUrl: blobUrl,
     })
   } catch (error) {
     console.error("[API_SUBMIT_ORDER_ERROR]", error)
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
     return NextResponse.json(
-      { success: false, error: "Failed to process order", details: errorMessage },
+      { success: false, error: "Failed to process order.", details: errorMessage },
       { status: 500 },
     )
   }

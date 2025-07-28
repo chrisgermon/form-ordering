@@ -12,6 +12,7 @@ interface EmailData {
   deliverTo: string
   specialInstructions?: string
   items: Record<string, any>
+  pdfBuffer: Buffer
   pdfUrl: string
 }
 
@@ -31,13 +32,6 @@ export async function sendOrderEmail(data: EmailData) {
     console.log("Generating email content...")
     const htmlContent = generateOrderEmailTemplate(data)
 
-    console.log(`Fetching PDF for attachment from ${data.pdfUrl}`)
-    const pdfResponse = await fetch(data.pdfUrl)
-    if (!pdfResponse.ok) {
-      throw new Error(`Failed to fetch PDF for email attachment: ${pdfResponse.statusText}`)
-    }
-    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer())
-
     console.log(`Sending email to: ${data.to}, CC: ${data.cc}`)
     const info = await transporter.sendMail({
       from: `"${data.brandName} Orders" <${process.env.FROM_EMAIL}>`,
@@ -48,7 +42,7 @@ export async function sendOrderEmail(data: EmailData) {
       attachments: [
         {
           filename: `order-${data.brandName.toLowerCase().replace(/\s+/g, "-")}.pdf`,
-          content: pdfBuffer,
+          content: data.pdfBuffer,
           contentType: "application/pdf",
         },
       ],
@@ -58,7 +52,8 @@ export async function sendOrderEmail(data: EmailData) {
     return { success: true, messageId: info.messageId }
   } catch (error) {
     console.error("Error sending email:", error)
-    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
+    // Re-throw the error to be caught by the API route
+    throw new Error(`Failed to send email: ${(error as Error).message}`)
   }
 }
 
