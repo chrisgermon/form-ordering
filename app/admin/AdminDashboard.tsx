@@ -12,7 +12,7 @@ import type { Submission, Brand } from "@/lib/types"
 type FormattedSubmission = Submission & { brand_name: string }
 
 interface AdminDashboardProps {
-  initialSubmissions: FormattedSubmission[]
+  initialSubmissions: Submission[]
   initialBrands: Brand[]
 }
 
@@ -31,22 +31,22 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
     }
   }
 
-  const handleMarkComplete = async (
-    submission: FormattedSubmission,
-    completionData: { delivery_details: string; expected_delivery_date: string },
-  ) => {
+  const handleStatusUpdate = async (submissionId: string, status: string) => {
     try {
-      const response = await fetch(`/api/admin/submissions/${submission.id}`, {
-        method: "PUT",
+      const response = await fetch(`/api/admin/submissions/${submissionId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(completionData),
+        body: JSON.stringify({ status }),
       })
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to mark as complete")
+        throw new Error(errorData.error || "Failed to update status")
       }
-      toast.success(`Submission for ${submission.ordered_by} marked as complete.`)
-      refreshSubmissions()
+      toast.success(`Submission status updated to ${status.replace("_", " ")}.`)
+      // Optimistically update UI or refresh
+      setSubmissions((prevSubmissions) =>
+        prevSubmissions.map((sub) => (sub.id === submissionId ? { ...sub, status: status } : sub)),
+      )
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
       toast.error(`Error: ${errorMessage}`)
@@ -106,7 +106,7 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
               <CardTitle>Recent Submissions</CardTitle>
             </CardHeader>
             <CardContent>
-              <SubmissionsTable submissions={submissions} onMarkComplete={handleMarkComplete} />
+              <SubmissionsTable submissions={submissions} onStatusUpdate={handleStatusUpdate} />
             </CardContent>
           </Card>
         </div>

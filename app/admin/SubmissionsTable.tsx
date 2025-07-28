@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Eye, Download, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
-import type { OrderSubmission } from "@/lib/types"
+import type { OrderSubmission, OrderItem } from "@/lib/types"
 
 interface SubmissionsTableProps {
   initialSubmissions: OrderSubmission[]
@@ -77,6 +77,16 @@ export default function SubmissionsTable({ initialSubmissions }: SubmissionsTabl
       default:
         return "bg-gray-100 text-gray-800"
     }
+  }
+
+  const getItemsArray = (items: Record<string, OrderItem> | OrderItem[]): OrderItem[] => {
+    if (Array.isArray(items)) {
+      return items
+    }
+    if (typeof items === "object" && items !== null) {
+      return Object.values(items)
+    }
+    return []
   }
 
   return (
@@ -170,10 +180,12 @@ export default function SubmissionsTable({ initialSubmissions }: SubmissionsTabl
                                 <div>
                                   <h4 className="font-semibold mb-2">Items Ordered</h4>
                                   <div className="space-y-2">
-                                    {Object.entries(selectedSubmission.items || {}).map(
-                                      ([key, item]: [string, any]) => (
+                                    {(() => {
+                                      if (!selectedSubmission.items) return null
+                                      const itemsArray = getItemsArray(selectedSubmission.items)
+                                      return itemsArray.map((item, index) => (
                                         <div
-                                          key={key}
+                                          key={index}
                                           className="flex justify-between items-center p-2 bg-gray-50 rounded"
                                         >
                                           <span>{item.name}</span>
@@ -181,8 +193,8 @@ export default function SubmissionsTable({ initialSubmissions }: SubmissionsTabl
                                             {item.quantity === "other" ? item.customQuantity : item.quantity}
                                           </Badge>
                                         </div>
-                                      ),
-                                    )}
+                                      ))
+                                    })()}
                                   </div>
                                 </div>
 
