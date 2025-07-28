@@ -449,24 +449,3 @@ export async function sendTestEmail(recipientEmail: string) {
     return { success: false, message: `Failed to send test email: ${errorMessage}` }
   }
 }
-
-export async function fixTableOwnership() {
-  try {
-    const sql = `
-      ALTER TABLE IF EXISTS brands OWNER TO postgres;
-      ALTER TABLE IF EXISTS product_sections OWNER TO postgres;
-      ALTER TABLE IF EXISTS product_items OWNER TO postgres;
-      ALTER TABLE IF EXISTS uploaded_files OWNER TO postgres;
-      ALTER TABLE IF EXISTS submissions OWNER TO postgres;
-    `
-    await executeSql(sql)
-    return {
-      success: true,
-      message:
-        "Table ownership successfully reset to 'postgres' user. You should now be able to run schema corrections.",
-    }
-  } catch (error: any) {
-    console.error("Error fixing table ownership:", error)
-    return { success: false, message: `Failed to fix table ownership: ${error.message}` }
-  }
-}
