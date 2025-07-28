@@ -81,6 +81,7 @@ function generateOrderEmailHtml(order: OrderPayload, brand: Brand, logoUrl: stri
 
 export async function sendOrderEmail(order: OrderPayload, brand: Brand, pdfBuffer: Buffer, logoUrl: string | null) {
   const transporter = nodemailer.createTransport({
+    pool: true,
     host: "smtp.mailgun.org",
     port: 587,
     secure: false,

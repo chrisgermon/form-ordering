@@ -32,6 +32,7 @@ import {
   ArrowUpDown,
   RefreshCw,
   Database,
+  Send,
 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -41,6 +42,7 @@ import {
   runSchemaV5Update,
   forceSchemaReload,
   runBrandSchemaCorrection,
+  sendTestEmail,
 } from "./actions"
 import { BrandForm } from "./BrandForm"
 import { resolveAssetUrl } from "@/lib/utils"
@@ -97,6 +99,8 @@ export default function AdminDashboard() {
   const [isUpdatingSchema, setIsUpdatingSchema] = useState(false)
   const [isReloadingSchema, setIsReloadingSchema] = useState(false)
   const [isCorrectingSchema, setIsCorrectingSchema] = useState(false)
+  const [testEmail, setTestEmail] = useState("")
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false)
 
   useEffect(() => {
     loadAllData()
@@ -399,6 +403,24 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleSendTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!testEmail) {
+      setMessage("Please enter a recipient email address.")
+      return
+    }
+    setIsSendingTestEmail(true)
+    setMessage(`Sending test email to ${testEmail}...`)
+    try {
+      const result = await sendTestEmail(testEmail)
+      setMessage(result.message)
+    } catch (error) {
+      setMessage("An unexpected error occurred while sending the test email.")
+    } finally {
+      setIsSendingTestEmail(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -419,11 +441,12 @@ export default function AdminDashboard() {
         )}
 
         <Tabs defaultValue="brands" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="brands">Brands</TabsTrigger>
             <TabsTrigger value="submissions">Submissions</TabsTrigger>
             <TabsTrigger value="files">Files</TabsTrigger>
             <TabsTrigger value="actions">System Actions</TabsTrigger>
+            <TabsTrigger value="tests">System Tests</TabsTrigger>
           </TabsList>
 
           <TabsContent value="brands">
@@ -831,6 +854,47 @@ export default function AdminDashboard() {
                     )}
                     Initialize & Reset
                   </Button>
+                </Card>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="tests">
+            <Card>
+              <CardHeader>
+                <CardTitle>System Tests</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Use these tools to verify that key system components are working correctly.
+                </p>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card className="p-4 flex flex-col justify-between">
+                  <div>
+                    <h3 className="font-semibold">Send Test Email</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Verify that your email configuration (Mailgun SMTP) is working correctly by sending a test email
+                      to an address of your choice.
+                    </p>
+                  </div>
+                  <form onSubmit={handleSendTestEmail} className="mt-4 flex items-center gap-2">
+                    <Input
+                      type="email"
+                      placeholder="recipient@example.com"
+                      value={testEmail}
+                      onChange={(e) => setTestEmail(e.target.value)}
+                      required
+                      className="max-w-xs"
+                      disabled={isSendingTestEmail}
+                    />
+                    <Button type="submit" disabled={isSendingTestEmail || !testEmail}>
+                      {isSendingTestEmail ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="mr-2 h-4 w-4" />
+                      )}
+                      Send Email
+                    </Button>
+                  </form>
                 </Card>
               </CardContent>
             </Card>

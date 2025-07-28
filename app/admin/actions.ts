@@ -5,6 +5,7 @@ import initializeDatabaseFunction from "@/lib/seed-database"
 import { revalidatePath } from "next/cache"
 import * as cheerio from "cheerio"
 import type { ProductItem } from "./editor/[brandSlug]/types"
+import nodemailer from "nodemailer"
 
 async function executeSql(sql: string) {
   const supabase = createAdminClient()
@@ -401,5 +402,52 @@ NOTIFY pgrst, 'reload schema';`
   } catch (error: any) {
     console.error("Error correcting brands schema:", error)
     return { success: false, message: `Failed to correct schema: ${error.message}` }
+  }
+}
+
+export async function sendTestEmail(recipientEmail: string) {
+  if (!process.env.MAILGUN_SMTP_USERNAME || !process.env.MAILGUN_SMTP_PASSWORD) {
+    return { success: false, message: "Mailgun SMTP credentials are not configured in environment variables." }
+  }
+  if (!process.env.FROM_EMAIL) {
+    return { success: false, message: "FROM_EMAIL is not configured in environment variables." }
+  }
+
+  const transporter = nodemailer.createTransport({
+    pool: true,
+    host: "smtp.mailgun.org",
+    port: 587,
+    secure: false, // true for 465, false for other ports
+    auth: {
+      user: process.env.MAILGUN_SMTP_USERNAME,
+      pass: process.env.MAILGUN_SMTP_PASSWORD,
+    },
+  })
+
+  const mailOptions = {
+    from: `"Order Form System" <${process.env.FROM_EMAIL}>`,
+    to: recipientEmail,
+    subject: "✅ Test Email from Order Form System",
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+          <h2 style="color: #2a3760;">Email Test Successful!</h2>
+          <p>This is a test email sent from the admin dashboard of the form ordering system.</p>
+          <p>If you have received this message, it confirms that your email (Mailgun SMTP) configuration is working correctly.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+          <p style="font-size: 12px; color: #888;">This is an automated message. Please do not reply.</p>
+        </div>
+      </div>
+    `,
+  }
+
+  try {
+    const info = await transporter.sendMail(mailOptions)
+    console.log("Test email sent: " + info.response)
+    return { success: true, message: `Test email successfully sent to ${recipientEmail}.` }
+  } catch (error) {
+    console.error("Error sending test email:", error)
+    const errorMessage = error instanceof Error ? error.message : "Unknown email error"
+    return { success: false, message: `Failed to send test email: ${errorMessage}` }
   }
 }
