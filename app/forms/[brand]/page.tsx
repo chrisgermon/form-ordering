@@ -1,4 +1,4 @@
-import { createAdminSupabaseClient } from "@/lib/supabase"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { OrderForm } from "@/components/order-form"
 import type { Brand, ProductSection, ProductItem } from "@/lib/types"
 import { notFound } from "next/navigation"
@@ -18,7 +18,7 @@ type FormBrandData = Brand & {
 }
 
 async function getBrandData(slug: string): Promise<FormBrandData | null> {
-  const supabase = createAdminSupabaseClient()
+  const supabase = createServerSupabaseClient()
   const { data, error } = await supabase
     .from("brands")
     .select(
