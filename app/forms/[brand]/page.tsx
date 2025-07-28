@@ -1,10 +1,9 @@
 import { notFound } from "next/navigation"
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { OrderForm } from "@/components/order-form"
 import type { Brand, ProductSection, ProductItem } from "@/lib/types"
 
-type FormBrandData = Brand & {
+type BrandWithSections = Brand & {
   product_sections: Array<
     ProductSection & {
       product_items: ProductItem[]
@@ -12,9 +11,10 @@ type FormBrandData = Brand & {
   >
 }
 
-async function getBrandData(brandSlug: string): Promise<FormBrandData | null> {
-  const supabase = createServerComponentClient({ cookies })
+export default async function BrandFormPage({ params }: { params: { brand: string } }) {
+  const supabase = createServerSupabaseClient()
 
+  // Fetch brand data with sections and items
   const { data: brand, error } = await supabase
     .from("brands")
     .select(`
@@ -24,29 +24,25 @@ async function getBrandData(brandSlug: string): Promise<FormBrandData | null> {
         product_items (*)
       )
     `)
-    .eq("slug", brandSlug)
+    .eq("slug", params.brand)
+    .eq("active", true)
     .single()
 
   if (error || !brand) {
     console.error("Error fetching brand:", error)
-    return null
-  }
-
-  return brand as FormBrandData
-}
-
-interface PageProps {
-  params: {
-    brand: string
-  }
-}
-
-export default async function BrandFormPage({ params }: PageProps) {
-  const brandData = await getBrandData(params.brand)
-
-  if (!brandData) {
     notFound()
   }
 
-  return <OrderForm brandData={brandData} />
+  // Sort sections and items by sort_order
+  const sortedBrand: BrandWithSections = {
+    ...brand,
+    product_sections: (brand.product_sections || [])
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((section) => ({
+        ...section,
+        product_items: (section.product_items || []).sort((a, b) => a.sort_order - b.sort_order),
+      })),
+  }
+
+  return <OrderForm brandData={sortedBrand} />
 }

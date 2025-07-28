@@ -62,6 +62,17 @@ export type Submission = {
   completed_at?: string | null
 }
 
+export type OrderSubmission = {
+  brand_name: string
+  clinic_name: string
+  submitted_by: string
+  created_at: string
+  items: Array<{
+    name: string
+    quantity: string
+  }>
+}
+
 export type UploadedFile = {
   id: string
   filename: string

@@ -118,6 +118,13 @@ export function OrderForm({ brandData }: OrderFormProps) {
     setIsSubmitting(true)
 
     try {
+      console.log("Submitting order with data:", {
+        ...formData,
+        brandId: brandData.id,
+        brandName: brandData.name,
+        brandEmail: brandData.email,
+      })
+
       const response = await fetch("/api/submit-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -130,6 +137,7 @@ export function OrderForm({ brandData }: OrderFormProps) {
       })
 
       const result = await response.json()
+      console.log("API response:", result)
 
       if (result.success) {
         toast.success(result.message)
