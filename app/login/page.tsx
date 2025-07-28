@@ -1,61 +1,42 @@
-"use client"
-
-import { useFormState, useFormStatus } from "react-dom"
-import { signIn } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
+import { signIn } from "./actions"
 
-function SubmitButton() {
-  const { pending } = useFormStatus()
-
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams: { message: string }
+}) {
   return (
-    <Button type="submit" className="w-full" aria-disabled={pending}>
-      {pending ? "Signing In..." : "Sign In"}
-    </Button>
-  )
-}
-
-export default function LoginPage() {
-  const [state, formAction] = useFormState(signIn, null)
-
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-950">
-      <Card className="mx-auto max-w-sm">
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
+      <Card className="w-full max-w-md mx-4">
         <CardHeader>
-          <CardTitle className="text-2xl">Login</CardTitle>
-          <CardDescription>Enter your email below to login to your account</CardDescription>
+          <CardTitle>Admin Login</CardTitle>
+          <CardDescription>Please enter your credentials to access the admin panel.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={formAction} className="grid gap-4">
-            <div className="grid gap-2">
+          <form action={signIn} className="space-y-4">
+            <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                name="email"
-                placeholder="m@example.com"
-                required
-                defaultValue="chris@crowdit.com.au"
-              />
+              <Input id="email" name="email" type="email" placeholder="m@example.com" required />
             </div>
-            <div className="grid gap-2">
-              <div className="flex items-center">
-                <Label htmlFor="password">Password</Label>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input id="password" name="password" type="password" required />
+            </div>
+            {searchParams?.message && (
+              <div
+                className="p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50 dark:bg-gray-800 dark:text-red-400"
+                role="alert"
+              >
+                {searchParams.message}
               </div>
-              <Input id="password" name="password" type="password" required defaultValue="password" />
-            </div>
-            {state?.error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error</AlertTitle>
-                <AlertDescription>{state.error}</AlertDescription>
-              </Alert>
             )}
-            <SubmitButton />
+            <Button type="submit" className="w-full">
+              Sign In
+            </Button>
           </form>
         </CardContent>
       </Card>
