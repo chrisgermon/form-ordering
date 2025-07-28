@@ -1,157 +1,180 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/utils/supabase/server"
 import { sendOrderEmail } from "@/lib/email"
+import type { OrderPayload, Brand, ClinicLocation } from "@/lib/types"
+import { jsPDF } from "jspdf"
 import { put } from "@vercel/blob"
-import { revalidatePath } from "next/cache"
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib"
+
+function addClinicInfo(doc: jsPDF, yPos: number, title: string, clinic: ClinicLocation | null) {
+  if (!clinic) return yPos
+  doc.text(`${title}: ${clinic.name}`, 105, yPos)
+  yPos += 7
+  if (clinic.address) {
+    const addressLines = doc.splitTextToSize(`Address: ${clinic.address}`, 90)
+    doc.text(addressLines, 105, yPos)
+    yPos += addressLines.length * 5
+  }
+  if (clinic.phone) {
+    doc.text(`Phone: ${clinic.phone}`, 105, yPos)
+    yPos += 7
+  }
+  return yPos
+}
+
+async function generateOrderPdf(order: OrderPayload, brand: Brand, logoUrl: string | null): Promise<ArrayBuffer> {
+  const doc = new jsPDF()
+  const { orderInfo, items } = order
+  let yPos = 20
+
+  if (logoUrl) {
+    try {
+      const logoResponse = await fetch(logoUrl)
+      const logoBuffer = await logoResponse.arrayBuffer()
+      const logoExtension = logoUrl.split(".").pop()?.toUpperCase() || "PNG"
+      doc.addImage(Buffer.from(logoBuffer), logoExtension, 15, 15, 50, 20) // x, y, w, h
+      yPos = 45 // Move down to make space for logo
+    } catch (e) {
+      console.error("Failed to fetch or add logo to PDF:", e)
+      yPos = 20 // Fallback position
+    }
+  }
+
+  doc.setFontSize(22)
+  doc.text(brand.name, 105, yPos, { align: "center" })
+  yPos += 10
+  doc.setFontSize(16)
+  doc.text("Printing Order Form", 105, yPos, { align: "center" })
+  yPos += 15
+
+  doc.setFontSize(12)
+  doc.text(`Order Number: ${orderInfo.orderNumber}`, 15, yPos)
+  doc.text(`Date: ${new Date().toLocaleDateString("en-AU")}`, 140, yPos)
+  yPos += 5
+
+  doc.line(15, yPos, 195, yPos) // horizontal line
+  yPos += 10
+
+  const leftColumnY = yPos
+  doc.text(`Ordered By: ${orderInfo.orderedBy}`, 15, leftColumnY)
+  doc.text(`Email: ${orderInfo.email}`, 15, leftColumnY + 7)
+
+  let rightColumnY = yPos
+  rightColumnY = addClinicInfo(doc, rightColumnY, "Bill To", orderInfo.billTo)
+  rightColumnY = addClinicInfo(doc, rightColumnY, "Deliver To", orderInfo.deliverTo)
+
+  yPos = Math.max(leftColumnY + 14, rightColumnY) + 5
+
+  doc.line(15, yPos - 5, 195, yPos - 5)
+  doc.setFont("helvetica", "bold")
+  doc.text("Code", 15, yPos)
+  doc.text("Item Name", 50, yPos)
+  doc.text("Quantity", 180, yPos, { align: "right" })
+  doc.setFont("helvetica", "normal")
+  yPos += 2
+  doc.line(15, yPos, 195, yPos)
+  yPos += 8
+
+  Object.values(items || {}).forEach((item: any) => {
+    if (yPos > 270) {
+      doc.addPage()
+      yPos = 20
+    }
+    const quantity = item.quantity === "other" ? `${item.customQuantity} (custom)` : item.quantity
+    doc.text(item.code, 15, yPos)
+    doc.text(item.name, 50, yPos)
+    doc.text(quantity.toString(), 180, yPos, { align: "right" })
+    yPos += 7
+  })
+
+  if (orderInfo.notes) {
+    yPos += 10
+    doc.line(15, yPos - 5, 195, yPos - 5)
+    doc.setFont("helvetica", "bold")
+    doc.text("Notes:", 15, yPos)
+    doc.setFont("helvetica", "normal")
+    yPos += 7
+    const notes = doc.splitTextToSize(orderInfo.notes, 180)
+    doc.text(notes, 15, yPos)
+  }
+
+  return doc.output("arraybuffer")
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.json()
-    console.log("Processing order for brand:", formData.brandName)
+    const ip = request.ip ?? request.headers.get("x-forwarded-for") ?? "Unknown"
+    const flatBody = await request.json()
 
-    if (!formData.brandId || !formData.orderedBy || !formData.email || !formData.billTo || !formData.deliverTo) {
-      return NextResponse.json(
-        { success: false, error: "Validation Error", details: "Missing required fields." },
-        { status: 400 },
-      )
+    const supabase = createAdminClient()
+    const { data: brand, error: brandError } = await supabase
+      .from("brands")
+      .select("id, name, emails, logo")
+      .eq("id", flatBody.brandId)
+      .single()
+
+    if (brandError || !brand) {
+      console.error("Error fetching brand for order submission:", brandError)
+      return NextResponse.json({ error: "Brand not found" }, { status: 404 })
     }
 
-    let pdfBuffer: Buffer
-    try {
-      console.log("Step 1: Generating PDF...")
-      const pdfDoc = await PDFDocument.create()
-      let page = pdfDoc.addPage()
-      const { height } = page.getSize()
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
-      let y = height - 50
-
-      const drawText = (text: string, x: number, isBold = false, size = 12) => {
-        if (y < 50) {
-          page = pdfDoc.addPage()
-          y = page.getHeight() - 50
-        }
-        page.drawText(text, { x, y, font: isBold ? boldFont : font, size, color: rgb(0, 0, 0) })
-        y -= size * 1.5
+    let logoUrl: string | null = null
+    if (brand.logo) {
+      const { data: fileData } = await supabase.from("uploaded_files").select("url").eq("pathname", brand.logo).single()
+      if (fileData) {
+        logoUrl = fileData.url
       }
-
-      drawText(`Order Form - ${formData.brandName}`, 50, true, 20)
-      y -= 20
-      drawText("Order Details", 50, true, 16)
-      drawText(`Ordered by: ${formData.orderedBy}`, 55)
-      drawText(`Email: ${formData.email}`, 55)
-      if (formData.phone) drawText(`Phone: ${formData.phone}`, 55)
-      y -= 10
-      drawText("Billing Address:", 50, true, 16)
-      drawText(formData.billTo, 55)
-      y -= 10
-      drawText("Delivery Address:", 50, true, 16)
-      drawText(formData.deliverTo, 55)
-      y -= 10
-      drawText("Items:", 50, true, 16)
-      if (formData.items && Object.keys(formData.items).length > 0) {
-        Object.values(formData.items).forEach((item: any) => {
-          const itemText = `${item.name} - Quantity: ${item.quantity === "other" ? item.customQuantity : item.quantity}`
-          drawText(itemText, 55)
-        })
-      } else {
-        drawText("No items selected.", 55)
-      }
-      y -= 10
-      if (formData.specialInstructions) {
-        drawText("Special Instructions:", 50, true, 16)
-        const lines = formData.specialInstructions.match(/.{1,80}/g) || []
-        lines.forEach((line: string) => drawText(line, 55))
-      }
-
-      const pdfBytes = await pdfDoc.save()
-      pdfBuffer = Buffer.from(pdfBytes)
-      console.log("PDF generated successfully.")
-    } catch (error) {
-      console.error("PDF Generation Error:", error)
-      throw new Error("Failed to generate PDF for the order.")
     }
 
-    let blobUrl: string
-    try {
-      console.log("Step 2: Uploading PDF to blob storage...")
-      const filename = `${formData.brandId}-order-${Date.now()}.pdf`
-      const blob = await put(filename, pdfBuffer, { access: "public", contentType: "application/pdf" })
-      blobUrl = blob.url
-      console.log("PDF uploaded successfully:", blobUrl)
-    } catch (error) {
-      console.error("Blob Upload Error:", error)
-      throw new Error("Failed to upload order PDF.")
+    const orderPayload: OrderPayload = {
+      brandId: flatBody.brandId,
+      items: flatBody.items,
+      orderInfo: {
+        orderNumber: flatBody.orderNumber || `ORD-${Date.now()}`,
+        orderedBy: flatBody.orderedBy,
+        email: flatBody.email,
+        billTo: flatBody.billTo,
+        deliverTo: flatBody.deliverTo,
+        notes: flatBody.notes,
+      },
     }
 
-    let submissionId: string
-    try {
-      console.log("Step 3: Saving submission to database...")
-      const supabase = createServerSupabaseClient()
-      const { data: submission, error: dbError } = await supabase
-        .from("submissions")
-        .insert({
-          brand_id: formData.brandId,
-          ordered_by: formData.orderedBy,
-          email: formData.email,
-          phone: formData.phone,
-          bill_to: formData.billTo,
-          deliver_to: formData.deliverTo,
-          special_instructions: formData.specialInstructions,
-          items: formData.items,
-          pdf_url: blobUrl,
-          status: "pending",
-        })
-        .select("id")
-        .single()
+    const pdfArrayBuffer = await generateOrderPdf(orderPayload, brand, logoUrl)
+    const pdfBuffer = Buffer.from(pdfArrayBuffer)
 
-      if (dbError) throw dbError
-      submissionId = submission.id
-      console.log("Submission created successfully:", submissionId)
-    } catch (error) {
-      console.error("Database Insertion Error:", error)
-      throw new Error(`Failed to save submission to database: ${(error as Error).message}`)
-    }
-
-    revalidatePath("/admin")
-    console.log("Revalidated /admin path.")
-
-    try {
-      console.log("Step 4: Sending order email...")
-      await sendOrderEmail({
-        to: formData.brandEmail,
-        cc: formData.email,
-        subject: `New Order Received for ${formData.brandName}`,
-        brandName: formData.brandName,
-        orderedBy: formData.orderedBy,
-        email: formData.email,
-        phone: formData.phone,
-        billTo: formData.billTo,
-        deliverTo: formData.deliverTo,
-        items: formData.items,
-        specialInstructions: formData.specialInstructions,
-        pdfBuffer: pdfBuffer,
-        pdfUrl: blobUrl,
-      })
-      console.log("Email sent successfully.")
-    } catch (error) {
-      console.error("Email Sending Error:", error)
-      // Log the error but don't fail the request, as the order is already saved.
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "Order submitted successfully!",
-      submissionId: submissionId,
-      pdfUrl: blobUrl,
+    const blob = await put(`orders/order-${orderPayload.orderInfo.orderNumber}.pdf`, pdfBuffer, {
+      access: "public",
+      contentType: "application/pdf",
     })
+
+    const emailResult = await sendOrderEmail(orderPayload, brand, pdfBuffer, logoUrl)
+
+    const { error: submissionError } = await supabase.from("submissions").insert({
+      brand_id: orderPayload.brandId,
+      ordered_by: orderPayload.orderInfo.orderedBy,
+      email: orderPayload.orderInfo.email,
+      bill_to: orderPayload.orderInfo.billTo.name,
+      deliver_to: orderPayload.orderInfo.deliverTo.name,
+      items: orderPayload.items as any,
+      pdf_url: blob.url,
+      status: emailResult.success ? "sent" : "failed",
+      email_response: emailResult.message,
+      order_data: orderPayload as any,
+      ip_address: ip,
+    })
+
+    if (submissionError) {
+      console.error("Error saving submission to database:", submissionError)
+      throw submissionError
+    }
+
+    if (!emailResult.success) {
+      throw new Error(emailResult.message)
+    }
+
+    return NextResponse.json({ success: true, message: "Order processed successfully." })
   } catch (error) {
-    console.error("[API_SUBMIT_ORDER_ERROR]", error)
+    console.error("Error processing order:", error)
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return NextResponse.json(
-      { success: false, error: "Failed to process order.", details: errorMessage },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: "Failed to process order", details: errorMessage }, { status: 500 })
   }
 }

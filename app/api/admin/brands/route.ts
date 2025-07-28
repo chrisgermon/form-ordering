@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase"
+import { createAdminClient } from "@/utils/supabase/server"
 
 const slugify = (text: string) => {
   if (!text) return ""
@@ -14,22 +14,36 @@ const slugify = (text: string) => {
 
 export async function GET() {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
+    let brands, error
 
-    const { data: brands, error } = await supabase.from("brands").select("*").order("name")
+    // First, try to fetch all columns. This is the ideal state.
+    ;({ data: brands, error } = await supabase
+      .from("brands")
+      .select("id, name, slug, logo, emails, clinic_locations, active")
+      .order("name"))
 
+    // If the query fails with an "undefined column" error (Postgres code 42703),
+    // it means the schema is out of date. We fall back to a safer query.
+    if (error && error.code === "42703") {
+      console.warn("Fallback initiated: Fetching brands with core columns due to schema error:", error.message)
+      ;({ data: brands, error } = await supabase.from("brands").select("id, name, slug, logo, active").order("name"))
+    }
+
+    // If there's still an error after the potential fallback, throw it.
     if (error) throw error
 
     return NextResponse.json(brands)
   } catch (error) {
     console.error("Error fetching brands:", error)
-    return NextResponse.json({ error: "Failed to fetch brands" }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+    return NextResponse.json({ error: `Failed to fetch brands: ${errorMessage}` }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const body = await request.json()
 
     if (!body.name) {
@@ -44,12 +58,11 @@ export async function POST(request: NextRequest) {
         name: body.name,
         slug: slug,
         logo: body.logo,
-        primary_color: body.primaryColor,
-        email: body.email,
+        emails: body.emails || [],
+        clinic_locations: body.clinicLocations || [],
         active: body.active,
-        clinics: body.clinics || [],
       })
-      .select()
+      .select("id, name, slug, logo, emails, clinic_locations, active")
       .single()
 
     if (error) {
@@ -72,7 +85,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const body = await request.json()
 
     if (!body.id || !body.name) {
@@ -87,13 +100,12 @@ export async function PUT(request: NextRequest) {
         name: body.name,
         slug: slug,
         logo: body.logo,
-        primary_color: body.primaryColor,
-        email: body.email,
+        emails: body.emails || [],
+        clinic_locations: body.clinicLocations || [],
         active: body.active,
-        clinics: body.clinics || [],
       })
       .eq("id", body.id)
-      .select()
+      .select("id, name, slug, logo, emails, clinic_locations, active")
       .single()
 
     if (error) {
@@ -116,7 +128,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 

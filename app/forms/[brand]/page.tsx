@@ -1,55 +1,74 @@
+import { createAdminClient } from "@/utils/supabase/server"
 import { notFound } from "next/navigation"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
-import OrderForm from "@/components/order-form"
-import type { Brand, ProductSection, ProductItem } from "@/lib/types"
+import { OrderForm } from "@/components/order-form"
+import type { BrandData } from "@/lib/types"
 
-interface PageProps {
-  params: Promise<{
-    brand: string
-  }>
-}
+export const revalidate = 0 // Revalidate data on every request
 
-type BrandWithSections = Brand & {
-  product_sections: Array<
-    ProductSection & {
-      product_items: ProductItem[]
-    }
-  >
-}
+async function getBrandData(slug: string): Promise<BrandData | null> {
+  const supabase = createAdminClient()
 
-export default async function BrandFormPage({ params }: PageProps) {
-  const { brand: brandSlug } = await params
-  const supabase = createServerSupabaseClient()
-
-  // Fetch brand data with nested sections and items
-  const { data: brandData, error } = await supabase
+  // Step 1: Fetch the brand by slug, ensuring it's active
+  const { data: brand, error: brandError } = await supabase
     .from("brands")
-    .select(`
-      *,
-      product_sections (
-        *,
-        product_items (*)
-      )
-    `)
-    .eq("slug", brandSlug)
+    .select("id, name, slug, logo, emails, clinic_locations, active")
+    .eq("slug", slug)
     .eq("active", true)
-    .single()
+    .maybeSingle()
 
-  if (error || !brandData) {
-    console.error("Error fetching brand:", error)
+  // If no active brand is found, or there's an error, return null
+  if (brandError || !brand) {
+    if (brandError) {
+      console.error(`Error fetching brand:`, JSON.stringify(brandError, null, 2))
+    }
+    return null
+  }
+
+  // Step 2: Fetch all product sections for this brand
+  const { data: sections, error: sectionsError } = await supabase
+    .from("product_sections")
+    .select("*")
+    .eq("brand_id", brand.id)
+    .order("sort_order")
+
+  if (sectionsError) {
+    console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
+    // Return the brand but with empty sections, preventing a 404
+    return { ...brand, product_sections: [] } as BrandData
+  }
+
+  // Step 3: For each section, fetch its product items
+  const sectionsWithItems = await Promise.all(
+    (sections || []).map(async (section) => {
+      const { data: items, error: itemsError } = await supabase
+        .from("product_items")
+        .select("*")
+        .eq("section_id", section.id)
+        .order("sort_order")
+
+      if (itemsError) {
+        console.error(`Error fetching items for section '${section.title}':`, itemsError.message)
+        // If items fail to load, return the section with an empty item list
+        return { ...section, product_items: [] }
+      }
+      return { ...section, product_items: items || [] }
+    }),
+  )
+
+  // Step 4: Assemble and return the final BrandData object
+  return {
+    ...brand,
+    product_sections: sectionsWithItems,
+  } as BrandData
+}
+
+// This is a dynamic route handler
+export default async function BrandFormPage({ params }: { params: { brand: string } }) {
+  const brandData = await getBrandData(params.brand)
+
+  if (!brandData) {
     notFound()
   }
 
-  // Sort sections and items by sort_order
-  const sortedBrand: BrandWithSections = {
-    ...brandData,
-    product_sections: (brandData.product_sections || [])
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .map((section) => ({
-        ...section,
-        product_items: (section.product_items || []).sort((a, b) => a.sort_order - b.sort_order),
-      })),
-  }
-
-  return <OrderForm brandData={sortedBrand} />
+  return <OrderForm brandData={brandData} />
 }

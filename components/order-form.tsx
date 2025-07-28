@@ -1,437 +1,576 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, useMemo } from "react"
+import Image from "next/image"
+import { useForm, Controller, useWatch } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Search, ShoppingCart, User, ExternalLink, Loader2 } from "lucide-react"
-import { toast } from "sonner"
-import type { BrandWithSections, OrderItem, Clinic } from "@/lib/types"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ChevronDown, ArrowLeft, Search, X } from "lucide-react"
+import { format } from "date-fns"
+import { cn, resolveAssetUrl } from "@/lib/utils"
+import type { BrandData, ProductItem } from "@/lib/types"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import Link from "next/link"
 
-interface OrderFormProps {
-  brandData: BrandWithSections
-}
-
-export default function OrderForm({ brandData }: OrderFormProps) {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [formData, setFormData] = useState({
-    orderedBy: "",
-    email: "",
-    phone: "",
-    billTo: "",
-    deliverTo: "",
-    specialInstructions: "",
-    items: {} as Record<string, OrderItem>,
+const createFormSchema = (brandData: BrandData) => {
+  const baseSchema = z.object({
+    orderedBy: z.string().min(1, "Ordered by is required."),
+    email: z.string().email("A valid email address is required."),
+    billTo: z.string().min(1, "Bill to clinic is required."),
+    deliverTo: z.string().min(1, "Deliver to clinic is required."),
+    date: z.date({ required_error: "A date is required." }),
+    items: z.record(z.any()).optional(),
   })
 
-  const clinics: Clinic[] = Array.isArray(brandData?.clinics)
-    ? brandData.clinics
-        .map((c) => {
-          if (typeof c === "string") return { name: c.trim() }
-          if (typeof c === "object" && c !== null && c.name) return { ...c, name: c.name.trim() }
-          return null
-        })
-        .filter((c): c is Clinic => c !== null && c.name !== "")
-    : []
-
-  const productSections = Array.isArray(brandData?.product_sections) ? brandData.product_sections : []
-
-  const filteredSections = productSections
-    .map((section) => ({
-      ...section,
-      product_items: (section.product_items || []).filter(
-        (item) =>
-          item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase())),
-      ),
-    }))
-    .filter((section) => section.product_items.length > 0)
-
-  const selectedItemsCount = Object.keys(formData.items).length
-  const selectedItems = Object.values(formData.items)
-
-  const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const handleItemToggle = (itemId: string, itemName: string, quantity: string, customQuantity?: string) => {
-    const itemKey = `${itemId}-${quantity}`
-    setFormData((prev) => {
-      const newItems = { ...prev.items }
-      if (newItems[itemKey]) {
-        delete newItems[itemKey]
-      } else {
-        newItems[itemKey] = {
-          name: itemName,
-          quantity,
-          customQuantity,
+  return baseSchema.superRefine((data, ctx) => {
+    let hasItems = false
+    brandData.product_sections.forEach((section) => {
+      section.product_items.forEach((item) => {
+        const value = data.items?.[item.id]
+        if (value && value.quantity !== "") {
+          hasItems = true
         }
-      }
-      return { ...prev, items: newItems }
+
+        if (item.is_required) {
+          if (!value || value.quantity === "") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [`items.${item.id}`],
+              message: `${item.name} is required.`,
+            })
+          }
+        }
+      })
     })
+
+    if (!hasItems) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["items"],
+        message: "Please select at least one item to order.",
+      })
+    }
+  })
+}
+
+const FormField = ({
+  item,
+  control,
+  getValues,
+  setValue,
+  errors,
+}: {
+  item: ProductItem
+  control: any
+  getValues: any
+  setValue: any
+  errors: any
+}) => {
+  const fieldName = `items.${item.id}`
+  const errorMessage = errors?.items?.[item.id]?.message
+
+  const renderField = () => {
+    switch (item.field_type) {
+      case "checkbox_group":
+        const currentItemValue = getValues(fieldName)
+        const handleSelect = (quantity: string, checked: boolean) => {
+          const currentItems = getValues("items") || {}
+          if (checked) {
+            setValue(
+              "items",
+              {
+                ...currentItems,
+                [item.id]: { quantity, name: item.name, code: item.code },
+              },
+              { shouldValidate: true, shouldDirty: true },
+            )
+          } else {
+            const { [item.id]: _, ...rest } = currentItems
+            setValue("items", rest, { shouldValidate: true, shouldDirty: true })
+          }
+        }
+        const handleCustomQuantityChange = (value: string) => {
+          setValue(`${fieldName}.customQuantity`, value, { shouldValidate: true, shouldDirty: true })
+        }
+        const isOtherSelected = currentItemValue?.quantity === "other"
+
+        return (
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            {item.options.map((quantity) => (
+              <div key={quantity} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`${item.id}-${quantity}`}
+                  checked={currentItemValue?.quantity === quantity}
+                  onCheckedChange={(checked) => handleSelect(quantity, !!checked)}
+                />
+                <label htmlFor={`${item.id}-${quantity}`} className="text-sm font-medium text-gray-700">
+                  {quantity}
+                </label>
+              </div>
+            ))}
+            {isOtherSelected && (
+              <Input
+                type="text"
+                placeholder="Enter quantity"
+                className="h-8 w-40 border-gray-400"
+                value={currentItemValue?.customQuantity || ""}
+                onChange={(e) => handleCustomQuantityChange(e.target.value)}
+              />
+            )}
+          </div>
+        )
+      case "text":
+        return (
+          <Controller
+            name={`${fieldName}.quantity`}
+            control={control}
+            defaultValue=""
+            render={({ field }) => <Input placeholder={item.placeholder || ""} {...field} />}
+          />
+        )
+      case "textarea":
+        return (
+          <Controller
+            name={`${fieldName}.quantity`}
+            control={control}
+            defaultValue=""
+            render={({ field }) => <Textarea placeholder={item.placeholder || ""} {...field} />}
+          />
+        )
+      case "select":
+        return (
+          <Controller
+            name={`${fieldName}.quantity`}
+            control={control}
+            defaultValue=""
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} value={field.value}>
+                <SelectTrigger>
+                  <SelectValue placeholder={item.placeholder || "Select an option"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {item.options.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+        )
+      case "date":
+        return (
+          <Controller
+            name={`${fieldName}.quantity`}
+            control={control}
+            render={({ field }) => (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal bg-gray-100 border-gray-300",
+                      !field.value && "text-muted-foreground",
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {field.value ? format(field.value, "dd-MM-yyyy") : <span>DD-MM-YYYY</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                </PopoverContent>
+              </Popover>
+            )}
+          />
+        )
+      default:
+        return null
+    }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  return (
+    <div className="py-4 border-b border-gray-300 last:border-b-0">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="md:col-span-1 space-y-1">
+          <p className="font-bold text-gray-800">CODE: {item.code}</p>
+          <p className="font-semibold text-gray-700">
+            {item.name} {item.is_required && <span className="text-red-500">*</span>}
+          </p>
+          {item.description && <p className="text-sm text-gray-600">DESCRIPTION: {item.description}</p>}
+          {item.sample_link && (
+            <a
+              href={resolveAssetUrl(item.sample_link)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block mt-1 px-3 py-1 bg-sky-500 text-white text-xs rounded-lg hover:bg-sky-600"
+            >
+              CHECK HERE
+            </a>
+          )}
+        </div>
+        <div className="md:col-span-2">
+          {renderField()}
+          {errorMessage && <p className="text-xs text-red-600 mt-1">{errorMessage}</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
 
-    if (!formData.orderedBy || !formData.email || !formData.billTo || !formData.deliverTo) {
-      toast.error("Please fill in all required fields.")
-      return
-    }
+function SelectionSidebar({
+  selectedItems,
+  onRemoveItem,
+}: {
+  selectedItems: any
+  onRemoveItem: (itemId: string) => void
+}) {
+  const items = Object.entries(selectedItems || {}).filter(([_, value]: [string, any]) => value && value.quantity)
 
-    if (selectedItemsCount === 0) {
-      toast.error("Please select at least one item.")
-      return
-    }
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-6">
+      <h3 className="text-xl font-semibold text-[#2a3760] mb-4">Current Selection</h3>
+      {items.length === 0 ? (
+        <p className="text-gray-500 text-sm">No items selected yet.</p>
+      ) : (
+        <ul className="space-y-3 max-h-[60vh] overflow-y-auto">
+          {items.map(([id, item]: [string, any]) => (
+            <li key={id} className="border-b pb-3 last:border-b-0">
+              <div className="flex justify-between items-start gap-2">
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-800 leading-tight">{item.name}</p>
+                  <p className="text-xs text-gray-500">CODE: {item.code}</p>
+                  <p className="text-sm font-bold text-[#1aa7df] mt-1">
+                    Qty: {item.quantity === "other" ? item.customQuantity : item.quantity}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-gray-500 hover:text-red-500 shrink-0"
+                  onClick={() => onRemoveItem(id)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
+export function OrderForm({ brandData }: { brandData: BrandData }) {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submissionStatus, setSubmissionStatus] = useState<"success" | "error" | null>(null)
+  const [submissionMessage, setSubmissionMessage] = useState("")
+  const [searchTerm, setSearchTerm] = useState("")
+
+  const formSchema = useMemo(() => createFormSchema(brandData), [brandData])
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    getValues,
+    setValue,
+    formState: { errors },
+  } = useForm({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      orderedBy: "",
+      email: "",
+      billTo: "",
+      deliverTo: "",
+      items: {},
+      date: new Date(),
+    },
+  })
+
+  const watchedItems = useWatch({ control, name: "items" })
+
+  const clinicLocations = brandData.clinic_locations || []
+
+  const onSubmit = async (data: any) => {
     setIsSubmitting(true)
+    setSubmissionStatus(null)
+
+    const selectedBillTo = clinicLocations.find((loc) => loc.name === data.billTo)
+    const selectedDeliverTo = clinicLocations.find((loc) => loc.name === data.deliverTo)
+
+    const payload = {
+      ...data,
+      billTo: selectedBillTo,
+      deliverTo: selectedDeliverTo,
+      brandId: brandData.id,
+      brandName: brandData.name,
+      recipientEmails: brandData.emails,
+    }
 
     try {
       const response = await fetch("/api/submit-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          brandId: brandData.id,
-          brandName: brandData.name,
-          brandEmail: brandData.email,
-          ...formData,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const result = await response.json()
 
-      if (response.ok && result.success) {
-        toast.success(result.message || "Order submitted successfully!")
-        setFormData({
-          orderedBy: "",
-          email: "",
-          phone: "",
-          billTo: "",
-          deliverTo: "",
-          specialInstructions: "",
-          items: {},
-        })
+      if (response.ok) {
+        setSubmissionStatus("success")
+        setSubmissionMessage("Your order has been submitted successfully!")
+        reset()
       } else {
-        console.error("Submission failed:", result)
-        toast.error(result.error || "Failed to submit order", {
-          description: result.details || "An unexpected error occurred. Please try again.",
-        })
+        throw new Error(result.message || "An unknown error occurred.")
       }
     } catch (error) {
-      console.error("Error submitting order:", error)
-      toast.error("An error occurred while submitting your order. Please try again.")
+      setSubmissionStatus("error")
+      setSubmissionMessage(error instanceof Error ? error.message : "Failed to submit order.")
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  if (!brandData) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="mx-auto h-12 w-12 animate-spin text-gray-400" />
-          <p className="mt-4 text-gray-600">Loading Form...</p>
-        </div>
-      </div>
-    )
+  const handleRemoveItem = (itemId: string) => {
+    const currentItems = getValues("items") || {}
+    const { [itemId]: _, ...rest } = currentItems
+    setValue("items", rest, { shouldValidate: true, shouldDirty: true })
   }
 
+  const filteredSections = useMemo(() => {
+    if (!searchTerm) {
+      return brandData.product_sections
+    }
+    const lowercasedFilter = searchTerm.toLowerCase()
+    return brandData.product_sections
+      .map((section) => {
+        const filteredItems = section.product_items.filter(
+          (item) =>
+            item.name.toLowerCase().includes(lowercasedFilter) || item.code.toLowerCase().includes(lowercasedFilter),
+        )
+        return { ...section, product_items: filteredItems }
+      })
+      .filter((section) => section.product_items.length > 0)
+  }, [searchTerm, brandData.product_sections])
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 text-center">
-          {brandData.logo && (
-            <img
-              src={brandData.logo || "/placeholder.svg"}
-              alt={`${brandData.name} logo`}
-              className="mx-auto mb-4 h-20 w-auto object-contain"
-            />
-          )}
-          <h1 className="text-3xl font-bold text-gray-900">{brandData.name}</h1>
-          <p className="text-gray-600">Printing Order Form</p>
+    <div className="min-h-screen bg-[#f9f9f9] p-4 sm:p-6 md:p-8 font-work-sans">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-6">
+          <Button asChild variant="outline" className="bg-white">
+            <Link href="/">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to All Forms
+            </Link>
+          </Button>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Order Details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <Label htmlFor="orderedBy">Ordered By *</Label>
-                    <Input
-                      id="orderedBy"
-                      value={formData.orderedBy}
-                      onChange={(e) => handleInputChange("orderedBy", e.target.value)}
-                      placeholder="Your full name"
-                      required
-                    />
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8 items-start">
+          <div className="flex-grow space-y-8">
+            <div className="text-center">
+              {brandData.logo && (
+                <Image
+                  src={resolveAssetUrl(brandData.logo) || "/placeholder.svg"}
+                  alt={`${brandData.name} Logo`}
+                  width={331}
+                  height={98}
+                  className="mx-auto object-contain"
+                  priority
+                />
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl shadow-lg">
+              <div className="bg-[#2a3760] text-white text-center py-4 rounded-t-xl">
+                <h1 className="text-2xl font-semibold">Printing Order Form</h1>
+              </div>
+
+              <form onSubmit={handleSubmit(onSubmit)} className="p-6 sm:p-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 mb-8">
+                  <div className="space-y-1">
+                    <label htmlFor="orderedBy" className="text-sm font-medium text-gray-800">
+                      Ordered By: <span className="text-red-500">*</span>
+                    </label>
+                    <Input id="orderedBy" {...register("orderedBy")} className="bg-gray-100 border-gray-300" />
+                    {errors.orderedBy && <p className="text-xs text-red-600">{errors.orderedBy.message}</p>}
                   </div>
-                  <div>
-                    <Label htmlFor="email">Email *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => handleInputChange("email", e.target.value)}
-                      placeholder="your.email@example.com"
-                      required
+                  <div className="space-y-1">
+                    <label htmlFor="email" className="text-sm font-medium text-gray-800">
+                      Email Address <span className="text-red-500">*</span>
+                    </label>
+                    <Input id="email" type="email" {...register("email")} className="bg-gray-100 border-gray-300" />
+                    {errors.email && <p className="text-xs text-red-600">{errors.email.message}</p>}
+                  </div>
+                  <div className="space-y-1">
+                    <label htmlFor="billTo" className="text-sm font-medium text-gray-800">
+                      Bill to Clinic: <span className="text-red-500">*</span>
+                    </label>
+                    <Controller
+                      name="billTo"
+                      control={control}
+                      render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <SelectTrigger id="billTo" className="bg-gray-100 border-gray-300">
+                            <SelectValue placeholder="Select a clinic" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {clinicLocations.map((location) => (
+                              <SelectItem key={location.name} value={location.name}>
+                                {location.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     />
+                    {errors.billTo && <p className="text-xs text-red-600">{errors.billTo.message}</p>}
+                  </div>
+                  <div className="space-y-1">
+                    <label htmlFor="deliverTo" className="text-sm font-medium text-gray-800">
+                      Deliver to Clinic: <span className="text-red-500">*</span>
+                    </label>
+                    <Controller
+                      name="deliverTo"
+                      control={control}
+                      render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <SelectTrigger id="deliverTo" className="bg-gray-100 border-gray-300">
+                            <SelectValue placeholder="Select a clinic" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {clinicLocations.map((location) => (
+                              <SelectItem key={location.name} value={location.name}>
+                                {location.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                    {errors.deliverTo && <p className="text-xs text-red-600">{errors.deliverTo.message}</p>}
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <label htmlFor="date" className="text-sm font-medium text-gray-800">
+                      Date: <span className="text-red-500">*</span>
+                    </label>
+                    <Controller
+                      name="date"
+                      control={control}
+                      render={({ field }) => (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full justify-start text-left font-normal bg-gray-100 border-gray-300",
+                                !field.value && "text-muted-foreground",
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {field.value ? format(field.value, "dd-MM-yyyy") : <span>DD-MM-YYYY</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    />
+                    {errors.date && <p className="text-xs text-red-600">{errors.date.message}</p>}
                   </div>
                 </div>
-                <div>
-                  <Label htmlFor="phone">Phone</Label>
+
+                <div className="relative mb-6">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => handleInputChange("phone", e.target.value)}
-                    placeholder="Your phone number"
+                    type="text"
+                    placeholder="Search by item name or code..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 bg-gray-100 border-gray-300"
                   />
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <Label htmlFor="billTo">Bill To Clinic *</Label>
-                    {clinics.length > 0 ? (
-                      <Select value={formData.billTo} onValueChange={(value) => handleInputChange("billTo", value)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select clinic" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clinics.map((clinic, index) => (
-                            <SelectItem key={`bill-${index}`} value={clinic.name}>
-                              {clinic.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input
-                        placeholder="No clinics configured - enter manually"
-                        value={formData.billTo}
-                        onChange={(e) => handleInputChange("billTo", e.target.value)}
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor="deliverTo">Deliver To Clinic *</Label>
-                    {clinics.length > 0 ? (
-                      <Select
-                        value={formData.deliverTo}
-                        onValueChange={(value) => handleInputChange("deliverTo", value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select delivery location" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clinics.map((clinic, index) => {
-                            const deliveryValue = clinic.address ? `${clinic.name} - ${clinic.address}` : clinic.name
-                            return (
-                              <SelectItem key={`deliver-${index}`} value={deliveryValue}>
-                                <div className="flex flex-col">
-                                  <span>{clinic.name}</span>
-                                  {clinic.address && (
-                                    <span className="text-sm text-muted-foreground">{clinic.address}</span>
-                                  )}
-                                </div>
-                              </SelectItem>
-                            )
-                          })}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input
-                        placeholder="No clinics configured - enter delivery address manually"
-                        value={formData.deliverTo}
-                        onChange={(e) => handleInputChange("deliverTo", e.target.value)}
-                      />
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ShoppingCart className="h-5 w-5" />
-                  Select Items
-                </CardTitle>
-                <CardDescription>Choose the items you need for your order</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-6">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                    <Input
-                      placeholder="Search items..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  {filteredSections.length > 0 ? (
-                    filteredSections.map((section) => (
-                      <div key={section.id}>
-                        <h3 className="mb-4 text-lg font-semibold text-gray-900">{section.name}</h3>
-                        <div className="grid gap-4">
-                          {section.product_items?.map((item) => {
-                            const quantities = (item as any).quantities || ["1", "5", "10", "25", "50", "100", "other"]
-                            return (
-                              <Card key={item.id} className="p-4">
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <h4 className="font-medium">{item.name}</h4>
-                                      {(item as any).sample_link && (
-                                        <a
-                                          href={(item as any).sample_link}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="text-blue-600 hover:text-blue-800"
-                                        >
-                                          <ExternalLink className="h-4 w-4" />
-                                        </a>
-                                      )}
-                                    </div>
-                                    {item.description && (
-                                      <p className="text-sm text-gray-600 mb-3">{item.description}</p>
-                                    )}
-                                    <div className="flex flex-wrap gap-2">
-                                      {quantities.map((quantity: string) => {
-                                        const itemKey = `${item.id}-${quantity}`
-                                        const isSelected = !!formData.items[itemKey]
-
-                                        if (quantity === "other") {
-                                          return (
-                                            <div key={quantity} className="flex items-center gap-2">
-                                              <Checkbox
-                                                id={itemKey}
-                                                checked={isSelected}
-                                                onCheckedChange={(checked) => {
-                                                  if (checked) {
-                                                    const customQuantity = prompt("Enter custom quantity:")
-                                                    if (customQuantity) {
-                                                      handleItemToggle(item.id, item.name, quantity, customQuantity)
-                                                    }
-                                                  } else {
-                                                    handleItemToggle(item.id, item.name, quantity)
-                                                  }
-                                                }}
-                                              />
-                                              <Label htmlFor={itemKey} className="text-sm">
-                                                Other
-                                                {isSelected && formData.items[itemKey].customQuantity && (
-                                                  <span className="ml-1 text-gray-500">
-                                                    ({formData.items[itemKey].customQuantity})
-                                                  </span>
-                                                )}
-                                              </Label>
-                                            </div>
-                                          )
-                                        }
-
-                                        return (
-                                          <div key={quantity} className="flex items-center gap-2">
-                                            <Checkbox
-                                              id={itemKey}
-                                              checked={isSelected}
-                                              onCheckedChange={() => handleItemToggle(item.id, item.name, quantity)}
-                                            />
-                                            <Label htmlFor={itemKey} className="text-sm">
-                                              {quantity}
-                                            </Label>
-                                          </div>
-                                        )
-                                      })}
-                                    </div>
-                                  </div>
-                                </div>
-                              </Card>
-                            )
-                          })}
+                <div className="space-y-4">
+                  {filteredSections.map((section) => (
+                    <Collapsible key={section.id} className="border border-dashed border-[#293563] rounded-lg">
+                      <CollapsibleTrigger className="w-full p-4 flex justify-between items-center group hover:bg-gray-50 rounded-t-lg">
+                        <h2 className="text-lg font-semibold text-[#1aa7df]">{section.title}</h2>
+                        <ChevronDown className="h-5 w-5 text-gray-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="p-4 pt-0">
+                          <div className="space-y-4">
+                            {section.product_items.map((item) => (
+                              <FormField
+                                key={item.id}
+                                item={item}
+                                control={control}
+                                getValues={getValues}
+                                setValue={setValue}
+                                errors={errors}
+                              />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8">
-                      <p className="text-gray-500">
-                        {searchTerm ? `No items found matching "${searchTerm}"` : "No items available"}
-                      </p>
-                    </div>
-                  )}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="lg:col-span-1">
-            <Card className="sticky top-4">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ShoppingCart className="h-5 w-5" />
-                  Order Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-4">
-                  <Badge variant="secondary" className="text-sm">
-                    {selectedItemsCount} item{selectedItemsCount !== 1 ? "s" : ""} selected
-                  </Badge>
-                </div>
-
-                {selectedItems.length > 0 && (
-                  <div className="space-y-2 mb-6">
-                    {selectedItems.map((item, index) => (
-                      <div key={index} className="flex justify-between text-sm">
-                        <span className="truncate">{item.name}</span>
-                        <span className="text-gray-500">
-                          {item.quantity === "other" ? item.customQuantity : item.quantity}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                {errors.items && !Object.keys(errors.items).some((k) => k !== "root") && (
+                  <p className="text-sm text-red-600 mt-4 text-center">{errors.items.message}</p>
                 )}
 
-                <Separator className="my-4" />
-
-                <form onSubmit={handleSubmit}>
-                  <Button type="submit" className="w-full" disabled={isSubmitting || selectedItemsCount === 0}>
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Submitting...
-                      </>
-                    ) : (
-                      "Submit Order"
+                {submissionStatus && (
+                  <Alert
+                    className={cn(
+                      "mt-8",
+                      submissionStatus === "success"
+                        ? "border-green-500 text-green-700"
+                        : "border-red-500 text-red-700",
                     )}
-                  </Button>
-                </form>
+                  >
+                    {submissionStatus === "success" ? (
+                      <CheckCircle className="h-4 w-4" />
+                    ) : (
+                      <XCircle className="h-4 w-4" />
+                    )}
+                    <AlertDescription>{submissionMessage}</AlertDescription>
+                  </Alert>
+                )}
 
-                <div className="mt-4 text-xs text-gray-500">
-                  <p>
-                    Orders will be sent to {brandData.email} for processing. You will receive a confirmation email once
-                    submitted.
-                  </p>
+                <div className="flex justify-center mt-8 pt-6">
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="bg-[#2a3760] hover:bg-[#2a3760]/90 text-white font-semibold px-12 py-6 text-base"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="mr-2 h-4 w-4" />
+                    )}
+                    Submit
+                  </Button>
                 </div>
-              </CardContent>
-            </Card>
+              </form>
+            </div>
           </div>
+
+          <aside className="hidden lg:block sticky top-8">
+            <SelectionSidebar selectedItems={watchedItems} onRemoveItem={handleRemoveItem} />
+          </aside>
         </div>
       </div>
     </div>

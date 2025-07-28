@@ -14,23 +14,17 @@ export interface ProductItem {
   placeholder: string | null
   is_required: boolean
   sample_link: string | null
+  sort_order: number
+  section_id: string
+  brand_id: string
 }
 
 export interface ProductSection {
   id: string
   title: string
   sort_order: number
+  brand_id: string
   product_items: ProductItem[]
-}
-
-export interface BrandData {
-  id: string
-  name: string
-  slug: string
-  logo: string | null
-  emails: string[]
-  clinic_locations: ClinicLocation[]
-  product_sections: ProductSection[]
 }
 
 export interface Brand {
@@ -41,21 +35,16 @@ export interface Brand {
   emails: string[]
   clinic_locations: ClinicLocation[]
   active: boolean
+  product_sections: ProductSection[]
 }
 
-export interface OrderInfo {
-  orderNumber: string
-  orderedBy: string
-  email: string
-  billTo: ClinicLocation
-  deliverTo: ClinicLocation
-  notes?: string
+export interface UploadedFile {
+  id: string
+  filename: string
+  original_name: string
+  url: string
+  pathname: string
+  uploaded_at: string
+  size: number
+  content_type: string | null
 }
-
-export interface OrderPayload {
-  brandId: string
-  orderInfo: OrderInfo
-  items: Record<string, any>
-}
-
-export type BrandType = Omit<Brand, "product_sections">

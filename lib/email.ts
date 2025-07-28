@@ -1,119 +1,117 @@
 import nodemailer from "nodemailer"
+import type { OrderPayload, Brand, ClinicLocation } from "@/lib/types"
 
-interface EmailData {
-  to: string
-  cc?: string
-  subject: string
-  brandName: string
-  orderedBy: string
-  email: string
-  phone?: string
-  billTo: string
-  deliverTo: string
-  specialInstructions?: string
-  items: Record<string, any>
-  pdfBuffer: Buffer
-  pdfUrl: string
+function formatClinicHtml(title: string, clinic: ClinicLocation | null) {
+  if (!clinic) return ""
+  return `
+    <p style="margin: 5px 0;">
+      <strong>${title}:</strong> ${clinic.name}<br>
+      ${
+        clinic.address
+          ? `<span style="font-size: 12px; color: #555; padding-left: 10px;">${clinic.address}</span><br>`
+          : ""
+      }
+      ${clinic.phone ? `<span style="font-size: 12px; color: #555; padding-left: 10px;">${clinic.phone}</span>` : ""}
+    </p>
+  `
 }
 
-export async function sendOrderEmail(data: EmailData) {
-  try {
-    console.log("Configuring email transporter...")
-    const transporter = nodemailer.createTransport({
-      host: process.env.MAILGUN_SMTP_HOST,
-      port: Number.parseInt(process.env.MAILGUN_SMTP_PORT || "587"),
-      secure: false,
-      auth: {
-        user: process.env.MAILGUN_SMTP_USERNAME,
-        pass: process.env.MAILGUN_SMTP_PASSWORD,
-      },
-    })
+function generateOrderEmailHtml(order: OrderPayload, brand: Brand, logoUrl: string | null): string {
+  const { orderInfo, items } = order
+  const themeColor = "#2a3760" // Standardized theme color
 
-    console.log("Generating email content...")
-    const htmlContent = generateOrderEmailTemplate(data)
+  const logoHtml = logoUrl
+    ? `<img src="${logoUrl}" alt="${brand.name} Logo" style="max-width: 200px; max-height: 70px; margin-bottom: 20px;" />`
+    : `<h1 style="color: ${themeColor}; font-size: 24px;">${brand.name}</h1>`
 
-    console.log(`Sending email to: ${data.to}, CC: ${data.cc}`)
-    const info = await transporter.sendMail({
-      from: `"${data.brandName} Orders" <${process.env.FROM_EMAIL}>`,
-      to: data.to,
-      cc: data.cc,
-      subject: data.subject,
-      html: htmlContent,
-      attachments: [
-        {
-          filename: `order-${data.brandName.toLowerCase().replace(/\s+/g, "-")}.pdf`,
-          content: data.pdfBuffer,
-          contentType: "application/pdf",
-        },
-      ],
-    })
-
-    console.log("Email sent successfully:", info.messageId)
-    return { success: true, messageId: info.messageId }
-  } catch (error) {
-    console.error("Error sending email:", error)
-    // Re-throw the error to be caught by the API route
-    throw new Error(`Failed to send email: ${(error as Error).message}`)
-  }
-}
-
-function generateOrderEmailTemplate(data: EmailData): string {
-  const itemsList = Object.values(data.items)
+  const itemsHtml = Object.values(items || {})
     .map(
-      (item: any) =>
-        `<tr>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${item.name}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${
-            item.quantity === "other" ? item.customQuantity : item.quantity
-          }</td>
-        </tr>`,
+      (item: any) => `
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 10px;">${item.code}</td>
+      <td style="padding: 10px;">${item.name}</td>
+      <td style="padding: 10px; text-align: center;">${
+        item.quantity === "other" ? item.customQuantity : item.quantity
+      }</td>
+    </tr>
+  `,
     )
     .join("")
 
   return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>${data.subject}</title>
-    </head>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-      <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
-        <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
-          New Order for ${data.brandName}
-        </h1>
-        
-        <h2>Order Details</h2>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-          <tr><td style="padding: 8px; font-weight: bold; background-color: #f8f9fa; width: 150px;">Ordered By:</td><td style="padding: 8px;">${data.orderedBy}</td></tr>
-          <tr><td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Email:</td><td style="padding: 8px;">${data.email}</td></tr>
-          ${data.phone ? `<tr><td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Phone:</td><td style="padding: 8px;">${data.phone}</td></tr>` : ""}
-          <tr><td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Bill To:</td><td style="padding: 8px;">${data.billTo}</td></tr>
-          <tr><td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Deliver To:</td><td style="padding: 8px;">${data.deliverTo}</td></tr>
-        </table>
-
-        <h2>Items Ordered</h2>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-          <thead>
-            <tr style="background-color: #f8f9fa;">
-              <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Item</th>
-              <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Quantity</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${itemsList}
-          </tbody>
-        </table>
-
-        ${data.specialInstructions ? `<h2>Special Instructions</h2><p style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #2563eb;">${data.specialInstructions}</p>` : ""}
-
-        <div style="margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 5px; text-align: center;">
-          <p>A PDF copy of this order is attached.</p>
-          <p><a href="${data.pdfUrl}" style="color: #2563eb; text-decoration: none;">Download PDF</a></p>
-          <p style="margin: 0; font-size: 12px; color: #666;">This order was submitted on ${new Date().toLocaleString()}</p>
-        </div>
-      </div>
-    </body>
-    </html>
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+      ${logoHtml}
+      <h2 style="color: ${themeColor}; font-size: 22px;">New Printing Order</h2>
+      <p>A new order has been submitted for <strong>${brand.name}</strong>.</p>
+      
+      <h3 style="color: ${themeColor}; font-size: 20px; border-bottom: 2px solid ${themeColor}; padding-bottom: 5px;">Order Details</h3>
+      <p><strong>Order Number:</strong> ${orderInfo.orderNumber}</p>
+      <p><strong>Ordered By:</strong> ${orderInfo.orderedBy}</p>
+      <p><strong>Email:</strong> ${orderInfo.email}</p>
+      ${formatClinicHtml("Bill To", orderInfo.billTo)}
+      ${formatClinicHtml("Deliver To", orderInfo.deliverTo)}
+      
+      <h3 style="color: ${themeColor}; font-size: 20px; border-bottom: 2px solid ${themeColor}; padding-bottom: 5px;">Items</h3>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+        <thead>
+          <tr>
+            <th style="padding: 10px; text-align: left; background-color: #f7f7f7;">Code</th>
+            <th style="padding: 10px; text-align: left; background-color: #f7f7f7;">Name</th>
+            <th style="padding: 10px; text-align: center; background-color: #f7f7f7;">Quantity</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsHtml}
+        </tbody>
+      </table>
+      
+      ${
+        orderInfo.notes
+          ? `<div style="margin-top: 20px; padding: 15px; background-color: #f9f9f9; border-radius: 5px;">
+               <h4 style="margin-top: 0; color: ${themeColor};">Notes:</h4>
+               <p style="margin-bottom: 0;">${orderInfo.notes}</p>
+             </div>`
+          : ""
+      }
+      
+      <p style="margin-top: 20px;">The order form is attached to this email as a PDF.</p>
+    </div>
   `
+}
+
+export async function sendOrderEmail(order: OrderPayload, brand: Brand, pdfBuffer: Buffer, logoUrl: string | null) {
+  const transporter = nodemailer.createTransport({
+    host: "smtp.mailgun.org",
+    port: 587,
+    secure: false,
+    auth: {
+      user: process.env.MAILGUN_SMTP_USERNAME,
+      pass: process.env.MAILGUN_SMTP_PASSWORD,
+    },
+  })
+
+  const mailOptions = {
+    from: `"${brand.name} Orders" <${process.env.FROM_EMAIL}>`,
+    to: brand.emails.join(","),
+    cc: order.orderInfo.email, // CC the person who ordered
+    subject: `New Printing Order for ${brand.name} - #${order.orderInfo.orderNumber}`,
+    html: generateOrderEmailHtml(order, brand, logoUrl),
+    attachments: [
+      {
+        filename: `order-${order.orderInfo.orderNumber}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  }
+
+  try {
+    const info = await transporter.sendMail(mailOptions)
+    console.log("Email sent: " + info.response)
+    return { success: true, message: info.response }
+  } catch (error) {
+    console.error("Error sending email:", error)
+    const errorMessage = error instanceof Error ? error.message : "Unknown email error"
+    return { success: false, message: errorMessage }
+  }
 }
