@@ -104,7 +104,7 @@ const FormField = ({
 
         return (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            {item.options.map((quantity) => (
+            {(item.options || []).map((quantity) => (
               <div key={quantity} className="flex items-center space-x-2">
                 <Checkbox
                   id={`${item.id}-${quantity}`}
@@ -157,7 +157,7 @@ const FormField = ({
                   <SelectValue placeholder={item.placeholder || "Select an option"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {item.options.map((option) => (
+                  {(item.options || []).map((option) => (
                     <SelectItem key={option} value={option}>
                       {option}
                     </SelectItem>
