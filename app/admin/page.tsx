@@ -43,6 +43,7 @@ import {
   forceSchemaReload,
   runBrandSchemaCorrection,
   sendTestEmail,
+  fixTableOwnership, // Add this import
 } from "./actions"
 import { BrandForm } from "./BrandForm"
 import { resolveAssetUrl } from "@/lib/utils"
@@ -101,6 +102,7 @@ export default function AdminDashboard() {
   const [isCorrectingSchema, setIsCorrectingSchema] = useState(false)
   const [testEmail, setTestEmail] = useState("")
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false)
+  const [isFixingOwnership, setIsFixingOwnership] = useState(false) // Add this line
 
   const isDevelopment = process.env.NODE_ENV === "development"
 
@@ -420,6 +422,25 @@ export default function AdminDashboard() {
       setMessage("An unexpected error occurred while sending the test email.")
     } finally {
       setIsSendingTestEmail(false)
+    }
+  }
+
+  const handleFixOwnership = async () => {
+    if (
+      !confirm(
+        "This will reset the ownership of the database tables. This is safe to run and can fix permission errors. Continue?",
+      )
+    )
+      return
+    setIsFixingOwnership(true)
+    setMessage("Resetting table ownership...")
+    try {
+      const result = await fixTableOwnership()
+      setMessage(result.message)
+    } catch (error) {
+      setMessage("An unexpected error occurred while fixing table ownership.")
+    } finally {
+      setIsFixingOwnership(false)
     }
   }
 
@@ -772,6 +793,27 @@ export default function AdminDashboard() {
                 <p className="text-sm text-muted-foreground">Use these actions for database maintenance and setup.</p>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Card className="p-4 flex flex-col justify-between border-red-500 border-2">
+                  <div>
+                    <h3 className="font-semibold text-red-700">Fix Table Ownership</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Run this if you see a "must be owner of table" error. This resets table permissions to the default
+                      admin user.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleFixOwnership}
+                    disabled={isFixingOwnership}
+                    className="mt-4 bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {isFixingOwnership ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Database className="mr-2 h-4 w-4" />
+                    )}
+                    Reset Ownership
+                  </Button>
+                </Card>
                 <Card className="p-4 flex flex-col justify-between border-blue-500 border-2">
                   <div>
                     <h3 className="font-semibold text-blue-700">Correct Brands Schema</h3>

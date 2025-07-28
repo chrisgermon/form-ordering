@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { X, Upload } from "lucide-react"
+import { X, Upload, Sparkles, Loader2 } from "lucide-react"
 import { resolveAssetUrl } from "@/lib/utils"
 import type { ClinicLocation } from "@/lib/types"
+import { scrapeLocationsFromUrl } from "./actions"
 
 interface Brand {
   id: string
@@ -51,6 +52,9 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     clinicLocations: [newLocation()],
   })
   const [isUploading, setIsUploading] = useState(false)
+  const [scrapeUrl, setScrapeUrl] = useState("")
+  const [isScraping, setIsScraping] = useState(false)
+  const [scrapeMessage, setScrapeMessage] = useState("")
 
   useEffect(() => {
     if (brand) {
@@ -72,6 +76,23 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
       })
     }
   }, [brand])
+
+  const handleScrape = async () => {
+    setIsScraping(true)
+    setScrapeMessage("")
+    const result = await scrapeLocationsFromUrl(scrapeUrl)
+    if (result.success && result.locations) {
+      const newLocations = result.locations.map((loc) => ({ name: loc, address: "", phone: "" }))
+      setFormData((prev) => ({
+        ...prev,
+        clinicLocations: newLocations.length > 0 ? newLocations : [newLocation()],
+      }))
+      setScrapeMessage(`Successfully found ${result.locations.length} locations.`)
+    } else {
+      setScrapeMessage(`Error: ${result.message || "An unknown error occurred."}`)
+    }
+    setIsScraping(false)
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value, type } = e.target
@@ -227,6 +248,23 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
         <Button type="button" variant="outline" size="sm" className="mt-2 bg-transparent" onClick={addEmail}>
           Add Email
         </Button>
+      </div>
+
+      <div>
+        <Label>Scrape Locations from URL (AI)</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="https://example.com/locations"
+            value={scrapeUrl}
+            onChange={(e) => setScrapeUrl(e.target.value)}
+            disabled={isScraping}
+          />
+          <Button type="button" onClick={handleScrape} disabled={isScraping || !scrapeUrl}>
+            {isScraping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            Scrape
+          </Button>
+        </div>
+        {scrapeMessage && <p className="text-sm text-muted-foreground mt-2">{scrapeMessage}</p>}
       </div>
 
       <div>
