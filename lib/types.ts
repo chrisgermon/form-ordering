@@ -38,11 +38,12 @@ export interface Brand {
   active: boolean
   clinics?: Clinic[] | string[]
   created_at: string
-  updated_at: string
+  updated_at?: string
   product_sections?: ProductSection[]
 }
 
 export interface Clinic {
+  id?: string
   name: string
   email?: string
   address?: string
@@ -51,11 +52,11 @@ export interface Clinic {
 export interface ProductSection {
   id: string
   brand_id: string
-  name: string
+  title: string
   description?: string
   sort_order: number
   created_at: string
-  updated_at: string
+  updated_at?: string
   product_items?: ProductItem[]
 }
 
@@ -66,7 +67,9 @@ export interface ProductItem {
   description?: string
   sort_order: number
   created_at: string
-  updated_at: string
+  updated_at?: string
+  quantities?: string[]
+  sample_link?: string
 }
 
 export interface Submission {

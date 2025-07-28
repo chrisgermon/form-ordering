@@ -1,95 +1,118 @@
 "use client"
 
-import { useState } from "react"
-import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import * as z from "zod"
+import { useForm } from "react-hook-form"
+import { z } from "zod"
 import { Button } from "@/components/ui/button"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { toast } from "sonner"
-import type { Brand, ProductSection, Item } from "@/lib/types"
+import type { BrandWithSections, OrderItem, ProductItem } from "@/lib/types"
+import { useState } from "react"
+import Link from "next/link"
 import Image from "next/image"
 
-const formSchema = z.object({
-  orderedBy: z.string().min(1, "Your name is required"),
-  email: z.string().email("Invalid email address"),
-  phone: z.string().optional(),
-  billTo: z.string().min(1, "Billing address is required"),
-  deliverTo: z.string().min(1, "Delivery address is required"),
-  items: z
-    .record(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        quantity: z.string(),
-        customQuantity: z.string().optional(),
-      }),
-    )
-    .optional(),
-  specialInstructions: z.string().optional(),
+const orderItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  quantity: z.union([z.string(), z.number()]).optional(),
+  notes: z.string().optional(),
+  selected: z.boolean().optional(),
 })
 
-type FormValues = z.infer<typeof formSchema>
+const orderFormSchema = z.object({
+  orderedBy: z.string().min(1, "Your name is required."),
+  email: z.string().email("A valid email is required."),
+  phone: z.string().min(1, "A phone number is required."),
+  billTo: z.string().min(1, "Billing address is required."),
+  deliverTo: z.string().min(1, "Delivery address is required."),
+  specialInstructions: z.string().optional(),
+  items: z.record(orderItemSchema),
+})
 
-interface OrderFormProps {
-  brand: Brand & {
-    product_sections: (ProductSection & {
-      product_items: Item[]
-    })[]
-  }
+type OrderFormValues = z.infer<typeof orderFormSchema>
+
+type BrandWithProductItems = BrandWithSections & {
+  product_sections: Array<{
+    product_items: ProductItem[]
+  }>
 }
 
-export default function OrderForm({ brand }: OrderFormProps) {
+export default function OrderForm({ brand }: { brand: BrandWithProductItems }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const {
-    register,
-    handleSubmit,
-    control,
-    watch,
-    formState: { errors },
-  } = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+  const initialItems = brand.product_sections.flatMap((section) => section.product_items)
+  const defaultItems = initialItems.reduce(
+    (acc, item) => {
+      acc[item.id] = {
+        id: item.id,
+        name: item.name,
+        quantity: item.quantities?.[0]?.toString() ?? "0",
+        notes: "",
+        selected: false,
+      }
+      return acc
+    },
+    {} as Record<string, z.infer<typeof orderItemSchema>>,
+  )
+
+  const form = useForm<OrderFormValues>({
+    resolver: zodResolver(orderFormSchema),
     defaultValues: {
       orderedBy: "",
       email: "",
       phone: "",
       billTo: "",
       deliverTo: "",
-      items: {},
       specialInstructions: "",
+      items: defaultItems,
     },
   })
 
-  const watchedItems = watch("items")
-
-  const onSubmit = async (data: FormValues) => {
+  async function onSubmit(data: OrderFormValues) {
     setIsSubmitting(true)
     const toastId = toast.loading("Submitting your order...")
 
-    const itemsToSubmit = Object.fromEntries(
-      Object.entries(data.items || {}).filter(
-        ([, item]) => (item.quantity && item.quantity !== "0") || (item.quantity === "other" && item.customQuantity),
-      ),
-    )
+    const orderedItems: OrderItem[] = Object.values(data.items)
+      .filter((item) => {
+        const hasQuantity = item.quantity && Number(item.quantity) > 0
+        const isSelected = item.selected === true
+        return hasQuantity || isSelected
+      })
+      .map((item) => ({
+        name: item.name,
+        quantity: item.selected ? 1 : Number(item.quantity!),
+        notes: item.notes,
+      }))
 
-    const payload = {
-      ...data,
-      items: itemsToSubmit,
+    if (orderedItems.length === 0) {
+      toast.error("Please select at least one item.", { id: toastId })
+      setIsSubmitting(false)
+      return
+    }
+
+    const submissionData = {
       brandId: brand.id,
       brandName: brand.name,
       brandEmail: brand.email,
+      orderedBy: data.orderedBy,
+      email: data.email,
+      phone: data.phone,
+      billTo: data.billTo,
+      deliverTo: data.deliverTo,
+      items: orderedItems,
+      specialInstructions: data.specialInstructions,
     }
 
     try {
       const response = await fetch("/api/submit-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(submissionData),
       })
 
       const result = await response.json()
@@ -101,11 +124,8 @@ export default function OrderForm({ brand }: OrderFormProps) {
       toast.success("Order submitted successfully!", {
         id: toastId,
         description: "You will receive a confirmation email shortly.",
-        action: {
-          label: "View PDF",
-          onClick: () => window.open(result.pdfUrl, "_blank"),
-        },
       })
+      form.reset()
     } catch (error) {
       console.error("Submission failed:", error)
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred."
@@ -117,13 +137,6 @@ export default function OrderForm({ brand }: OrderFormProps) {
       setIsSubmitting(false)
     }
   }
-
-  const validClinics =
-    brand.clinics?.filter((c) => {
-      if (typeof c === "string") return c.trim() !== ""
-      if (typeof c === "object" && c !== null) return c.name && c.name.trim() !== ""
-      return false
-    }) || []
 
   return (
     <div className="container mx-auto p-4 md:p-8">
@@ -142,169 +155,190 @@ export default function OrderForm({ brand }: OrderFormProps) {
           <CardDescription>Please fill out the form below to place your order.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="orderedBy">Your Name</Label>
-                <Input id="orderedBy" {...register("orderedBy")} />
-                {errors.orderedBy && <p className="text-red-500 text-sm">{errors.orderedBy.message}</p>}
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+              <div className="grid md:grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="orderedBy"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Your Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="John Doe" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input placeholder="you@example.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone Number</FormLabel>
+                      <FormControl>
+                        <Input placeholder="0400 000 000" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Your Email</Label>
-                <Input id="email" type="email" {...register("email")} />
-                {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number (Optional)</Label>
-                <Input id="phone" type="tel" {...register("phone")} />
-              </div>
-            </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="billTo">Bill To</Label>
-                {validClinics.length > 0 ? (
-                  <Controller
-                    name="billTo"
-                    control={control}
-                    render={({ field }) => (
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a clinic or enter address" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {validClinics.map((clinic, index) => {
-                            const clinicName = typeof clinic === "string" ? clinic : clinic.name
-                            const clinicValue =
-                              typeof clinic === "string" ? clinic : `${clinic.name}\n${clinic.address}`
-                            return (
-                              <SelectItem key={index} value={clinicValue}>
-                                {clinicName}
-                              </SelectItem>
-                            )
-                          })}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                ) : (
-                  <Textarea id="billTo" {...register("billTo")} placeholder="Enter billing address" />
-                )}
-                {errors.billTo && <p className="text-red-500 text-sm">{errors.billTo.message}</p>}
+              <div className="grid md:grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="billTo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Bill To</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="Billing address or instructions" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="deliverTo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Deliver To</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="Delivery address" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="deliverTo">Deliver To</Label>
-                {validClinics.length > 0 ? (
-                  <Controller
-                    name="deliverTo"
-                    control={control}
-                    render={({ field }) => (
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a clinic or enter address" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {validClinics.map((clinic, index) => {
-                            const clinicName = typeof clinic === "string" ? clinic : clinic.name
-                            const clinicValue =
-                              typeof clinic === "string" ? clinic : `${clinic.name}\n${clinic.address}`
-                            return (
-                              <SelectItem key={index} value={clinicValue}>
-                                {clinicName}
-                              </SelectItem>
-                            )
-                          })}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                ) : (
-                  <Textarea id="deliverTo" {...register("deliverTo")} placeholder="Enter delivery address" />
-                )}
-                {errors.deliverTo && <p className="text-red-500 text-sm">{errors.deliverTo.message}</p>}
-              </div>
-            </div>
 
-            <div className="space-y-6">
-              {brand.product_sections.map((section) => (
-                <div key={section.id}>
-                  <h3 className="text-xl font-semibold mb-4 border-b pb-2">{section.title}</h3>
-                  <div className="space-y-4">
-                    {section.product_items.map((item) => {
-                      const itemKey = `items.${item.id}`
-                      const watchedQuantity = watchedItems?.[item.id]?.quantity
-
-                      return (
-                        <div key={item.id} className="grid md:grid-cols-3 gap-4 items-center">
-                          <div className="md:col-span-2">
-                            <Label htmlFor={itemKey}>{item.name}</Label>
-                            <p className="text-sm text-muted-foreground">{item.description}</p>
+              <div className="space-y-6">
+                {brand.product_sections.map((section) => (
+                  <div key={section.id}>
+                    <h3 className="text-xl font-semibold mb-4 border-b pb-2">{section.title}</h3>
+                    <div className="space-y-4">
+                      {section.product_items.map((item) => (
+                        <div key={item.id} className="grid md:grid-cols-[1fr_auto_1fr] gap-4 items-start">
+                          <div>
+                            <p className="font-medium">{item.name}</p>
+                            {item.description && <p className="text-sm text-muted-foreground">{item.description}</p>}
                             {item.sample_link && (
-                              <a
+                              <Link
                                 href={item.sample_link}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-sm text-blue-600 hover:underline"
                               >
                                 View Sample
-                              </a>
+                              </Link>
                             )}
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Controller
-                              name={`${itemKey}.quantity` as const}
-                              control={control}
-                              render={({ field }) => (
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select quantity" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="0">0</SelectItem>
-                                    {item.quantities.map((q) => (
-                                      <SelectItem key={q} value={String(q)}>
-                                        {q}
-                                      </SelectItem>
-                                    ))}
-                                    <SelectItem value="other">Other</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              )}
-                            />
-                            {watchedQuantity === "other" && (
-                              <Input
-                                type="number"
-                                placeholder="Qty"
-                                {...register(`${itemKey}.customQuantity` as const)}
-                                className="w-24"
+
+                          <div className="flex items-center justify-center pt-2">
+                            {item.quantities && Array.isArray(item.quantities) && item.quantities.length > 0 ? (
+                              <FormField
+                                control={form.control}
+                                name={`items.${item.id}.quantity`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value?.toString()}>
+                                      <FormControl>
+                                        <SelectTrigger className="w-[120px]">
+                                          <SelectValue placeholder="Select" />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent>
+                                        <SelectItem value="0">0</SelectItem>
+                                        {item.quantities.map((q, i) => (
+                                          <SelectItem key={i} value={q.toString()}>
+                                            {q}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            ) : (
+                              <FormField
+                                control={form.control}
+                                name={`items.${item.id}.selected`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormControl>
+                                      <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
                               />
                             )}
-                            <input type="hidden" {...register(`${itemKey}.id` as const)} value={item.id} />
-                            <input type="hidden" {...register(`${itemKey}.name` as const)} value={item.name} />
                           </div>
+
+                          <FormField
+                            control={form.control}
+                            name={`items.${item.id}.notes`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="sr-only">Notes</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="Notes (optional)" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
                         </div>
-                      )
-                    })}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="specialInstructions">Special Instructions</Label>
-              <Textarea
-                id="specialInstructions"
-                {...register("specialInstructions")}
-                placeholder="Any special requests or notes for your order..."
-              />
-            </div>
+              <div className="space-y-2">
+                <FormLabel htmlFor="specialInstructions">Special Instructions</FormLabel>
+                <FormField
+                  control={form.control}
+                  name="specialInstructions"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Textarea
+                          id="specialInstructions"
+                          placeholder="Any other instructions for your order..."
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
-            <CardFooter className="p-0 pt-6">
-              <Button type="submit" disabled={isSubmitting} className="w-full">
-                {isSubmitting ? "Submitting..." : "Submit Order"}
-              </Button>
-            </CardFooter>
-          </form>
+              <CardFooter className="p-0 pt-6">
+                <Button type="submit" disabled={isSubmitting} className="w-full">
+                  {isSubmitting ? "Submitting..." : "Submit Order"}
+                </Button>
+              </CardFooter>
+            </form>
+          </Form>
         </CardContent>
       </Card>
     </div>

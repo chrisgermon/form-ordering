@@ -9,7 +9,7 @@ interface PageProps {
   }
 }
 
-type BrandWithSections = Brand & {
+type BrandWithSectionsAndItems = Brand & {
   product_sections: Array<
     ProductSection & {
       product_items: ProductItem[]
@@ -43,7 +43,7 @@ export default async function BrandFormPage({ params }: PageProps) {
   }
 
   // Sort sections and items by sort_order
-  const sortedBrand: BrandWithSections = {
+  const sortedBrand: BrandWithSectionsAndItems = {
     ...brandData,
     product_sections: (brandData.product_sections || [])
       .sort((a, b) => a.sort_order - b.sort_order)
