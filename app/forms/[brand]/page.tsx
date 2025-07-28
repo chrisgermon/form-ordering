@@ -8,11 +8,9 @@ export const revalidate = 0 // Revalidate data on every request
 async function getBrandData(slug: string): Promise<BrandData | null> {
   const supabase = createAdminClient()
 
-  // Step 1: Fetch the brand by slug, ensuring it's active
+  // Step 1: Fetch the brand by slug, trying the ideal schema first.
   let brand: any
   let brandError: any
-
-  // Try fetching with the ideal schema first (plural 'emails')
   ;({ data: brand, error: brandError } = await supabase
     .from("brands")
     .select("id, name, slug, logo, emails, clinic_locations, active")
@@ -20,35 +18,27 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     .eq("active", true)
     .maybeSingle())
 
-  // If that fails due to a missing column, try a fallback
+  // If the first attempt fails with a "column does not exist" error, try a safer fallback.
   if (brandError && brandError.code === "42703") {
     console.warn("Fallback initiated for getBrandData due to schema error:", brandError.message)
 
-    // This query attempts to select legacy column names
+    // This query is safer and only selects columns that are less likely to be missing.
+    // It also tries to get the legacy 'email' column.
     const { data: fallbackBrand, error: fallbackError } = await supabase
       .from("brands")
-      .select("id, name, slug, logo, email, clinic_locations, active") // Note: 'email' (singular)
+      .select("id, name, slug, logo, email, active") // Note: 'email' and no 'clinic_locations'
       .eq("slug", slug)
       .eq("active", true)
       .maybeSingle()
 
     if (fallbackError) {
-      // If even the fallback fails, log the error and exit
-      console.error(`Error fetching brand with fallback:`, JSON.stringify(fallbackError, null, 2))
+      // If even this very safe fallback fails, there's a bigger problem.
+      console.error(`Error fetching brand with final fallback:`, JSON.stringify(fallbackError, null, 2))
       return null
     }
-
     brand = fallbackBrand
-
-    // Normalize the data: ensure 'emails' property exists and is an array
-    if (brand && brand.email) {
-      brand.emails = Array.isArray(brand.email) ? brand.email : [brand.email]
-      delete brand.email // remove the old property
-    } else if (brand) {
-      brand.emails = [] // ensure it's at least an empty array
-    }
   } else if (brandError) {
-    // If there was an error other than missing column, log it and exit
+    // Handle non-schema errors from the first attempt
     console.error(`Error fetching brand:`, JSON.stringify(brandError, null, 2))
     return null
   }
@@ -58,12 +48,23 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
     return null
   }
 
-  // Ensure clinic_locations is an array if it's null
+  // Step 2: Normalize the fetched brand data to match the expected BrandData type.
+  // This ensures that downstream components don't break if columns were missing.
+
+  // Normalize 'emails'
+  if (brand.email) {
+    brand.emails = Array.isArray(brand.email) ? brand.email : [brand.email]
+    delete brand.email
+  } else if (!brand.emails) {
+    brand.emails = []
+  }
+
+  // Normalize 'clinic_locations'
   if (!brand.clinic_locations) {
     brand.clinic_locations = []
   }
 
-  // Step 2: Fetch all product sections for this brand
+  // Step 3: Fetch all product sections for this brand
   const { data: sections, error: sectionsError } = await supabase
     .from("product_sections")
     .select("*")
@@ -72,11 +73,10 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
 
   if (sectionsError) {
     console.error(`Error fetching sections for brand '${slug}':`, sectionsError.message)
-    // Return the brand but with empty sections, preventing a 404
     return { ...brand, product_sections: [] } as BrandData
   }
 
-  // Step 3: For each section, fetch its product items
+  // Step 4: For each section, fetch its product items
   const sectionsWithItems = await Promise.all(
     (sections || []).map(async (section) => {
       const { data: items, error: itemsError } = await supabase
@@ -87,14 +87,13 @@ async function getBrandData(slug: string): Promise<BrandData | null> {
 
       if (itemsError) {
         console.error(`Error fetching items for section '${section.title}':`, itemsError.message)
-        // If items fail to load, return the section with an empty item list
         return { ...section, product_items: [] }
       }
       return { ...section, product_items: items || [] }
     }),
   )
 
-  // Step 4: Assemble and return the final BrandData object
+  // Step 5: Assemble and return the final BrandData object
   return {
     ...brand,
     product_sections: sectionsWithItems,
