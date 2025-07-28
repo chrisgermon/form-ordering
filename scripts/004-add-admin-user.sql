@@ -20,13 +20,14 @@ BEGIN
     SELECT id INTO instance_id FROM auth.instances LIMIT 1;
 
     -- Insert the user into auth.users
+    -- We are omitting `confirmed_at` to let the database handle its default value.
     INSERT INTO auth.users (
         instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-        raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmed_at
+        raw_app_meta_data, raw_user_meta_data, created_at, updated_at
     )
     VALUES (
         instance_id, user_id, 'authenticated', 'authenticated', user_email, crypt(user_password, gen_salt('bf')), now(),
-        '{"provider":"email","providers":["email"]}', '{}', now(), now(), now()
+        '{"provider":"email","providers":["email"]}', '{}', now(), now()
     );
 
     -- Insert the identity for the user

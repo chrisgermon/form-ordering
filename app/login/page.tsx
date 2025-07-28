@@ -1,44 +1,61 @@
+"use client"
+
+import { useFormState, useFormStatus } from "react-dom"
 import { signIn } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AlertCircle } from "lucide-react"
 
-export default function LoginPage({ searchParams }: { searchParams: { message: string } }) {
+function SubmitButton() {
+  const { pending } = useFormStatus()
+
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
-      <Card className="w-full max-w-md mx-4">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Admin Login</CardTitle>
-          <CardDescription>
-            Enter your credentials to access the admin panel.
-            <br />
-            Use <strong>chris@crowdit.com.au</strong> and password <strong>password</strong>.
-          </CardDescription>
+    <Button type="submit" className="w-full" aria-disabled={pending}>
+      {pending ? "Signing In..." : "Sign In"}
+    </Button>
+  )
+}
+
+export default function LoginPage() {
+  const [state, formAction] = useFormState(signIn, null)
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-950">
+      <Card className="mx-auto max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-2xl">Login</CardTitle>
+          <CardDescription>Enter your email below to login to your account</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={signIn} className="space-y-4">
-            <div className="space-y-2">
+          <form action={formAction} className="grid gap-4">
+            <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
-                name="email"
                 type="email"
-                placeholder="chris@crowdit.com.au"
+                name="email"
+                placeholder="m@example.com"
                 required
                 defaultValue="chris@crowdit.com.au"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+            <div className="grid gap-2">
+              <div className="flex items-center">
+                <Label htmlFor="password">Password</Label>
+              </div>
               <Input id="password" name="password" type="password" required defaultValue="password" />
             </div>
-            <Button type="submit" className="w-full">
-              Sign In
-            </Button>
-            {searchParams?.message && (
-              <p className="mt-4 p-4 bg-red-100 text-red-700 text-center rounded-md">{searchParams.message}</p>
+            {state?.error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{state.error}</AlertDescription>
+              </Alert>
             )}
+            <SubmitButton />
           </form>
         </CardContent>
       </Card>
