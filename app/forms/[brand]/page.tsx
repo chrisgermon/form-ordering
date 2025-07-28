@@ -1,48 +1,48 @@
 import { notFound } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
-import { OrderForm } from "@/components/order-form"
-import type { Brand, ProductSection, ProductItem } from "@/lib/types"
+import OrderForm from "@/components/order-form"
+import type { Brand } from "@/lib/types"
 
-type BrandWithSections = Brand & {
-  product_sections: Array<
-    ProductSection & {
-      product_items: ProductItem[]
-    }
-  >
+interface PageProps {
+  params: Promise<{ brand: string }>
 }
 
-export default async function BrandFormPage({ params }: { params: { brand: string } }) {
+export default async function BrandFormPage({ params }: PageProps) {
+  const { brand: brandSlug } = await params
+
   const supabase = createServerSupabaseClient()
 
-  // Fetch brand data with sections and items
-  const { data: brand, error } = await supabase
+  // Fetch brand with nested sections and items
+  const { data: brandData, error } = await supabase
     .from("brands")
     .select(`
       *,
       product_sections (
         *,
-        product_items (*)
+        items:product_items (*)
       )
     `)
-    .eq("slug", params.brand)
-    .eq("active", true)
+    .eq("slug", brandSlug)
     .single()
 
-  if (error || !brand) {
+  if (error || !brandData) {
     console.error("Error fetching brand:", error)
     notFound()
   }
 
-  // Sort sections and items by sort_order
-  const sortedBrand: BrandWithSections = {
-    ...brand,
-    product_sections: (brand.product_sections || [])
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .map((section) => ({
-        ...section,
-        product_items: (section.product_items || []).sort((a, b) => a.sort_order - b.sort_order),
-      })),
+  // Sort sections and items by order_index
+  if (brandData.product_sections) {
+    brandData.product_sections.sort((a: any, b: any) => a.order_index - b.order_index)
+    brandData.product_sections.forEach((section: any) => {
+      if (section.items) {
+        section.items.sort((a: any, b: any) => a.order_index - b.order_index)
+      }
+    })
   }
 
-  return <OrderForm brandData={sortedBrand} />
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <OrderForm brandData={brandData as Brand} />
+    </div>
+  )
 }
