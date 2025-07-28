@@ -59,8 +59,10 @@ export function OrderForm({ brandData }: OrderFormProps) {
     items: {},
   })
 
-  // Safely access clinics with proper fallback
-  const clinics = Array.isArray(brandData?.clinics) ? brandData.clinics : []
+  // Safely access clinics with proper fallback and filtering
+  const clinics = Array.isArray(brandData?.clinics)
+    ? brandData.clinics.filter((clinic) => clinic && clinic.name && clinic.name.trim() !== "")
+    : []
   const productSections = Array.isArray(brandData?.product_sections) ? brandData.product_sections : []
 
   const filteredSections = productSections
@@ -211,48 +213,60 @@ export function OrderForm({ brandData }: OrderFormProps) {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <Label htmlFor="billTo">Bill To Clinic *</Label>
-                    <Select value={formData.billTo} onValueChange={(value) => handleInputChange("billTo", value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select clinic" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clinics.length > 0 ? (
-                          clinics.map((clinic) => (
-                            <SelectItem key={clinic.name} value={clinic.name}>
+                    {clinics.length > 0 ? (
+                      <Select value={formData.billTo} onValueChange={(value) => handleInputChange("billTo", value)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select clinic" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clinics.map((clinic, index) => (
+                            <SelectItem key={`bill-${index}`} value={clinic.name}>
                               {clinic.name}
                             </SelectItem>
-                          ))
-                        ) : (
-                          <SelectItem value="default" disabled>
-                            No clinics available
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        placeholder="No clinics configured - enter manually"
+                        value={formData.billTo}
+                        onChange={(e) => handleInputChange("billTo", e.target.value)}
+                      />
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="deliverTo">Deliver To Clinic *</Label>
-                    <Select value={formData.deliverTo} onValueChange={(value) => handleInputChange("deliverTo", value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select delivery location" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clinics.length > 0 ? (
-                          clinics.map((clinic) => (
-                            <SelectItem key={clinic.name} value={`${clinic.name} - ${clinic.address}`}>
-                              <div className="flex flex-col">
-                                <span>{clinic.name}</span>
-                                <span className="text-sm text-muted-foreground">{clinic.address}</span>
-                              </div>
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <SelectItem value="default" disabled>
-                            No clinics available
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                    {clinics.length > 0 ? (
+                      <Select
+                        value={formData.deliverTo}
+                        onValueChange={(value) => handleInputChange("deliverTo", value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select delivery location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clinics.map((clinic, index) => {
+                            const deliveryValue = clinic.address ? `${clinic.name} - ${clinic.address}` : clinic.name
+                            return (
+                              <SelectItem key={`deliver-${index}`} value={deliveryValue}>
+                                <div className="flex flex-col">
+                                  <span>{clinic.name}</span>
+                                  {clinic.address && (
+                                    <span className="text-sm text-muted-foreground">{clinic.address}</span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        placeholder="No clinics configured - enter delivery address manually"
+                        value={formData.deliverTo}
+                        onChange={(e) => handleInputChange("deliverTo", e.target.value)}
+                      />
+                    )}
                   </div>
                 </div>
                 <div>
@@ -289,86 +303,96 @@ export function OrderForm({ brandData }: OrderFormProps) {
                 </div>
 
                 <div className="space-y-6">
-                  {filteredSections.map((section) => (
-                    <div key={section.id}>
-                      <h3 className="mb-4 text-lg font-semibold text-gray-900">{section.title}</h3>
-                      <div className="grid gap-4">
-                        {section.product_items.map((item) => {
-                          const quantities = Array.isArray(item.quantities) ? item.quantities : []
-                          return (
-                            <Card key={item.id} className="p-4">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <h4 className="font-medium">{item.name}</h4>
-                                    {item.sample_link && (
-                                      <a
-                                        href={item.sample_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 hover:text-blue-800"
-                                      >
-                                        <ExternalLink className="h-4 w-4" />
-                                      </a>
+                  {filteredSections.length > 0 ? (
+                    filteredSections.map((section) => (
+                      <div key={section.id}>
+                        <h3 className="mb-4 text-lg font-semibold text-gray-900">{section.title}</h3>
+                        <div className="grid gap-4">
+                          {section.product_items.map((item) => {
+                            const quantities = Array.isArray(item.quantities) ? item.quantities : []
+                            return (
+                              <Card key={item.id} className="p-4">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <h4 className="font-medium">{item.name}</h4>
+                                      {item.sample_link && (
+                                        <a
+                                          href={item.sample_link}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-blue-600 hover:text-blue-800"
+                                        >
+                                          <ExternalLink className="h-4 w-4" />
+                                        </a>
+                                      )}
+                                    </div>
+                                    {item.description && (
+                                      <p className="text-sm text-gray-600 mb-3">{item.description}</p>
                                     )}
-                                  </div>
-                                  {item.description && <p className="text-sm text-gray-600 mb-3">{item.description}</p>}
-                                  <div className="flex flex-wrap gap-2">
-                                    {quantities.map((quantity) => {
-                                      const itemKey = `${item.id}-${quantity}`
-                                      const isSelected = !!formData.items[itemKey]
+                                    <div className="flex flex-wrap gap-2">
+                                      {quantities.map((quantity) => {
+                                        const itemKey = `${item.id}-${quantity}`
+                                        const isSelected = !!formData.items[itemKey]
 
-                                      if (quantity === "other") {
+                                        if (quantity === "other") {
+                                          return (
+                                            <div key={quantity} className="flex items-center gap-2">
+                                              <Checkbox
+                                                id={itemKey}
+                                                checked={isSelected}
+                                                onCheckedChange={(checked) => {
+                                                  if (checked) {
+                                                    const customQuantity = prompt("Enter custom quantity:")
+                                                    if (customQuantity) {
+                                                      handleItemToggle(item, quantity, customQuantity)
+                                                    }
+                                                  } else {
+                                                    handleItemToggle(item, quantity)
+                                                  }
+                                                }}
+                                              />
+                                              <Label htmlFor={itemKey} className="text-sm">
+                                                Other
+                                                {isSelected && formData.items[itemKey].customQuantity && (
+                                                  <span className="ml-1 text-gray-500">
+                                                    ({formData.items[itemKey].customQuantity})
+                                                  </span>
+                                                )}
+                                              </Label>
+                                            </div>
+                                          )
+                                        }
+
                                         return (
                                           <div key={quantity} className="flex items-center gap-2">
                                             <Checkbox
                                               id={itemKey}
                                               checked={isSelected}
-                                              onCheckedChange={(checked) => {
-                                                if (checked) {
-                                                  const customQuantity = prompt("Enter custom quantity:")
-                                                  if (customQuantity) {
-                                                    handleItemToggle(item, quantity, customQuantity)
-                                                  }
-                                                } else {
-                                                  handleItemToggle(item, quantity)
-                                                }
-                                              }}
+                                              onCheckedChange={() => handleItemToggle(item, quantity)}
                                             />
                                             <Label htmlFor={itemKey} className="text-sm">
-                                              Other
-                                              {isSelected && formData.items[itemKey].customQuantity && (
-                                                <span className="ml-1 text-gray-500">
-                                                  ({formData.items[itemKey].customQuantity})
-                                                </span>
-                                              )}
+                                              {quantity}
                                             </Label>
                                           </div>
                                         )
-                                      }
-
-                                      return (
-                                        <div key={quantity} className="flex items-center gap-2">
-                                          <Checkbox
-                                            id={itemKey}
-                                            checked={isSelected}
-                                            onCheckedChange={() => handleItemToggle(item, quantity)}
-                                          />
-                                          <Label htmlFor={itemKey} className="text-sm">
-                                            {quantity}
-                                          </Label>
-                                        </div>
-                                      )
-                                    })}
+                                      })}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </Card>
-                          )
-                        })}
+                              </Card>
+                            )
+                          })}
+                        </div>
                       </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">
+                        {searchTerm ? `No items found matching "${searchTerm}"` : "No items available"}
+                      </p>
                     </div>
-                  ))}
+                  )}
                 </div>
               </CardContent>
             </Card>

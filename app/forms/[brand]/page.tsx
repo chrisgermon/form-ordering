@@ -1,13 +1,8 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { notFound } from "next/navigation"
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
 import { OrderForm } from "@/components/order-form"
 import type { Brand, ProductSection, ProductItem } from "@/lib/types"
-import { notFound } from "next/navigation"
-
-type BrandPageProps = {
-  params: {
-    brand: string
-  }
-}
 
 type FormBrandData = Brand & {
   product_sections: Array<
@@ -17,36 +12,36 @@ type FormBrandData = Brand & {
   >
 }
 
-async function getBrandData(slug: string): Promise<FormBrandData | null> {
-  const supabase = createServerSupabaseClient()
-  const { data, error } = await supabase
+async function getBrandData(brandSlug: string): Promise<FormBrandData | null> {
+  const supabase = createServerComponentClient({ cookies })
+
+  const { data: brand, error } = await supabase
     .from("brands")
-    .select(
-      `
+    .select(`
       *,
       product_sections (
         *,
-        product_items (
-          *
-        )
+        product_items (*)
       )
-    `,
-    )
-    .eq("slug", slug)
-    .eq("active", true)
-    .order("sort_order", { foreignTable: "product_sections" })
-    .order("sort_order", { foreignTable: "product_sections.product_items" })
+    `)
+    .eq("slug", brandSlug)
     .single()
 
-  if (error) {
-    console.error("Error fetching brand data:", error)
+  if (error || !brand) {
+    console.error("Error fetching brand:", error)
     return null
   }
 
-  return data
+  return brand as FormBrandData
 }
 
-export default async function BrandPage({ params }: BrandPageProps) {
+interface PageProps {
+  params: {
+    brand: string
+  }
+}
+
+export default async function BrandFormPage({ params }: PageProps) {
   const brandData = await getBrandData(params.brand)
 
   if (!brandData) {
