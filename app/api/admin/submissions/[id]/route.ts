@@ -4,7 +4,6 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server"
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { delivery_details, expected_delivery_date } = await request.json()
-
     const supabase = createAdminSupabaseClient()
 
     const { data, error } = await supabase
@@ -24,9 +23,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: "Failed to update submission" }, { status: 500 })
     }
 
-    return NextResponse.json(data)
+    return NextResponse.json({ success: true, data })
   } catch (error) {
-    console.error("Error processing request:", error)
+    console.error("Error in PUT /api/admin/submissions/[id]:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

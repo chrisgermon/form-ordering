@@ -163,3 +163,6 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+// Export the named function for compatibility
+export const submitOrder = POST

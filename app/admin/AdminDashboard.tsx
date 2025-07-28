@@ -57,11 +57,11 @@ export default function AdminDashboard({ initialSubmissions, initialBrands }: Ad
     <div className="flex min-h-screen w-full flex-col bg-muted/40">
       <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
         <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto">
           <Link href="/">
-            <Button variant="outline" size="sm" className="gap-1 bg-transparent">
-              <Home className="h-3.5 w-3.5" />
-              <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">View Forms</span>
+            <Button variant="outline" size="sm" className="gap-2 bg-transparent">
+              <Home className="h-4 w-4" />
+              View Forms
             </Button>
           </Link>
         </div>

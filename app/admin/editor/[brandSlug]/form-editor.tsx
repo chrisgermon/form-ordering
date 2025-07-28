@@ -1,7 +1,8 @@
 "use client"
 
-import React, { useEffect, useActionState } from "react"
+import React, { useEffect } from "react"
 import { useForm, useFieldArray, Controller } from "react-hook-form"
+import { useFormState } from "react-dom"
 import { DndProvider, useDrag, useDrop } from "react-dnd"
 import { HTML5Backend } from "react-dnd-html5-backend"
 import { Button } from "@/components/ui/button"
@@ -23,7 +24,7 @@ const ItemTypes = {
 
 export function FormEditor({ initialData }: { initialData: BrandForEditor }) {
   const router = useRouter()
-  const [state, formAction] = useActionState(saveForm, { success: false, error: null, brand: null })
+  const [state, formAction] = useFormState(saveForm, { success: false, error: null, brand: null })
 
   const form = useForm<FormData>({
     defaultValues: {

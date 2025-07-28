@@ -1,475 +1,401 @@
 "use client"
+
+import type React from "react"
+
 import { useState } from "react"
-import { useForm, FormProvider, useFormContext, useWatch } from "react-hook-form"
-import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CalendarIcon, Loader2, Send, CheckCircle, XCircle, ArrowLeft, Search } from "lucide-react"
-import { format } from "date-fns"
-import { cn } from "@/lib/utils"
-import type { Brand, ProductItem, ProductSection } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { Search, ShoppingCart, User, ExternalLink } from "lucide-react"
+import { toast } from "sonner"
+import type { Brand, ProductSection, ProductItem } from "@/lib/types"
 
-interface OrderFormProps {
-  brand: Brand & {
-    product_sections: Array<ProductSection & { product_items: ProductItem[] }>
-  }
+type FormBrandData = Brand & {
+  product_sections: Array<
+    ProductSection & {
+      product_items: ProductItem[]
+    }
+  >
 }
 
-interface FormValues {
+interface OrderFormProps {
+  brand: FormBrandData
+}
+
+interface FormData {
   orderedBy: string
   email: string
   billTo: string
   deliverTo: string
-  date?: Date
-  items: Record<string, { quantity?: string; customQuantity?: string }>
-}
-
-const ItemRow = ({ item }: { item: ProductItem }) => {
-  const { setValue, watch, register } = useFormContext<FormValues>()
-  const itemState = watch(`items.${item.id}`)
-  const selectedQuantity = itemState?.quantity
-
-  const handleSelect = (quantity: string, checked: boolean) => {
-    if (checked) {
-      setValue(`items.${item.id}.quantity`, quantity, { shouldValidate: true })
-    } else if (selectedQuantity === quantity) {
-      setValue(`items.${item.id}.quantity`, undefined, { shouldValidate: true })
-      setValue(`items.${item.id}.customQuantity`, "", { shouldValidate: true })
+  date: string
+  items: Record<
+    string,
+    {
+      name: string
+      code: string
+      quantity: string
+      customQuantity?: string
+      description?: string
     }
-  }
-
-  const isOtherSelected = selectedQuantity === "other"
-  const quantities = Array.isArray(item.quantities) ? item.quantities : []
-
-  return (
-    <div className="py-4 border-b border-gray-300 last:border-b-0">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-1 space-y-1">
-          <p className="font-bold text-gray-800">CODE: {item.code}</p>
-          <p className="font-semibold text-gray-700">ITEM: {item.name}</p>
-          {item.description && <p className="text-sm text-gray-600">DESCRIPTION: {item.description}</p>}
-          {item.sample_link && (
-            <a
-              href={item.sample_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block mt-1 px-3 py-1 bg-sky-500 text-white text-xs rounded-lg hover:bg-sky-600"
-            >
-              CHECK HERE
-            </a>
-          )}
-        </div>
-        <div className="md:col-span-2 flex flex-wrap items-center gap-x-6 gap-y-2">
-          {quantities.map((quantity) => (
-            <div key={String(quantity)} className="flex items-center space-x-2">
-              <Checkbox
-                id={`${item.id}-${quantity}`}
-                checked={selectedQuantity === String(quantity)}
-                onCheckedChange={(checked) => handleSelect(String(quantity), !!checked)}
-              />
-              <label htmlFor={`${item.id}-${quantity}`} className="text-sm font-medium text-gray-700">
-                {String(quantity)}
-              </label>
-            </div>
-          ))}
-          {isOtherSelected && (
-            <Input
-              type="text"
-              placeholder="Enter quantity"
-              className="h-8 w-40 border-gray-400"
-              {...register(`items.${item.id}.customQuantity`)}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function OrderSummary({ allItemsMap }: { allItemsMap: Map<string, ProductItem> }) {
-  const { control } = useFormContext<FormValues>()
-  const selectedItems = useWatch({
-    control,
-    name: "items",
-  })
-
-  const itemsToDisplay = selectedItems
-    ? (Object.entries(selectedItems)
-        .map(([id, data]) => {
-          if (data && data.quantity) {
-            const details = allItemsMap.get(id)
-            if (details) {
-              return {
-                ...details,
-                selectedQuantity: data.quantity,
-                customQuantity: data.customQuantity,
-              }
-            }
-          }
-          return null
-        })
-        .filter(Boolean) as (ProductItem & { selectedQuantity: string; customQuantity?: string })[])
-    : []
-
-  return (
-    <div className="sticky top-8">
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200">
-        <div className="bg-gray-100 text-gray-800 text-center py-3 rounded-t-xl border-b">
-          <h2 className="text-xl font-semibold">Your Order</h2>
-        </div>
-        <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
-          {itemsToDisplay.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-8">No items selected yet.</p>
-          ) : (
-            itemsToDisplay.map((item) => (
-              <div key={item.id} className="border-b pb-3 last:border-b-0 last:pb-0">
-                <p className="font-semibold text-gray-800">{item.name}</p>
-                <p className="text-sm text-gray-600">Code: {item.code}</p>
-                <p className="text-sm font-medium text-blue-600 mt-1">
-                  Quantity: {item.selectedQuantity === "other" ? item.customQuantity || "N/A" : item.selectedQuantity}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  )
+  >
 }
 
 export function OrderForm({ brand }: OrderFormProps) {
   const router = useRouter()
+  const [searchTerm, setSearchTerm] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submissionStatus, setSubmissionStatus] = useState<"success" | "error" | null>(null)
-  const [submissionMessage, setSubmissionMessage] = useState("")
-  const [searchQuery, setSearchQuery] = useState("")
-
-  const productSections = Array.isArray(brand.product_sections) ? brand.product_sections : []
-  const clinicLocations = Array.isArray(brand.clinics) ? brand.clinics : []
-
-  const allItemsMap = new Map<string, ProductItem>()
-  productSections.forEach((section) => {
-    const items = Array.isArray(section.product_items) ? section.product_items : []
-    items.forEach((item) => {
-      allItemsMap.set(item.id, item)
-    })
+  const [formData, setFormData] = useState<FormData>({
+    orderedBy: "",
+    email: "",
+    billTo: "",
+    deliverTo: "",
+    date: "",
+    items: {},
   })
+
+  const clinics = Array.isArray(brand.clinics) ? brand.clinics : []
+  const productSections = Array.isArray(brand.product_sections) ? brand.product_sections : []
 
   const filteredSections = productSections
-    .map((section) => {
-      const items = Array.isArray(section.product_items) ? section.product_items : []
-      const filteredItems = items.filter(
+    .map((section) => ({
+      ...section,
+      product_items: (section.product_items || []).filter(
         (item) =>
-          item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.code.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
+          item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase())),
+      ),
+    }))
+    .filter((section) => section.product_items.length > 0)
 
-      if (filteredItems.length > 0) {
-        return { ...section, product_items: filteredItems }
-      }
-      return null
-    })
-    .filter(Boolean) as Array<ProductSection & { product_items: ProductItem[] }>
+  const selectedItemsCount = Object.keys(formData.items).length
+  const selectedItems = Object.values(formData.items)
 
-  const methods = useForm<FormValues>({
-    defaultValues: {
-      orderedBy: "",
-      email: "",
-      billTo: "",
-      deliverTo: "",
-      date: new Date(),
-      items: {},
-    },
-  })
-
-  const {
-    handleSubmit,
-    reset,
-    register,
-    setValue,
-    watch,
-    formState: { errors },
-  } = methods
-
-  // Defensive check to prevent crash if brand data is not loaded
-  if (!brand) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    )
+  const handleInputChange = (field: keyof FormData, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const onSubmit = async (data: FormValues) => {
-    setIsSubmitting(true)
-    setSubmissionStatus(null)
-
-    const itemsForPayload = Object.entries(data.items || {})
-      .filter(([_, value]) => value && value.quantity)
-      .reduce((acc, [itemId, itemValue]) => {
-        const itemDetails = allItemsMap.get(itemId)
-        if (itemDetails) {
-          acc[itemId] = {
-            quantity: itemValue.quantity,
-            customQuantity: itemValue.customQuantity,
-            name: itemDetails.name,
-            code: itemDetails.code,
-            description: itemDetails.description,
-          }
+  const handleItemToggle = (item: ProductItem, quantity: string, customQuantity?: string) => {
+    const itemKey = `${item.id}-${quantity}`
+    setFormData((prev) => {
+      const newItems = { ...prev.items }
+      if (newItems[itemKey]) {
+        delete newItems[itemKey]
+      } else {
+        newItems[itemKey] = {
+          name: item.name,
+          code: item.id,
+          quantity,
+          customQuantity,
+          description: item.description,
         }
-        return acc
-      }, {} as any)
+      }
+      return { ...prev, items: newItems }
+    })
+  }
 
-    if (Object.keys(itemsForPayload).length === 0) {
-      setSubmissionStatus("error")
-      setSubmissionMessage("Please select at least one item to order.")
-      setIsSubmitting(false)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!formData.orderedBy || !formData.email || !formData.billTo || !formData.deliverTo) {
+      toast.error("Please fill in all required fields.")
       return
     }
 
-    const payload = {
-      brandId: brand.id,
-      brandName: brand.name,
-      brandEmail: brand.email,
-      orderedBy: data.orderedBy,
-      email: data.email,
-      billTo: data.billTo,
-      deliverTo: data.deliverTo,
-      date: data.date ? format(data.date, "yyyy-MM-dd") : null,
-      items: itemsForPayload,
+    if (selectedItemsCount === 0) {
+      toast.error("Please select at least one item.")
+      return
     }
+
+    setIsSubmitting(true)
 
     try {
       const response = await fetch("/api/submit-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...formData,
+          brandId: brand.id,
+          brandName: brand.name,
+          brandEmail: brand.email,
+        }),
       })
 
       const result = await response.json()
 
-      if (response.ok && result.success) {
-        setSubmissionStatus("success")
-        setSubmissionMessage("Your order has been submitted successfully!")
-        reset()
+      if (result.success) {
+        toast.success(result.message)
+        setFormData({
+          orderedBy: "",
+          email: "",
+          billTo: "",
+          deliverTo: "",
+          date: "",
+          items: {},
+        })
       } else {
-        throw new Error(result.message || "An unknown error occurred.")
+        toast.error(result.message || "Failed to submit order")
       }
     } catch (error) {
-      setSubmissionStatus("error")
-      setSubmissionMessage(error instanceof Error ? error.message : "Failed to submit order.")
+      console.error("Error submitting order:", error)
+      toast.error("An error occurred while submitting your order. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <FormProvider {...methods}>
-      <div className="min-h-screen bg-[#f9f9f9] p-4 sm:p-6 md:p-8 font-work-sans">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center mb-8">
-            <Button variant="outline" onClick={() => router.push("/")} className="mr-auto">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to All Brands
-            </Button>
-            {brand.logo && (
-              <Image
-                src={brand.logo || "/placeholder.svg"}
-                alt={`${brand.name} Logo`}
-                width={331}
-                height={98}
-                className="mx-auto object-contain"
-                priority
-              />
-            )}
-            <div className="w-[188px] mr-auto"></div> {/* Spacer to balance the back button */}
-          </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8 text-center">
+          <img
+            src={brand.logo || "/placeholder-logo.svg"}
+            alt={`${brand.name} logo`}
+            className="mx-auto mb-4 h-20 w-auto object-contain"
+          />
+          <h1 className="text-3xl font-bold text-gray-900">{brand.name}</h1>
+          <p className="text-gray-600">Printing Order Form</p>
+        </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-xl shadow-lg">
-                <div className="bg-[#2a3760] text-white text-center py-4 rounded-t-xl">
-                  <h1 className="text-2xl font-semibold">Printing Order Form</h1>
+        <div className="grid gap-8 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Order Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <Label htmlFor="orderedBy">Ordered By *</Label>
+                    <Input
+                      id="orderedBy"
+                      value={formData.orderedBy}
+                      onChange={(e) => handleInputChange("orderedBy", e.target.value)}
+                      placeholder="Your full name"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="email">Email *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => handleInputChange("email", e.target.value)}
+                      placeholder="your.email@example.com"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <Label htmlFor="billTo">Bill To Clinic *</Label>
+                    <Select value={formData.billTo} onValueChange={(value) => handleInputChange("billTo", value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select clinic" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {clinics.map((clinic) => (
+                          <SelectItem key={clinic.name} value={clinic.name}>
+                            {clinic.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="deliverTo">Deliver To Clinic *</Label>
+                    <Select value={formData.deliverTo} onValueChange={(value) => handleInputChange("deliverTo", value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select delivery location" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {clinics.map((clinic) => (
+                          <SelectItem key={clinic.name} value={`${clinic.name} - ${clinic.address}`}>
+                            <div className="flex flex-col">
+                              <span>{clinic.name}</span>
+                              <span className="text-sm text-muted-foreground">{clinic.address}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="date">Required Date</Label>
+                  <Input
+                    id="date"
+                    type="date"
+                    value={formData.date}
+                    onChange={(e) => handleInputChange("date", e.target.value)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShoppingCart className="h-5 w-5" />
+                  Select Items
+                </CardTitle>
+                <CardDescription>Choose the items you need for your order</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-6">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <Input
+                      placeholder="Search items..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
                 </div>
 
-                <form onSubmit={handleSubmit(onSubmit)} className="p-6 sm:p-8">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 mb-8">
-                    <div className="space-y-1">
-                      <label htmlFor="orderedBy" className="text-sm font-medium text-gray-800">
-                        Ordered By: <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        id="orderedBy"
-                        className="bg-gray-100 border-gray-300"
-                        {...register("orderedBy", { required: "Ordered By is required." })}
-                      />
-                      {errors.orderedBy && <p className="text-xs text-red-500">{errors.orderedBy.message}</p>}
-                    </div>
-                    <div className="space-y-1">
-                      <label htmlFor="email" className="text-sm font-medium text-gray-800">
-                        Email Address <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        id="email"
-                        type="email"
-                        className="bg-gray-100 border-gray-300"
-                        {...register("email", {
-                          required: "Email is required.",
-                          pattern: { value: /^\S+@\S+$/i, message: "Invalid email address." },
+                <div className="space-y-6">
+                  {filteredSections.map((section) => (
+                    <div key={section.id}>
+                      <h3 className="mb-4 text-lg font-semibold text-gray-900">{section.title}</h3>
+                      <div className="grid gap-4">
+                        {section.product_items.map((item) => {
+                          const quantities = Array.isArray(item.quantities) ? item.quantities : []
+                          return (
+                            <Card key={item.id} className="p-4">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <h4 className="font-medium">{item.name}</h4>
+                                    {item.sample_link && (
+                                      <a
+                                        href={item.sample_link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:text-blue-800"
+                                      >
+                                        <ExternalLink className="h-4 w-4" />
+                                      </a>
+                                    )}
+                                  </div>
+                                  {item.description && <p className="text-sm text-gray-600 mb-3">{item.description}</p>}
+                                  <div className="flex flex-wrap gap-2">
+                                    {quantities.map((quantity) => {
+                                      const itemKey = `${item.id}-${quantity}`
+                                      const isSelected = !!formData.items[itemKey]
+
+                                      if (quantity === "other") {
+                                        return (
+                                          <div key={quantity} className="flex items-center gap-2">
+                                            <Checkbox
+                                              id={itemKey}
+                                              checked={isSelected}
+                                              onCheckedChange={(checked) => {
+                                                if (checked) {
+                                                  const customQuantity = prompt("Enter custom quantity:")
+                                                  if (customQuantity) {
+                                                    handleItemToggle(item, quantity, customQuantity)
+                                                  }
+                                                } else {
+                                                  handleItemToggle(item, quantity)
+                                                }
+                                              }}
+                                            />
+                                            <Label htmlFor={itemKey} className="text-sm">
+                                              Other
+                                              {isSelected && formData.items[itemKey].customQuantity && (
+                                                <span className="ml-1 text-gray-500">
+                                                  ({formData.items[itemKey].customQuantity})
+                                                </span>
+                                              )}
+                                            </Label>
+                                          </div>
+                                        )
+                                      }
+
+                                      return (
+                                        <div key={quantity} className="flex items-center gap-2">
+                                          <Checkbox
+                                            id={itemKey}
+                                            checked={isSelected}
+                                            onCheckedChange={() => handleItemToggle(item, quantity)}
+                                          />
+                                          <Label htmlFor={itemKey} className="text-sm">
+                                            {quantity}
+                                          </Label>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            </Card>
+                          )
                         })}
-                      />
-                      {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
-                    </div>
-                    <div className="space-y-1">
-                      <label htmlFor="billTo" className="text-sm font-medium text-gray-800">
-                        Bill to Clinic: <span className="text-red-500">*</span>
-                      </label>
-                      <Select onValueChange={(value) => setValue("billTo", value)} value={watch("billTo")}>
-                        <SelectTrigger id="billTo" className="bg-gray-100 border-gray-300">
-                          <SelectValue placeholder="Select a clinic" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clinicLocations.map((clinic) => (
-                            <SelectItem key={clinic.name} value={clinic.address}>
-                              {clinic.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {errors.billTo && <p className="text-xs text-red-500">{errors.billTo.message}</p>}
-                    </div>
-                    <div className="space-y-1">
-                      <label htmlFor="deliverTo" className="text-sm font-medium text-gray-800">
-                        Deliver to Clinic: <span className="text-red-500">*</span>
-                      </label>
-                      <Select onValueChange={(value) => setValue("deliverTo", value)} value={watch("deliverTo")}>
-                        <SelectTrigger id="deliverTo" className="bg-gray-100 border-gray-300">
-                          <SelectValue placeholder="Select a clinic" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clinicLocations.map((clinic) => (
-                            <SelectItem key={clinic.name} value={clinic.address}>
-                              {clinic.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {errors.deliverTo && <p className="text-xs text-red-500">{errors.deliverTo.message}</p>}
-                    </div>
-                    <div className="space-y-1 sm:col-span-2">
-                      <label htmlFor="date" className="text-sm font-medium text-gray-800">
-                        Date: <span className="text-red-500">*</span>
-                      </label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full justify-start text-left font-normal bg-gray-100 border-gray-300",
-                              !watch("date") && "text-muted-foreground",
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {watch("date") ? format(watch("date")!, "PPP") : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={watch("date")}
-                            onSelect={(date) => setValue("date", date)}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      {errors.date && <p className="text-xs text-red-500">{errors.date.message}</p>}
-                    </div>
-                  </div>
-
-                  <div className="my-8 border-t pt-8">
-                    <div className="relative">
-                      <label htmlFor="search-items" className="sr-only">
-                        Search Items
-                      </label>
-                      <Input
-                        id="search-items"
-                        type="text"
-                        placeholder="Search for an item by name or code..."
-                        className="pl-10 h-12 text-base bg-gray-100 border-gray-300"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                      />
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-8">
-                    {filteredSections.length > 0 ? (
-                      filteredSections.map((section) => (
-                        <div key={section.id} className="border border-dashed border-[#293563] rounded-lg p-4">
-                          <h2 className="text-lg font-semibold text-[#1aa7df] mb-4">{section.title}</h2>
-                          <div className="space-y-4">
-                            {section.product_items.map((item) => (
-                              <ItemRow key={item.id} item={item} />
-                            ))}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-12 text-gray-500">
-                        <p className="font-semibold">No items found</p>
-                        <p className="text-sm">Your search for "{searchQuery}" did not match any items.</p>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-                  {submissionStatus && (
-                    <Alert
-                      className={cn(
-                        "mt-8",
-                        submissionStatus === "success"
-                          ? "border-green-500 text-green-700"
-                          : "border-red-500 text-red-700",
-                      )}
-                    >
-                      {submissionStatus === "success" ? (
-                        <CheckCircle className="h-4 w-4" />
-                      ) : (
-                        <XCircle className="h-4 w-4" />
-                      )}
-                      <AlertDescription>{submissionMessage}</AlertDescription>
-                    </Alert>
-                  )}
+          <div className="lg:col-span-1">
+            <Card className="sticky top-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShoppingCart className="h-5 w-5" />
+                  Order Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4">
+                  <Badge variant="secondary" className="text-sm">
+                    {selectedItemsCount} item{selectedItemsCount !== 1 ? "s" : ""} selected
+                  </Badge>
+                </div>
 
-                  <div className="flex justify-center mt-8 pt-6">
-                    <Button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="bg-[#2a3760] hover:bg-[#2a3760]/90 text-white font-semibold px-12 py-6 text-base"
-                    >
-                      {isSubmitting ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="mr-2 h-4 w-4" />
-                      )}
-                      Submit
-                    </Button>
+                {selectedItems.length > 0 && (
+                  <div className="space-y-2 mb-6">
+                    {selectedItems.map((item, index) => (
+                      <div key={index} className="flex justify-between text-sm">
+                        <span className="truncate">{item.name}</span>
+                        <span className="text-gray-500">
+                          {item.quantity === "other" ? item.customQuantity : item.quantity}
+                        </span>
+                      </div>
+                    ))}
                   </div>
+                )}
+
+                <Separator className="my-4" />
+
+                <form onSubmit={handleSubmit}>
+                  <Button type="submit" className="w-full" disabled={isSubmitting || selectedItemsCount === 0}>
+                    {isSubmitting ? "Submitting..." : "Submit Order"}
+                  </Button>
                 </form>
-              </div>
-            </div>
-            <div className="lg:col-span-1">
-              <OrderSummary allItemsMap={allItemsMap} />
-            </div>
+
+                <div className="mt-4 text-xs text-gray-500">
+                  <p>
+                    Orders will be sent to {brand.email} for processing. You will receive a confirmation email once
+                    submitted.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
-    </FormProvider>
+    </div>
   )
 }
