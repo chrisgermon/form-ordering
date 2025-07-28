@@ -32,8 +32,19 @@ export default function OrderForm({ brandData }: OrderFormProps) {
     items: {} as Record<string, OrderItem>,
   })
 
+  // Robustly process clinics data, filtering out any empty or invalid entries.
   const clinics: Clinic[] = Array.isArray(brandData?.clinics)
-    ? brandData.clinics.map((c) => (typeof c === "string" ? { name: c } : c))
+    ? brandData.clinics
+        .map((c) => {
+          if (typeof c === "string") {
+            return { name: c.trim() }
+          }
+          if (typeof c === "object" && c !== null && c.name) {
+            return { ...c, name: c.name.trim() }
+          }
+          return null // Mark invalid entries for removal
+        })
+        .filter((c): c is Clinic => c !== null && c.name !== "") // Filter out nulls and empty names
     : []
 
   const productSections = Array.isArray(brandData?.product_sections) ? brandData.product_sections : []
