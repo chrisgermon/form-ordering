@@ -6,7 +6,6 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
@@ -14,7 +13,7 @@ import { Separator } from "@/components/ui/separator"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Search, ShoppingCart, User, ExternalLink, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import type { BrandWithSections, OrderItem } from "@/lib/types"
+import type { BrandWithSections, OrderItem, Clinic } from "@/lib/types"
 
 interface OrderFormProps {
   brandData: BrandWithSections
@@ -33,14 +32,8 @@ export default function OrderForm({ brandData }: OrderFormProps) {
     items: {} as Record<string, OrderItem>,
   })
 
-  // Safely access clinics - handle both string array and object array
-  const clinics = Array.isArray(brandData?.clinics)
-    ? brandData.clinics.filter((clinic) => {
-        if (typeof clinic === "string") {
-          return clinic.trim() !== ""
-        }
-        return clinic && clinic.name && clinic.name.trim() !== ""
-      })
+  const clinics: Clinic[] = Array.isArray(brandData?.clinics)
+    ? brandData.clinics.map((c) => (typeof c === "string" ? { name: c } : c))
     : []
 
   const productSections = Array.isArray(brandData?.product_sections) ? brandData.product_sections : []
@@ -121,7 +114,9 @@ export default function OrderForm({ brandData }: OrderFormProps) {
           items: {},
         })
       } else {
-        toast.error(result.message || "Failed to submit order")
+        toast.error(result.error || "Failed to submit order", {
+          description: result.details,
+        })
       }
     } catch (error) {
       console.error("Error submitting order:", error)
@@ -131,13 +126,12 @@ export default function OrderForm({ brandData }: OrderFormProps) {
     }
   }
 
-  // Show loading state if brandData is not available
   if (!brandData) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <Loader2 className="mx-auto h-12 w-12 animate-spin text-gray-400" />
+          <p className="mt-4 text-gray-600">Loading Form...</p>
         </div>
       </div>
     )
@@ -209,14 +203,11 @@ export default function OrderForm({ brandData }: OrderFormProps) {
                           <SelectValue placeholder="Select clinic" />
                         </SelectTrigger>
                         <SelectContent>
-                          {clinics.map((clinic, index) => {
-                            const clinicName = typeof clinic === "string" ? clinic : clinic.name
-                            return (
-                              <SelectItem key={`bill-${index}`} value={clinicName}>
-                                {clinicName}
-                              </SelectItem>
-                            )
-                          })}
+                          {clinics.map((clinic, index) => (
+                            <SelectItem key={`bill-${index}`} value={clinic.name}>
+                              {clinic.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     ) : (
@@ -239,15 +230,13 @@ export default function OrderForm({ brandData }: OrderFormProps) {
                         </SelectTrigger>
                         <SelectContent>
                           {clinics.map((clinic, index) => {
-                            const clinicName = typeof clinic === "string" ? clinic : clinic.name
-                            const clinicAddress = typeof clinic === "object" ? clinic.address : undefined
-                            const deliveryValue = clinicAddress ? `${clinicName} - ${clinicAddress}` : clinicName
+                            const deliveryValue = clinic.address ? `${clinic.name} - ${clinic.address}` : clinic.name
                             return (
                               <SelectItem key={`deliver-${index}`} value={deliveryValue}>
                                 <div className="flex flex-col">
-                                  <span>{clinicName}</span>
-                                  {clinicAddress && (
-                                    <span className="text-sm text-muted-foreground">{clinicAddress}</span>
+                                  <span>{clinic.name}</span>
+                                  {clinic.address && (
+                                    <span className="text-sm text-muted-foreground">{clinic.address}</span>
                                   )}
                                 </div>
                               </SelectItem>
@@ -294,19 +283,17 @@ export default function OrderForm({ brandData }: OrderFormProps) {
                       <div key={section.id}>
                         <h3 className="mb-4 text-lg font-semibold text-gray-900">{section.name}</h3>
                         <div className="grid gap-4">
-                          {section.product_items.map((item) => {
-                            const quantities = Array.isArray(item.quantities)
-                              ? item.quantities
-                              : ["1", "5", "10", "25", "50", "100", "other"]
+                          {section.product_items?.map((item) => {
+                            const quantities = (item as any).quantities || ["1", "5", "10", "25", "50", "100", "other"]
                             return (
                               <Card key={item.id} className="p-4">
                                 <div className="flex items-start justify-between">
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-2">
                                       <h4 className="font-medium">{item.name}</h4>
-                                      {item.sample_link && (
+                                      {(item as any).sample_link && (
                                         <a
-                                          href={item.sample_link}
+                                          href={(item as any).sample_link}
                                           target="_blank"
                                           rel="noopener noreferrer"
                                           className="text-blue-600 hover:text-blue-800"
@@ -319,7 +306,7 @@ export default function OrderForm({ brandData }: OrderFormProps) {
                                       <p className="text-sm text-gray-600 mb-3">{item.description}</p>
                                     )}
                                     <div className="flex flex-wrap gap-2">
-                                      {quantities.map((quantity) => {
+                                      {quantities.map((quantity: string) => {
                                         const itemKey = `${item.id}-${quantity}`
                                         const isSelected = !!formData.items[itemKey]
 
@@ -382,21 +369,6 @@ export default function OrderForm({ brandData }: OrderFormProps) {
                     </div>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Special Instructions</CardTitle>
-                <CardDescription>Any additional notes or requirements</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Textarea
-                  value={formData.specialInstructions}
-                  onChange={(e) => handleInputChange("specialInstructions", e.target.value)}
-                  placeholder="Enter any special instructions or notes..."
-                  rows={4}
-                />
               </CardContent>
             </Card>
           </div>

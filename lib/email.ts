@@ -17,36 +17,45 @@ interface EmailData {
 
 export async function sendOrderEmail(data: EmailData) {
   try {
-    console.log("Sending email...")
-
-    // Create transporter
+    console.log("Configuring email transporter...")
     const transporter = nodemailer.createTransport({
       host: process.env.MAILGUN_SMTP_HOST,
       port: Number.parseInt(process.env.MAILGUN_SMTP_PORT || "587"),
-      secure: false,
+      secure: false, // true for 465, false for other ports
       auth: {
         user: process.env.MAILGUN_SMTP_USERNAME,
         pass: process.env.MAILGUN_SMTP_PASSWORD,
       },
-      connectionTimeout: 10000,
-      greetingTimeout: 5000,
-      socketTimeout: 10000,
     })
 
-    // Generate email content
+    console.log("Generating email content...")
     const htmlContent = generateOrderEmailTemplate(data)
 
-    // Send email
-    const result = await transporter.sendMail({
-      from: process.env.FROM_EMAIL,
+    console.log(`Fetching PDF for attachment from ${data.pdfUrl}`)
+    const pdfResponse = await fetch(data.pdfUrl)
+    if (!pdfResponse.ok) {
+      throw new Error(`Failed to fetch PDF: ${pdfResponse.statusText}`)
+    }
+    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer())
+
+    console.log(`Sending email to: ${data.to}, CC: ${data.cc}`)
+    const info = await transporter.sendMail({
+      from: `"${data.brandName} Orders" <${process.env.FROM_EMAIL}>`,
       to: data.to,
       cc: data.cc,
       subject: data.subject,
       html: htmlContent,
+      attachments: [
+        {
+          filename: `order-${data.brandName.toLowerCase().replace(/\s+/g, "-")}.pdf`,
+          content: pdfBuffer,
+          contentType: "application/pdf",
+        },
+      ],
     })
 
-    console.log("Email sent successfully:", result.messageId)
-    return { success: true, messageId: result.messageId }
+    console.log("Email sent successfully:", info.messageId)
+    return { success: true, messageId: info.messageId }
   } catch (error) {
     console.error("Error sending email:", error)
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
@@ -54,12 +63,14 @@ export async function sendOrderEmail(data: EmailData) {
 }
 
 function generateOrderEmailTemplate(data: EmailData): string {
-  const itemsList = Object.entries(data.items)
+  const itemsList = Object.values(data.items)
     .map(
-      ([id, item]: [string, any]) =>
+      (item: any) =>
         `<tr>
           <td style="padding: 8px; border-bottom: 1px solid #eee;">${item.name}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${item.quantity}${item.customQuantity ? ` (${item.customQuantity})` : ""}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">${
+            item.quantity === "other" ? item.customQuantity : item.quantity
+          }</td>
         </tr>`,
     )
     .join("")
@@ -69,40 +80,21 @@ function generateOrderEmailTemplate(data: EmailData): string {
     <html>
     <head>
       <meta charset="utf-8">
-      <title>New Order - ${data.brandName}</title>
+      <title>${data.subject}</title>
     </head>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-      <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
         <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">
-          New Order from ${data.brandName}
+          New Order for ${data.brandName}
         </h1>
         
         <h2>Order Details</h2>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-          <tr>
-            <td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Ordered By:</td>
-            <td style="padding: 8px;">${data.orderedBy}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Email:</td>
-            <td style="padding: 8px;">${data.email}</td>
-          </tr>
-          ${
-            data.phone
-              ? `<tr>
-            <td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Phone:</td>
-            <td style="padding: 8px;">${data.phone}</td>
-          </tr>`
-              : ""
-          }
-          <tr>
-            <td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Bill To:</td>
-            <td style="padding: 8px;">${data.billTo}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Deliver To:</td>
-            <td style="padding: 8px;">${data.deliverTo}</td>
-          </tr>
+          <tr><td style="padding: 8px; font-weight: bold; background-color: #f8f9fa; width: 150px;">Ordered By:</td><td style="padding: 8px;">${data.orderedBy}</td></tr>
+          <tr><td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Email:</td><td style="padding: 8px;">${data.email}</td></tr>
+          ${data.phone ? `<tr><td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Phone:</td><td style="padding: 8px;">${data.phone}</td></tr>` : ""}
+          <tr><td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Bill To:</td><td style="padding: 8px;">${data.billTo}</td></tr>
+          <tr><td style="padding: 8px; font-weight: bold; background-color: #f8f9fa;">Deliver To:</td><td style="padding: 8px;">${data.deliverTo}</td></tr>
         </table>
 
         <h2>Items Ordered</h2>
@@ -118,20 +110,12 @@ function generateOrderEmailTemplate(data: EmailData): string {
           </tbody>
         </table>
 
-        ${
-          data.specialInstructions
-            ? `<h2>Special Instructions</h2>
-        <p style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #2563eb;">
-          ${data.specialInstructions}
-        </p>`
-            : ""
-        }
+        ${data.specialInstructions ? `<h2>Special Instructions</h2><p style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #2563eb;">${data.specialInstructions}</p>` : ""}
 
-        <div style="margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 5px;">
-          <p><strong>PDF Order Details:</strong> <a href="${data.pdfUrl}" style="color: #2563eb;">Download PDF</a></p>
-          <p style="margin: 0; font-size: 14px; color: #666;">
-            This order was submitted on ${new Date().toLocaleString()}
-          </p>
+        <div style="margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 5px; text-align: center;">
+          <p>A PDF copy of this order is attached.</p>
+          <p><a href="${data.pdfUrl}" style="color: #2563eb; text-decoration: none;">Download PDF</a></p>
+          <p style="margin: 0; font-size: 12px; color: #666;">This order was submitted on ${new Date().toLocaleString()}</p>
         </div>
       </div>
     </body>
