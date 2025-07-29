@@ -7,7 +7,7 @@ import type { ProductItem } from "./editor/[brandSlug]/types"
 import nodemailer from "nodemailer"
 import * as cheerio from "cheerio"
 import { generateObject } from "ai"
-//import { openai } from "@ai-sdk/openai"
+import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
 
 async function executeSql(sql: string) {

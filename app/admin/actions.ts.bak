@@ -7,7 +7,7 @@ import type { ProductItem } from "./editor/[brandSlug]/types"
 import nodemailer from "nodemailer"
 import * as cheerio from "cheerio"
 import { generateObject } from "ai"
-import { openai } from "@ai-sdk/openai"
+//import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
 
 async function executeSql(sql: string) {
@@ -32,7 +32,7 @@ export async function fetchClinicLocationsFromUrl(url: string) {
     const html = await response.text()
 
     const $ = cheerio.load(html)
-    $("script, style, header, footer, nav, svg").remove()
+    $("script, style, header, footer, nav, svg, noscript, iframe, link, meta").remove()
     const mainText = $("body").text().replace(/\s\s+/g, " ").trim()
 
     if (!mainText) {
@@ -47,7 +47,7 @@ export async function fetchClinicLocationsFromUrl(url: string) {
             z.object({
               name: z.string().describe("The name of the clinic or practice location."),
               address: z.string().describe("The full street address of the clinic."),
-              phone: z.string().describe("The primary contact phone number for the clinic."),
+              phone: z.string().optional().describe("The primary contact phone number for the clinic."),
             }),
           )
           .describe("An array of all clinic locations found on the page."),
@@ -57,6 +57,10 @@ export async function fetchClinicLocationsFromUrl(url: string) {
         15000,
       )}"`,
     })
+
+    if (!locationsData || !Array.isArray(locationsData.locations) || locationsData.locations.length === 0) {
+      return { success: false, message: "The AI could not find any clinic locations on the provided website." }
+    }
 
     return { success: true, locations: locationsData.locations }
   } catch (error) {
