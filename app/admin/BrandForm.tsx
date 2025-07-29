@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { X, Upload } from "lucide-react"
+import { X, Upload, Bot } from "lucide-react"
 import { resolveAssetUrl } from "@/lib/utils"
 import type { ClinicLocation } from "@/lib/types"
+import { useToast } from "@/components/ui/use-toast"
+import { fetchClinicLocationsFromUrl } from "./actions"
 
 interface Brand {
   id: string
@@ -51,6 +53,9 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
     clinicLocations: [newLocation()],
   })
   const [isUploading, setIsUploading] = useState(false)
+  const [companyUrl, setCompanyUrl] = useState("")
+  const [isFetchingLocations, setIsFetchingLocations] = useState(false)
+  const { toast } = useToast()
 
   useEffect(() => {
     if (brand) {
@@ -136,6 +141,49 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
       console.error("Error uploading logo:", error)
     } finally {
       setIsUploading(false)
+    }
+  }
+
+  const handleFetchLocations = async () => {
+    if (!companyUrl) {
+      toast({
+        title: "URL Required",
+        description: "Please enter a company URL to fetch locations.",
+        variant: "destructive",
+      })
+      return
+    }
+    setIsFetchingLocations(true)
+    try {
+      const result = await fetchClinicLocationsFromUrl(companyUrl)
+      if (result.success && result.locations) {
+        const existingLocations = formData.clinicLocations.filter(
+          (loc) => loc.name.trim() !== "" || loc.address.trim() !== "" || loc.phone.trim() !== "",
+        )
+
+        setFormData((prev) => ({
+          ...prev,
+          clinicLocations: [...existingLocations, ...result.locations],
+        }))
+        toast({
+          title: "Success",
+          description: `Found and added ${result.locations.length} new clinic locations.`,
+        })
+      } else {
+        toast({
+          title: "AI Error",
+          description: result.message || "Could not fetch locations.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Unexpected Error",
+        description: "An unexpected error occurred while fetching locations.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsFetchingLocations(false)
     }
   }
 
@@ -231,6 +279,19 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
 
       <div>
         <Label>Clinic Locations</Label>
+        <div className="flex items-center gap-2 my-2 p-3 border rounded-lg bg-muted/50">
+          <Input
+            id="company-url"
+            placeholder="Enter company website URL (e.g., https://example.com/contact)"
+            value={companyUrl}
+            onChange={(e) => setCompanyUrl(e.target.value)}
+            className="bg-background"
+          />
+          <Button type="button" onClick={handleFetchLocations} disabled={isFetchingLocations}>
+            <Bot className="mr-2 h-4 w-4" />
+            {isFetchingLocations ? "Fetching..." : "Find Locations with AI"}
+          </Button>
+        </div>
         <div className="space-y-4">
           {formData.clinicLocations.map((location, index) => (
             <div key={index} className="p-4 border rounded-md space-y-3 relative">
@@ -282,7 +343,7 @@ export function BrandForm({ brand, uploadedFiles, onSave, onCancel, onLogoUpload
           ))}
         </div>
         <Button type="button" variant="outline" size="sm" className="mt-2 bg-transparent" onClick={addLocation}>
-          Add Location
+          Add Location Manually
         </Button>
       </div>
 

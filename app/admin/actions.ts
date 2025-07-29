@@ -5,12 +5,65 @@ import initializeDatabaseFunction from "@/lib/seed-database"
 import { revalidatePath } from "next/cache"
 import type { ProductItem } from "./editor/[brandSlug]/types"
 import nodemailer from "nodemailer"
-import * as cheerio from "cheerio" // Corrected import
+import * as cheerio from "cheerio"
+import { generateObject } from "ai"
+import { openai } from "@ai-sdk/openai"
+import { z } from "zod"
 
 async function executeSql(sql: string) {
   const supabase = createAdminClient()
   const { error } = await supabase.rpc("execute_sql", { sql_query: sql })
   if (error) throw error
+}
+
+export async function fetchClinicLocationsFromUrl(url: string) {
+  if (!url || !url.startsWith("http")) {
+    return { success: false, message: "Please enter a valid URL (e.g., https://example.com)." }
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    return { success: false, message: "AI credentials are not configured. Please set the OPENAI_API_KEY." }
+  }
+
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch URL: ${response.statusText}`)
+    }
+    const html = await response.text()
+
+    const $ = cheerio.load(html)
+    $("script, style, header, footer, nav, svg").remove()
+    const mainText = $("body").text().replace(/\s\s+/g, " ").trim()
+
+    if (!mainText) {
+      return { success: false, message: "Could not extract readable content from the website." }
+    }
+
+    const { object: locationsData } = await generateObject({
+      model: openai("gpt-4o"),
+      schema: z.object({
+        locations: z
+          .array(
+            z.object({
+              name: z.string().describe("The name of the clinic or practice location."),
+              address: z.string().describe("The full street address of the clinic."),
+              phone: z.string().describe("The primary contact phone number for the clinic."),
+            }),
+          )
+          .describe("An array of all clinic locations found on the page."),
+      }),
+      prompt: `From the following website text, extract all distinct clinic locations. Focus on physical addresses and contact details. Consolidate information for each location. Website text: "${mainText.substring(
+        0,
+        15000,
+      )}"`,
+    })
+
+    return { success: true, locations: locationsData.locations }
+  } catch (error) {
+    console.error("Error fetching clinic locations with AI:", error)
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+    return { success: false, message: `Failed to get locations: ${errorMessage}` }
+  }
 }
 
 export async function createAdminTables() {
