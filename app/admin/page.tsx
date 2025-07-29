@@ -244,11 +244,9 @@ export default function AdminDashboard() {
     setMessage(`Uploading ${files.length} file(s)...`)
 
     const uploadPromises = Array.from(files).map((file) => {
-      const formData = new FormData()
-      formData.append("file", file)
-      return fetch("/api/admin/upload", {
+      return fetch(`/api/admin/upload?filename=${encodeURIComponent(file.name)}`, {
         method: "POST",
-        body: formData,
+        body: file,
       })
     })
 
@@ -649,7 +647,7 @@ export default function AdminDashboard() {
                       id="file-upload"
                       type="file"
                       multiple
-                      accept=".pdf,.png,.jpg,.jpeg,.svg"
+                      accept="image/svg+xml,image/png,image/jpeg,application/pdf"
                       onChange={handleFileUpload}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
