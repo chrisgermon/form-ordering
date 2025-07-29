@@ -17,6 +17,10 @@ export async function GET() {
         status,
         pdf_url,
         ip_address,
+        completed_at,
+        expected_delivery,
+        tracking_url,
+        completion_notes,
         brands (
           name
         )
