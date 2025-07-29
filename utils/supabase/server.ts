@@ -37,7 +37,10 @@ export function createAdminClient() {
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error("Supabase admin client environment variables are not set.")
+    const missingVars = []
+    if (!supabaseUrl) missingVars.push("NEXT_PUBLIC_SUPABASE_URL")
+    if (!supabaseServiceKey) missingVars.push("SUPABASE_SERVICE_ROLE_KEY")
+    throw new Error(`Supabase admin client environment variables are not set. Missing: ${missingVars.join(", ")}`)
   }
 
   // Use the standard JS client for admin operations with the service key.

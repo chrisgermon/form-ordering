@@ -39,6 +39,12 @@ BEGIN
         ALTER TABLE brands DROP COLUMN email_to;
     END IF;
 
+    -- Step 5: Ensure 'primary_color' column exists as TEXT.
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brands' AND column_name='primary_color') THEN
+        RAISE NOTICE 'Adding "primary_color" column with type TEXT.';
+        ALTER TABLE brands ADD COLUMN primary_color TEXT DEFAULT 'blue-600';
+    END IF;
+
     RAISE NOTICE 'Brands table schema correction complete.';
 END;
 $$;

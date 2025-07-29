@@ -49,26 +49,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Brand name is required" }, { status: 400 })
   }
 
-  // Create a "safe" payload that only includes core fields.
-  // This avoids errors from schema mismatches on 'emails' or 'clinic_locations'.
-  const safePayload = {
+  const payload = {
     name: body.name,
     slug: slugify(body.name),
     logo: body.logo,
     active: body.active,
+    emails: body.emails || [],
+    clinic_locations: body.clinicLocations || [],
   }
 
   try {
     const { data: brand, error } = await supabase
       .from("brands")
-      .insert(safePayload)
-      .select("id, name, slug, logo, active") // Select only the fields we inserted
+      .insert(payload)
+      .select() // Select all columns
       .single()
 
     if (error) throw error
 
-    // Return a normalized object so the UI doesn't break
-    return NextResponse.json({ ...brand, emails: [], clinic_locations: [] })
+    return NextResponse.json(brand)
   } catch (error: any) {
     console.error("Error creating brand:", error)
     if (error.code === "23505") {
@@ -90,26 +89,21 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Brand ID and name are required" }, { status: 400 })
   }
 
-  // Create a "safe" payload for the update, excluding potentially problematic columns.
-  const safePayload = {
+  const payload = {
     name: body.name,
     slug: slugify(body.name),
     logo: body.logo,
     active: body.active,
+    emails: body.emails || [],
+    clinic_locations: body.clinicLocations || [],
   }
 
   try {
-    const { data: brand, error } = await supabase
-      .from("brands")
-      .update(safePayload)
-      .eq("id", body.id)
-      .select("id, name, slug, logo, active") // Select only the fields we updated
-      .single()
+    const { data: brand, error } = await supabase.from("brands").update(payload).eq("id", body.id).select().single()
 
     if (error) throw error
 
-    // Return a normalized object to keep the UI consistent
-    return NextResponse.json({ ...brand, emails: [], clinic_locations: [] })
+    return NextResponse.json(brand)
   } catch (error: any) {
     console.error("Error updating brand:", error)
     if (error.code === "23505") {

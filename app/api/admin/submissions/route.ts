@@ -18,8 +18,7 @@ export async function GET() {
         pdf_url,
         ip_address,
         brands (
-          name,
-          primary_color
+          name
         )
       `,
       )
