@@ -30,7 +30,14 @@ export async function GET(request: Request, { params }: { params: { pathname: st
 
   // Stream the response back to the client with correct headers
   const headers = new Headers()
-  headers.set("Content-Type", blob.contentType || "application/octet-stream")
+  let contentType = blob.contentType || "application/octet-stream"
+
+  // Ensure SVGs are served with the correct content type, even if blob storage metadata is wrong.
+  if (blob.pathname.toLowerCase().endsWith(".svg")) {
+    contentType = "image/svg+xml"
+  }
+
+  headers.set("Content-Type", contentType)
   headers.set("Content-Length", blob.size.toString())
   headers.set("Content-Disposition", `inline; filename="${blob.pathname.split("/").pop()}"`)
 
