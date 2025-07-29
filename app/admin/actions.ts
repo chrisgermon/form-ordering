@@ -5,7 +5,7 @@ import initializeDatabaseFunction from "@/lib/seed-database"
 import { revalidatePath } from "next/cache"
 import type { ProductItem } from "./editor/[brandSlug]/types"
 import nodemailer from "nodemailer"
-import cheerio from "cheerio" // Import cheerio here
+import * as cheerio from "cheerio" // Corrected import
 
 async function executeSql(sql: string) {
   const supabase = createAdminClient()

@@ -1,7 +1,9 @@
 import { createAdminClient } from "@/utils/supabase/server"
 import { BrandGrid } from "@/components/brand-grid"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { FileQuestion } from "lucide-react"
+import { FileQuestion, Wrench } from "lucide-react"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
 
 async function getActiveBrands() {
   const supabase = createAdminClient()
@@ -29,7 +31,15 @@ export default async function HomePage() {
   const brands = await getActiveBrands()
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 sm:p-6 md:p-8">
+    <main className="relative min-h-screen bg-gray-50 p-4 sm:p-6 md:p-8">
+      <div className="absolute top-4 right-4 z-10">
+        <Button asChild variant="outline" size="sm">
+          <Link href="/admin">
+            <Wrench className="mr-2 h-4 w-4" />
+            Admin
+          </Link>
+        </Button>
+      </div>
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-800 tracking-tight sm:text-5xl">Select a Form</h1>
