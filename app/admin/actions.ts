@@ -9,6 +9,8 @@ import * as cheerio from "cheerio"
 import { generateObject } from "ai"
 import { openai } from "@ai-sdk/openai"
 import { z } from "zod"
+import { readFile } from "fs/promises"
+import { join } from "path"
 
 async function executeSql(sql: string) {
   const supabase = createAdminClient()
@@ -387,6 +389,18 @@ WHERE pathname IS NULL AND url LIKE 'https://%.blob.vercel-storage.com/%';`
     return { success: true, message: "Schema updated successfully for relative URLs!" }
   } catch (error: any) {
     console.error("Error running schema v5 update:", error)
+    return { success: false, message: `Failed to update schema: ${error.message}` }
+  }
+}
+
+export async function runSchemaV12Update() {
+  try {
+    const filePath = join(process.cwd(), "scripts/update-schema-v12.sql")
+    const sql = await readFile(filePath, "utf8")
+    await executeSql(sql)
+    return { success: true, message: "Schema updated successfully (v12)!" }
+  } catch (error: any) {
+    console.error("Error running schema v12 update:", error)
     return { success: false, message: `Failed to update schema: ${error.message}` }
   }
 }

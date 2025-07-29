@@ -40,6 +40,7 @@ import {
   initializeDatabase,
   autoAssignPdfs,
   runSchemaV5Update,
+  runSchemaV12Update,
   forceSchemaReload,
   runBrandSchemaCorrection,
   sendTestEmail,
@@ -97,6 +98,7 @@ export default function AdminDashboard() {
   })
   const [fileTypeFilter, setFileTypeFilter] = useState("all")
   const [isUpdatingSchema, setIsUpdatingSchema] = useState(false)
+  const [isUpdatingSchemaV12, setIsUpdatingSchemaV12] = useState(false)
   const [isReloadingSchema, setIsReloadingSchema] = useState(false)
   const [isCorrectingSchema, setIsCorrectingSchema] = useState(false)
   const [testEmail, setTestEmail] = useState("")
@@ -359,6 +361,20 @@ export default function AdminDashboard() {
       setMessage("An unexpected error occurred during the schema update.")
     } finally {
       setIsUpdatingSchema(false)
+    }
+  }
+
+  const handleSchemaV12Update = async () => {
+    if (!confirm("This will apply the latest database updates. Continue?")) return
+    setIsUpdatingSchemaV12(true)
+    setMessage("Updating database schema...")
+    try {
+      const result = await runSchemaV12Update()
+      setMessage(result.message)
+    } catch (error) {
+      setMessage("An unexpected error occurred during the schema update.")
+    } finally {
+      setIsUpdatingSchemaV12(false)
     }
   }
 
@@ -851,6 +867,27 @@ export default function AdminDashboard() {
                       <Database className="mr-2 h-4 w-4" />
                     )}
                     Run Schema Update (v5)
+                  </Button>
+                </Card>
+                <Card className="p-4 flex flex-col justify-between">
+                  <div>
+                    <h3 className="font-semibold">Run Latest Schema Update</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Applies the v12 database changes. Run this after updating your code.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleSchemaV12Update}
+                    disabled={isUpdatingSchemaV12}
+                    variant="outline"
+                    className="mt-4 bg-transparent"
+                  >
+                    {isUpdatingSchemaV12 ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Database className="mr-2 h-4 w-4" />
+                    )}
+                    Run Schema Update (v12)
                   </Button>
                 </Card>
                 <Card className="p-4 flex flex-col justify-between">
