@@ -282,6 +282,14 @@ export default function AdminDashboard() {
     }
   }
 
+  const openCompletionDialog = () => {
+    // Placeholder for completion dialog logic
+  }
+
+  const markSubmissionComplete = async (submissionId: string) => {
+    // Placeholder for marking a submission as complete
+  }
+
   const deleteFile = async (fileId: string) => {
     if (!confirm("Are you sure you want to delete this file?")) return
 
