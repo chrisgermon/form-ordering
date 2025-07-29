@@ -26,7 +26,7 @@ const createFormSchema = (brandData: BrandData) => {
     email: z.string().email("A valid email address is required."),
     billTo: z.string().min(1, "Bill to clinic is required."),
     deliverTo: z.string().min(1, "Deliver to clinic is required."),
-    date: z.date({ message: "A date is required." }),
+    date: z.date({ required_error: "A date is required." }),
     items: z.record(z.any()).optional(),
   })
 
