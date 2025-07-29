@@ -7,6 +7,7 @@ import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Trash2,
   Edit,
@@ -101,6 +103,12 @@ export default function AdminDashboard() {
   const [isCorrectingSchema, setIsCorrectingSchema] = useState(false)
   const [testEmail, setTestEmail] = useState("")
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false)
+
+  const [showCompletionDialog, setShowCompletionDialog] = useState(false)
+  const [completionSubmission, setCompletionSubmission] = useState<any | null>(null)
+  const [expectedDelivery, setExpectedDelivery] = useState("")
+  const [trackingUrl, setTrackingUrl] = useState("")
+  const [completionNotes, setCompletionNotes] = useState("")
 
   const isDevelopment = process.env.NODE_ENV === "development"
 
@@ -278,8 +286,43 @@ export default function AdminDashboard() {
     } catch (error) {
       setMessage("An unexpected error occurred during auto-assignment.")
     } finally {
-      setIsAssigning(false)
+    setIsAssigning(false)
+  }
+
+  const openCompletionDialog = (submission: any) => {
+    setCompletionSubmission(submission)
+    setExpectedDelivery("")
+    setTrackingUrl("")
+    setCompletionNotes("")
+    setShowCompletionDialog(true)
+  }
+
+  const markSubmissionComplete = async () => {
+    if (!completionSubmission) return
+    try {
+      const response = await fetch(`/api/admin/submissions/${completionSubmission.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expected_delivery: expectedDelivery || null,
+          tracking_url: trackingUrl || null,
+          completion_notes: completionNotes || null,
+        }),
+      })
+      if (response.ok) {
+        await loadSubmissions()
+        setMessage("Submission marked complete")
+      } else {
+        const data = await response.json()
+        setMessage(data.error || "Failed to update submission")
+      }
+    } catch (e) {
+      setMessage("Failed to update submission")
+    } finally {
+      setShowCompletionDialog(false)
+      setCompletionSubmission(null)
     }
+  }
   }
 
   const deleteFile = async (fileId: string) => {
@@ -552,11 +595,6 @@ export default function AdminDashboard() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="submissions">
-            <Card>
-              <CardHeader>
                 <CardTitle>Order Submissions</CardTitle>
                 <p className="text-sm text-muted-foreground">Here are the latest order forms submitted by users.</p>
               </CardHeader>
@@ -575,6 +613,7 @@ export default function AdminDashboard() {
                         <TableHead>Status</TableHead>
                         <TableHead>IP Address</TableHead>
                         <TableHead className="text-right">PDF</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -614,6 +653,11 @@ export default function AdminDashboard() {
                               </a>
                             </Button>
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Button size="sm" onClick={() => openCompletionDialog(submission)}>
+                              Mark Complete
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -622,6 +666,46 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
+            <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Mark Submission Complete</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div>
+                    <Label htmlFor="expected-delivery">Expected Delivery</Label>
+                    <Input
+                      id="expected-delivery"
+                      type="date"
+                      value={expectedDelivery}
+                      onChange={(e) => setExpectedDelivery(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="tracking-url">Tracking URL</Label>
+                    <Input
+                      id="tracking-url"
+                      value={trackingUrl}
+                      onChange={(e) => setTrackingUrl(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="completion-notes">Notes</Label>
+                    <Textarea
+                      id="completion-notes"
+                      value={completionNotes}
+                      onChange={(e) => setCompletionNotes(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowCompletionDialog(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={markSubmissionComplete}>Save</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
 
           <TabsContent value="files">
             <Card>
