@@ -16,6 +16,10 @@ Your project is live at:
 
 **[https://vercel.com/chris-germons-projects/vrg-print-ordering](https://vercel.com/chris-germons-projects/vrg-print-ordering)**
 
+### Admin password
+
+All `/admin` pages are protected with HTTP basic authentication. By default the password is set to `crowdit`. You can change it by setting the `ADMIN_PASSWORD` environment variable.
+
 ## Build your app
 
 Continue building your app on:
