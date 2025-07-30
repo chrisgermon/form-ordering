@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/utils/supabase/server"
+import { createServerSupabaseClient } from "@/lib/supabase"
 
 export async function GET() {
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
 
     const { data: files, error } = await supabase
       .from("uploaded_files")
@@ -21,7 +21,7 @@ export async function GET() {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 

@@ -1,18 +1,25 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/utils/supabase/server"
-import { revalidatePath } from "next/cache"
+import { createServerSupabaseClient } from "@/lib/supabase"
 
-function revalidateEditorPaths(brandSlug: string) {
-  revalidatePath(`/admin/editor/${brandSlug}`)
-  revalidatePath(`/forms/${brandSlug}`)
+export async function GET() {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    const { data: items, error } = await supabase.from("product_items").select("*").order("sort_order")
+
+    if (error) throw error
+
+    return NextResponse.json(items)
+  } catch (error) {
+    console.error("Error fetching items:", error)
+    return NextResponse.json({ error: "Failed to fetch items" }, { status: 500 })
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
     const body = await request.json()
-
-    const { data: brandData } = await supabase.from("brands").select("slug").eq("id", body.brandId).single()
 
     const { data: maxSortOrderData, error: maxSortError } = await supabase
       .from("product_items")
@@ -23,6 +30,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (maxSortError && maxSortError.code !== "PGRST116") {
+      // Ignore 'No rows found' error
       throw maxSortError
     }
 
@@ -34,37 +42,28 @@ export async function POST(request: NextRequest) {
         code: body.code,
         name: body.name,
         description: body.description,
-        options: body.options,
-        sample_link: body.sample_link,
+        quantities: body.quantities,
+        sample_link: body.sampleLink,
         section_id: body.sectionId,
         brand_id: body.brandId,
-        sort_order: newSortOrder,
-        field_type: body.fieldType,
-        placeholder: body.placeholder,
-        is_required: body.is_required,
+        sort_order: newSortOrder, // Add this
       })
       .select()
       .single()
 
     if (error) throw error
 
-    if (brandData?.slug) {
-      revalidateEditorPaths(brandData.slug)
-    }
-
     return NextResponse.json(item)
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error creating item:", error)
-    return NextResponse.json({ error: `Failed to create item: ${error.message}` }, { status: 500 })
+    return NextResponse.json({ error: "Failed to create item" }, { status: 500 })
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
     const body = await request.json()
-
-    const { data: itemData } = await supabase.from("product_items").select("brands(slug)").eq("id", body.id).single()
 
     const { data: item, error } = await supabase
       .from("product_items")
@@ -72,11 +71,10 @@ export async function PUT(request: NextRequest) {
         code: body.code,
         name: body.name,
         description: body.description,
-        options: body.options,
-        sample_link: body.sample_link,
-        field_type: body.fieldType,
-        placeholder: body.placeholder,
-        is_required: body.is_required,
+        quantities: body.quantities,
+        sample_link: body.sampleLink,
+        section_id: body.sectionId,
+        brand_id: body.brandId,
       })
       .eq("id", body.id)
       .select()
@@ -84,20 +82,16 @@ export async function PUT(request: NextRequest) {
 
     if (error) throw error
 
-    if (itemData?.brands?.slug) {
-      revalidateEditorPaths(itemData.brands.slug)
-    }
-
     return NextResponse.json(item)
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error updating item:", error)
-    return NextResponse.json({ error: `Failed to update item: ${error.message}` }, { status: 500 })
+    return NextResponse.json({ error: "Failed to update item" }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createAdminClient()
+    const supabase = createServerSupabaseClient()
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 
@@ -105,19 +99,13 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Item ID is required" }, { status: 400 })
     }
 
-    const { data: itemData } = await supabase.from("product_items").select("brands(slug)").eq("id", id).single()
-
     const { error } = await supabase.from("product_items").delete().eq("id", id)
 
     if (error) throw error
 
-    if (itemData?.brands?.slug) {
-      revalidateEditorPaths(itemData.brands.slug)
-    }
-
-    return NextResponse.json({ success: true, message: "Item deleted successfully." })
-  } catch (error: any) {
+    return NextResponse.json({ success: true })
+  } catch (error) {
     console.error("Error deleting item:", error)
-    return NextResponse.json({ error: `Failed to delete item: ${error.message}` }, { status: 500 })
+    return NextResponse.json({ error: "Failed to delete item" }, { status: 500 })
   }
 }

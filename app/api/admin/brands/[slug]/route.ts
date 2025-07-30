@@ -1,30 +1,25 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/utils/supabase/server"
+import { NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
+import { slugify } from "@/lib/utils"
 
-export async function GET(request: NextRequest, { params }: { params: { slug: string } }) {
-  try {
-    const supabase = createAdminClient()
-    const { data: brand, error } = await supabase
-      .from("brands")
-      .select(
-        `
-        id, name, slug, logo, emails, active,
-        product_sections (
-          id, title, sort_order, brand_id,
-          product_items (
-            id, code, name, description, quantities, sample_link, sort_order, section_id, brand_id
-          )
-        )
-      `,
-      )
-      .eq("slug", params.slug)
-      .single()
+export async function PUT(request: Request, { params }: { params: { slug: string } }) {
+  const supabase = createClient()
+  const { name, logo_url, clinics } = await request.json()
 
-    if (error) throw error
-
-    return NextResponse.json(brand)
-  } catch (error) {
-    console.error(`Error fetching brand ${params.slug}:`, error)
-    return NextResponse.json({ error: `Failed to fetch brand ${params.slug}` }, { status: 500 })
+  const updateData: { name?: string; slug?: string; logo_url?: string; clinics?: any } = {}
+  if (name) {
+    updateData.name = name
+    updateData.slug = slugify(name)
   }
+  if (logo_url !== undefined) updateData.logo_url = logo_url
+  if (clinics !== undefined) updateData.clinics = clinics
+
+  const { data, error } = await supabase.from("brands").update(updateData).eq("slug", params.slug).select().single()
+
+  if (error) {
+    console.error(`Error updating brand ${params.slug}:`, error)
+    return NextResponse.json({ error: "Failed to update brand." }, { status: 500 })
+  }
+
+  return NextResponse.json(data)
 }

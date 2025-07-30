@@ -1,22 +1,42 @@
 import type { Instrumentation } from "next"
 
 export async function register() {
-  // This function is called once when the server starts.
-  // You can use it to initialize monitoring services.
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    console.log("Server instrumentation registered.")
+    // You can import and initialize any server-side observability
+    // tools like Sentry, OpenTelemetry, etc. here.
   }
 }
 
+/**
+ * This function is called when an error occurs on the server.
+ * It's a great place to send errors to your observability platform.
+ */
 export const onRequestError: Instrumentation.onRequestError = async (err, request, context) => {
-  console.error("--- Server Error Captured by Instrumentation ---")
-  console.error("Error Message:", err.message)
-  if (err.digest) {
-    console.error("Error Digest:", err.digest)
-  }
-  console.error("Request Path:", request.path)
-  console.error("Request Method:", request.method)
-  console.error("Context:", JSON.stringify(context, null, 2))
-  console.error("Error Stack:", err.stack)
-  console.error("----------------------------------------------")
+  console.error("Caught server-side error:", {
+    message: err.message,
+    digest: err.digest,
+    request: {
+      path: request.path,
+      method: request.method,
+    },
+    context: {
+      routePath: context.routePath,
+      routeType: context.routeType,
+    },
+  })
+
+  // Example of sending to a hypothetical error reporting service:
+  /*
+  await fetch('https://your-error-reporter.com/api/report', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: err.message,
+      digest: err.digest,
+      stack: err.stack,
+      request,
+      context,
+    }),
+  });
+  */
 }
