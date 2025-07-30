@@ -16,6 +16,28 @@ Your project is live at:
 
 **[https://vercel.com/chris-germons-projects/vrg-print-ordering](https://vercel.com/chris-germons-projects/vrg-print-ordering)**
 
+### Admin password
+
+All `/admin` pages are protected with HTTP basic authentication. By default the password is set to `crowdit`. You can change it by setting the `ADMIN_PASSWORD` environment variable.
+
+### Environment variables
+
+Create a `.env` file (or configure these variables in your deployment platform):
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=<your-supabase-url>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+MAILGUN_SMTP_USERNAME=<mailgun-smtp-username>
+MAILGUN_SMTP_PASSWORD=<mailgun-smtp-password>
+FROM_EMAIL=<from@example.com>
+# Optional
+ADMIN_PASSWORD=crowdit
+OPENAI_API_KEY=<openai-api-key>
+```
+
+`MAILGUN_SMTP_USERNAME`, `MAILGUN_SMTP_PASSWORD`, and `FROM_EMAIL` are required to send order emails. `ADMIN_PASSWORD` defaults to `crowdit` if not set, and `OPENAI_API_KEY` enables optional AI features.
+
 ## Build your app
 
 Continue building your app on:
