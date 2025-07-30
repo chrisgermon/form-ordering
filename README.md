@@ -16,6 +16,10 @@ Your project is live at:
 
 **[https://vercel.com/chris-germons-projects/vrg-print-ordering](https://vercel.com/chris-germons-projects/vrg-print-ordering)**
 
+### Admin password
+
+Set an `ADMIN_PASSWORD` environment variable to enable basic authentication for all `/admin` pages. Requests to those routes will require HTTP basic auth with the configured password.
+
 ## Build your app
 
 Continue building your app on:
