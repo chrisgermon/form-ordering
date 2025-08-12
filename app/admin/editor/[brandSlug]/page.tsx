@@ -1,20 +1,35 @@
-import { FormEditor } from "./form-editor"
+import { createClient } from "@/lib/supabase/server"
+import { checkUserPermissions } from "@/lib/utils"
+import FormEditor from "./form-editor"
+import type { BrandWithSections } from "@/lib/types"
 import { notFound } from "next/navigation"
-import { getBrand, getUploadedFiles } from "./actions"
 
-interface PageProps {
-  params: {
-    brandSlug: string
-  }
-}
+export default async function BrandEditorPage({ params }: { params: { brandSlug: string } }) {
+  const supabase = createClient()
+  await checkUserPermissions(supabase)
 
-export default async function BrandEditorPage({ params }: PageProps) {
-  const brandData = await getBrand(params.brandSlug)
-  const uploadedFiles = await getUploadedFiles()
+  const { data: brand, error } = await supabase
+    .from("brands")
+    .select(
+      `
+      *,
+      sections (
+        *,
+        items (
+          *
+        )
+      )
+    `,
+    )
+    .eq("slug", params.brandSlug)
+    .order("order", { foreignTable: "sections" })
+    .order("order", { foreignTable: "sections.items" })
+    .single()
 
-  if (!brandData) {
+  if (error || !brand) {
+    console.error("Error fetching brand for editor:", error)
     notFound()
   }
 
-  return <FormEditor initialBrandData={brandData} uploadedFiles={uploadedFiles} />
+  return <FormEditor brand={brand as BrandWithSections} />
 }
