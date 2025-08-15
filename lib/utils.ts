@@ -1,38 +1,28 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
+import type { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
-import type { SupabaseClient } from "@supabase/supabase-js"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export const slugify = (text: string) => {
-  if (!text) return ""
-  return text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-") // Replace spaces with -
-    .replace(/[^\w-]+/g, "") // Remove all non-word chars
-    .replace(/--+/g, "-") // Replace multiple - with single -
-}
-
-export async function checkUserPermissions(supabase: SupabaseClient) {
+export async function checkUserPermissions(supabase: ReturnType<typeof createClient>) {
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser()
 
-  if (!user) {
-    // This will redirect to a login page if one is set up.
-    // For now, it might be better to redirect to the home page.
-    return redirect("/")
+  if (error || !user) {
+    redirect("/auth/login")
   }
 
-  // Ensure ADMIN_EMAIL_RECIPIENT is set in your environment variables
-  const adminEmails = (process.env.ADMIN_EMAIL_RECIPIENT || "").split(",").filter(Boolean)
-  if (!user.email || adminEmails.length === 0 || !adminEmails.includes(user.email)) {
-    // Redirect non-admins to the home page
-    return redirect("/")
+  // Check if user has admin role
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+
+  if (!profile || profile.role !== "admin") {
+    redirect("/")
   }
+
+  return user
 }

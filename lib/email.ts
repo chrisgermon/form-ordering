@@ -1,5 +1,4 @@
 import nodemailer from "nodemailer"
-import type { Submission } from "./types"
 
 // Ensure environment variables are defined
 const {
@@ -22,6 +21,7 @@ if (!MAILGUN_SMTP_HOST || !MAILGUN_SMTP_PORT || !MAILGUN_SMTP_USERNAME || !MAILG
 const transporter = nodemailer.createTransport({
   host: MAILGUN_SMTP_HOST,
   port: Number.parseInt(MAILGUN_SMTP_PORT || "587"),
+  secure: false,
   auth: {
     user: MAILGUN_SMTP_USERNAME,
     pass: MAILGUN_SMTP_PASSWORD,
@@ -130,6 +130,7 @@ export interface EmailOptions {
   cc?: string
   subject: string
   html: string
+  text?: string
   attachments?: Array<{
     filename: string
     content: Buffer | string
@@ -139,10 +140,11 @@ export interface EmailOptions {
 
 export async function sendEmail(options: EmailOptions) {
   const mailOptions = {
-    from: FROM_EMAIL,
+    from: process.env.FROM_EMAIL,
     to: options.to,
     cc: options.cc,
     subject: options.subject,
+    text: options.text,
     html: options.html,
     attachments: options.attachments,
   }
@@ -157,50 +159,39 @@ export async function sendEmail(options: EmailOptions) {
   }
 }
 
-export async function sendOrderEmail({
-  submission,
-  recipientEmail,
-  pdfUrl,
-}: {
-  submission: Submission
-  recipientEmail: string
-  pdfUrl: string
-}) {
-  const { ordered_by, email, items } = submission
-
-  const itemsHtml = Object.entries(items)
-    .map(([itemName, quantity]) => `<li>${itemName}: ${quantity}</li>`)
-    .join("")
-
-  const mailOptions = {
-    from: FROM_EMAIL,
-    to: recipientEmail,
-    subject: `New Order from ${ordered_by}`,
-    html: `
-      <h1>New Order Received</h1>
-      <p><strong>Ordered By:</strong> ${ordered_by}</p>
-      <p><strong>Contact Email:</strong> ${email}</p>
-      <h2>Order Details:</h2>
-      <ul>
-        ${itemsHtml}
-      </ul>
-      <p>A PDF of the order is attached to this email and can also be downloaded <a href="${pdfUrl}">here</a>.</p>
-    `,
-    attachments: [
-      {
-        filename: `order-${submission.id}.pdf`,
-        path: pdfUrl,
-        contentType: "application/pdf",
-      },
-    ],
-  }
-
+export async function sendOrderEmail(to: string, subject: string, orderData: any, brandName: string) {
   try {
-    await transporter.sendMail(mailOptions)
-    console.log("Order email sent successfully to", recipientEmail)
-    return { success: true }
+    const htmlContent = `
+      <h2>New Order Submission - ${brandName}</h2>
+      <p>A new order has been submitted with the following details:</p>
+      <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <pre>${JSON.stringify(orderData, null, 2)}</pre>
+      </div>
+      <p>Please review and process this order accordingly.</p>
+    `
+
+    const textContent = `
+      New Order Submission - ${brandName}
+      
+      A new order has been submitted with the following details:
+      
+      ${JSON.stringify(orderData, null, 2)}
+      
+      Please review and process this order accordingly.
+    `
+
+    const info = await transporter.sendMail({
+      from: process.env.FROM_EMAIL,
+      to,
+      subject,
+      text: textContent,
+      html: htmlContent,
+    })
+
+    console.log("Email sent:", info.messageId)
+    return { success: true, messageId: info.messageId }
   } catch (error) {
-    console.error("Error sending order email:", error)
+    console.error("Error sending email:", error)
     return { success: false, error: error.message }
   }
 }
